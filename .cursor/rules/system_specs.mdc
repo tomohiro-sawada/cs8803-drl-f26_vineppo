@@ -1,0 +1,389 @@
+---
+alwaysApply: false
+---
+
+
+Here are information about system specs.
+
+
+In descending priority of compatibility: 
+
+### Local (work laptop)
+
+```
+--- Operating System & Kernel ---
+ProductName:		macOS
+ProductVersion:		26.1
+BuildVersion:		25B78
+
+Darwin CC-DQ6PVQ9426 25.1.0 Darwin Kernel Version 25.1.0: Mon Oct 20 19:34:05 PDT 2025; root:xnu-12377.41.6~2/RELEASE_ARM64_T6041 arm64
+
+--- Shell Environment ---
+Current shell: /bin/zsh
+zsh 5.9 (arm64-apple-darwin25.0)
+GNU bash, version 5.3.3(1)-release (aarch64-apple-darwin25.0.0)
+Terminal type: xterm-256color
+Terminal program: vscode
+
+--- Package Manager ---
+Homebrew version:
+Homebrew 4.6.19
+Homebrew path: /opt/homebrew/bin/brew
+Installed packages: 96
+
+--- Runtime Versions ---
+Python: Python 3.13.5 (/opt/homebrew/bin/python3)
+Node.js: v24.4.1 (/opt/homebrew/bin/node)
+Rust: rustc 1.88.0 (6b00bc388 2025-06-23) (Homebrew) (/opt/homebrew/bin/rustc)
+uv: uv 0.7.21 (Homebrew 2025-07-14) (/opt/homebrew/bin/uv)
+
+--- Editor/IDE ---
+Neovim: NVIM v0.11.3 (/opt/homebrew/bin/nvim)
+Vim: VIM - Vi IMproved 9.1 (/usr/bin/vim)
+
+--- Git Configuration ---
+Git version: git version 2.50.1 (Apple Git-155)
+Git user.name: Tomohiro Sawada
+Git user.email: tomosawada98@gmail.com
+Git core.editor: Not set
+
+--- Hardware Information ---
+  Model Name: MacBook Pro
+  Model Identifier: Mac16,8
+  Total Number of Cores: 12 (8 performance and 4 efficiency)
+  Memory: 24 GB
+  Serial Number (system): DQ6PVQ9426
+
+CPU Brand: Apple M4 Pro
+Total RAM: 24.00 GB
+
+--- Display Information ---
+  Resolution: 1920 x 1200 (WUXGA - Widescreen Ultra eXtended Graphics Array)
+  Main Display: Yes
+  Resolution: 3024 x 1964 Retina
+  Connection Type: Internal
+  Resolution: 2560 x 1440 (QHD/WQHD - Wide Quad High Definition)
+
+Interface Style: Dark
+
+--- Disk Information ---
+/dev/disk0 (internal, physical):
+   #:                       TYPE NAME                    SIZE       IDENTIFIER
+   0:      GUID_partition_scheme                        *500.3 GB   disk0
+   1:             Apple_APFS_ISC Container disk1         524.3 MB   disk0s1
+   2:                 Apple_APFS Container disk3         494.4 GB   disk0s2
+   3:        Apple_APFS_Recovery Container disk2         5.4 GB     disk0s3
+
+/dev/disk3 (synthesized):
+   #:                       TYPE NAME                    SIZE       IDENTIFIER
+   0:      APFS Container Scheme -                      +494.4 GB   disk3
+                                 Physical Store disk0s2
+   1:                APFS Volume Macintosh HD            12.2 GB    disk3s1
+   2:              APFS Snapshot com.apple.os.update-... 12.2 GB    disk3s1s1
+   3:                APFS Volume Preboot                 8.1 GB     disk3s2
+   4:                APFS Volume Recovery                1.2 GB     disk3s3
+   5:                APFS Volume Data                    260.1 GB   disk3s5
+   6:                APFS Volume VM                      6.4 GB     disk3s6
+
+
+--- Network ---
+Primary IP (en0): 10.91.32.90
+  inet 10.91.32.90 netmask 0xffff8000 broadcast 10.91.127.255
+
+--- Environment Variables ---
+HOME: /Users/tsawada7
+USER: tsawada7
+PATH: /Users/tsawada7/.local/bin:/Users/tsawada7/bin:/usr/local/cuda/bin:/nethome/tsawada7/my_env/bin:/opt/homebrew/bin:/Users/tsawada7/.local/python3.9/bin:/Users/tsawada7/.cargo/bin:/Users/tsawada7/miniconda3/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/TeX/texbin:/usr/local/munki:/coc/flash13/tsawada7/.local/bin
+
+Locale: LANG="en_US.UTF-8" LC_COLLATE="en_US.UTF-8" LC_CTYPE="en_US.UTF-8" 
+```
+
+
+
+### Remote (HPC cluster - login node `sky1`)
+
+```
+--- Operating System & Kernel ---
+Distributor ID:	Ubuntu
+Description:	Ubuntu 20.04.6 LTS
+Release:	20.04
+Codename:	focal
+
+Linux sky1.cc.gatech.edu 5.4.0-216-generic #236-Ubuntu SMP Fri Apr 11 19:53:21 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+   Static hostname: sky1.cc.gatech.edu
+         Icon name: computer-server
+           Chassis: server
+        Machine ID: 9e093b50d37df9d6e8e7f67464d3c4f2
+           Boot ID: 4377b2e9cfcb47239920852d57a10c4f
+  Operating System: Ubuntu 20.04.6 LTS
+            Kernel: Linux 5.4.0-216-generic
+      Architecture: x86-64
+
+--- Shell Environment ---
+Current shell: /bin/bash
+zsh 5.8 (x86_64-ubuntu-linux-gnu)
+GNU bash, version 5.0.17(1)-release (x86_64-pc-linux-gnu)
+Terminal type: xterm-256color
+Terminal emulator: Not set
+Detected terminal: bash
+
+--- Package Manager ---
+APT version: apt 2.0.11 (amd64)
+APT path: /usr/bin/apt
+Installed packages: 1689 (via dpkg)
+
+--- Runtime Versions ---
+Python: Python 3.8.10 (/usr/bin/python3)
+Node.js: v22.21.0 (/usr/local/nvm/versions/node/v22.21.0/bin/node)
+Rust: rustc 1.84.1 (e71f9a9a9 2025-01-27) (/nethome/tsawada7/.cargo/bin/rustc)
+uv: uv 0.8.22 (/coc/flash13/tsawada7/.local/bin/uv)
+
+--- Editor/IDE ---
+Neovim: NVIM v0.11.0-dev-1876+g86046c5a31 (/coc/flash13/tsawada7/.local/bin/nvim)
+Vim: VIM - Vi IMproved 8.1 (/usr/bin/vim)
+
+--- Git Configuration ---
+Git version: git version 2.50.1
+Git user.name: Tomohiro Sawada
+Git user.email: tomosawada98@gmail.com
+Git core.editor: Not set
+
+--- Hardware Information ---
+CPU Information:
+  Architecture:                       x86_64
+  CPU(s):                             40
+  On-line CPU(s) list:                0-39
+  Thread(s) per core:                 2
+  Core(s) per socket:                 10
+  Socket(s):                          2
+  Model name:                         Intel(R) Xeon(R) Silver 4114 CPU @ 2.20GHz
+  NUMA node0 CPU(s):                  0-9,20-29
+  NUMA node1 CPU(s):                  10-19,30-39
+
+Memory:
+  total        used        free      shared  buff/cache   available
+  Mem:          376Gi       150Gi        44Gi        90Mi       180Gi       223Gi
+  Swap:         2.0Gi       1.3Gi       699Mi
+
+--- GPU Information ---
+  04:00.0 VGA compatible controller: ASPEED Technology, Inc. ASPEED Graphics Family (rev 41)
+
+--- Display & Desktop Environment ---
+Desktop Environment: Not set
+Session Type: tty
+Display Resolution (X11):
+
+--- Disk Information ---
+Filesystem                                           Size  Used Avail Use% Mounted on
+udev                                                 189G     0  189G   0% /dev
+tmpfs                                                 38G  3.7M   38G   1% /run
+/dev/md0                                             469G   77G  368G  18% /
+tmpfs                                                189G   36K  189G   1% /dev/shm
+tmpfs                                                5.0M     0  5.0M   0% /run/lock
+tmpfs                                                189G     0  189G   0% /sys/fs/cgroup
+skypool                                              1.7T  128K  1.7T   1% /zfs
+skypool/testshare                                    4.4T  2.8T  1.7T  63% /zfs/testshare
+universal-ac.cc.gatech.edu:/zfs/slurm                100G  714M  100G   1% /opt/slurm
+
+Block Devices:
+NAME    MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda       8:0    0   477G  0 disk  
+├─sda1    8:1    0     1M  0 part  
+├─sda2    8:2    0     1K  0 part  
+└─sda5    8:5    0   477G  0 part  
+  └─md0   9:0    0 476.8G  0 raid1 /
+sdb       8:16   0 931.5G  0 disk  
+├─sdb1    8:17   0 931.5G  0 part  
+└─sdb9    8:25   0     8M  0 part  
+sdc       8:32   0 931.5G  0 disk  
+
+--- Network ---
+Network Interfaces:
+  1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+  inet 127.0.0.1/8 scope host lo
+  2: ens1f0: <BROADCAST,MULTICAST,SLAVE,UP,LOWER_UP> mtu 1500 qdisc mq master bond0 state UP group default qlen 1000
+  3: eno1: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq state DOWN group default qlen 1000
+  4: ens1f1: <BROADCAST,MULTICAST,SLAVE,UP,LOWER_UP> mtu 1500 qdisc mq master bond0 state UP group default qlen 1000
+  5: eno2: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq state DOWN group default qlen 1000
+  6: bond0: <BROADCAST,MULTICAST,MASTER,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+  inet 130.207.124.148/24 brd 130.207.124.255 scope global bond0
+  7: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+  inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+
+IP addresses: 130.207.124.148 172.17.0.1 
+
+--- Environment Variables ---
+HOME: /nethome/tsawada7
+USER: tsawada7
+PATH: /coc/flash13/tsawada7/Files/projects/gtr2511_sft/work/.venv/bin:/nethome/tsawada7/.cursor-server/bin/b3573281c4775bfc6bba466bf6563d3d498d1070/bin/remote-cli:/nethome/tsawada7/.local/python3.9/bin:/usr/local/cuda/bin:/nethome/tsawada7/my_env/bin:/usr/local/cuda/bin:/nethome/tsawada7/.local/bin:/nethome/tsawada7/.local/python3.9/bin:/nethome/tsawada7/.cargo/bin:/nethome/tsawada7/miniconda3/bin:/nethome/tsawada7/.cursor-server/bin/b3573281c4775bfc6bba466bf6563d3d498d1070/bin/remote-cli:/usr/local/cuda/bin:/nethome/tsawada7/.local/bin:/nethome/tsawada7/.local/python3.9/bin:/nethome/tsawada7/.cargo/bin:/nethome/tsawada7/miniconda3/bin:/usr/local/nvm/versions/node/v22.21.0/bin:/nethome/tsawada7/.local/bin:/nethome/tsawada7/.local/bin:/nethome/tsawada7/bin:/nethome/tsawada7/bin:/nethome/tsawada7/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/nethome/tsawada7/.local/bin:/coc/flash13/tsawada7/.local/bin:/coc/testnvme/admin/tools/skynet-utilities/:/opt/slurm/Ubuntu-20.04/current/bin:/nethome/tsawada7/bin:/coc/flash13/tsawada7/.local/bin:/coc/testnvme/admin/tools/skynet-utilities/:/opt/slurm/Ubuntu-20.04/current/bin:/nethome/tsawada7/bin:/coc/flash13/tsawada7/.local/bin:/nethome/tsawada7/.cursor-server/extensions/ms-python.debugpy-2025.14.1-linux-x64/bundled/scripts/noConfigScripts
+
+Locale:
+  LANG=en_US.UTF-8
+  LC_CTYPE="en_US.UTF-8"
+  LC_NUMERIC="en_US.UTF-8"
+  LC_TIME="en_US.UTF-8"
+  LC_COLLATE="en_US.UTF-8"
+```
+
+
+### Remote (HPC cluster - GPU node `optimistprime`)
+
+```
+--- Operating System & Kernel ---
+Distributor ID:	Ubuntu
+Description:	Ubuntu 20.04.6 LTS
+Release:	20.04
+Codename:	focal
+
+Linux optimistprime 5.4.0-153-generic #170-Ubuntu SMP Fri Jun 16 13:43:31 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux
+   Static hostname: optimistprime
+         Icon name: computer-server
+           Chassis: server
+        Machine ID: 71ca071527dc17104689cb4c649d9853
+           Boot ID: 376905764dd94d5a9caa273c62a60aff
+  Operating System: Ubuntu 20.04.6 LTS
+            Kernel: Linux 5.4.0-153-generic
+      Architecture: x86-64
+
+--- Shell Environment ---
+Current shell: /bin/bash
+zsh 5.8 (x86_64-ubuntu-linux-gnu)
+GNU bash, version 5.0.17(1)-release (x86_64-pc-linux-gnu)
+Terminal type: xterm-256color
+Terminal emulator: Not set
+Detected terminal: bash
+
+--- Package Manager ---
+APT version: apt 2.0.9 (amd64)
+APT path: /usr/bin/apt
+Installed packages: 2155 (via dpkg)
+
+--- Runtime Versions ---
+Python: Python 3.8.10 (/usr/bin/python3)
+Node.js: v10.19.0 (/usr/bin/node)
+Rust: rustc 1.84.1 (e71f9a9a9 2025-01-27) (/nethome/tsawada7/.cargo/bin/rustc)
+uv: uv 0.8.22 (/coc/flash13/tsawada7/.local/bin/uv)
+
+--- Editor/IDE ---
+Neovim: NVIM v0.11.0-dev-1876+g86046c5a31 (/coc/flash13/tsawada7/.local/bin/nvim)
+Vim: VIM - Vi IMproved 8.1 (/usr/bin/vim)
+
+--- Git Configuration ---
+Git version: git version 2.25.1
+Git user.name: Tomohiro Sawada
+Git user.email: tomosawada98@gmail.com
+Git core.editor: Not set
+
+--- Hardware Information ---
+CPU Information:
+  Architecture:                    x86_64
+  CPU(s):                          128
+  On-line CPU(s) list:             0-127
+  Thread(s) per core:              2
+  Core(s) per socket:              32
+  Socket(s):                       2
+  Model name:                      AMD EPYC 7452 32-Core Processor
+  NUMA node0 CPU(s):               0-31,64-95
+  NUMA node1 CPU(s):               32-63,96-127
+
+Memory:
+  total        used        free      shared  buff/cache   available
+  Mem:          503Gi        86Gi       353Gi       3.1Gi        63Gi       410Gi
+  Swap:         2.0Gi       2.0Gi       0.0Ki
+
+--- GPU Information ---
+  63:00.0 VGA compatible controller: ASPEED Technology, Inc. ASPEED Graphics Family (rev 41)
+
+--- Display & Desktop Environment ---
+Desktop Environment: Not set
+Session Type: tty
+Display Resolution (X11):
+
+--- Disk Information ---
+Filesystem                                          Size  Used Avail Use% Mounted on
+udev                                                252G     0  252G   0% /dev
+tmpfs                                                51G   31M   51G   1% /run
+/dev/md0                                            880G   67G  769G   8% /
+tmpfs                                               252G  2.1G  250G   1% /dev/shm
+tmpfs                                               5.0M     0  5.0M   0% /run/lock
+tmpfs                                               252G     0  252G   0% /sys/fs/cgroup
+/dev/md1                                            3.5T   28K  3.3T   1% /scratch
+universal-ac.cc.gatech.edu:/zfs/slurm               100G  714M  100G   1% /opt/slurm
+tmpfs                                                51G   24K   51G   1% /run/user/124
+
+Block Devices:
+NAME        MAJ:MIN RM   SIZE RO TYPE  MOUNTPOINT
+sda           8:0    0 894.3G  0 disk  
+|-sda1        8:1    0     1M  0 part  
+|-sda2        8:2    0     1K  0 part  
+`-sda5        8:5    0 894.3G  0 part  
+  `-md0       9:0    0 894.1G  0 raid1 /
+sdb           8:16   0 894.3G  0 disk  
+|-sdb1        8:17   0     1M  0 part  
+|-sdb2        8:18   0     1K  0 part  
+`-sdb5        8:21   0 894.3G  0 part  
+
+--- Network ---
+Network Interfaces:
+  1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+  inet 127.0.0.1/8 scope host lo
+  2: eno1: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+  3: eno2: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+  4: ens8f0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+  inet 130.207.124.228/24 brd 130.207.124.255 scope global dynamic ens8f0
+  5: ens8f1: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+  6: usb0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+  7: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+  inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+
+IP addresses: 130.207.124.228 172.17.0.1 
+
+--- Environment Variables ---
+HOME: /nethome/tsawada7
+USER: tsawada7
+PATH: /nethome/tsawada7/.local/python3.9/bin:/usr/local/cuda/bin:/nethome/tsawada7/my_env/bin:/usr/local/cuda/bin:/nethome/tsawada7/.local/bin:/nethome/tsawada7/.local/python3.9/bin:/nethome/tsawada7/.cargo/bin:/nethome/tsawada7/miniconda3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/coc/testnvme/admin/tools/skynet-utilities/:/opt/slurm/Ubuntu-20.04/current/bin:/nethome/tsawada7/bin:/coc/flash13/tsawada7/.local/bin
+
+Locale:
+  LANG=en_US
+  LC_CTYPE="en_US"
+  LC_NUMERIC="en_US"
+  LC_TIME="en_US"
+  LC_COLLATE="en_US"
+```
+
+
+
+
+### Local (personal laptop)
+
+```
+tsawada7@tsawada-framework:~/Files/private$ fastfetch
+                  -`                     tsawada7@tsawada-framework
+                 .o+`                    --------------------------
+                `ooo/                    OS: Arch Linux x86_64
+               `+oooo:                   Host: Laptop 13 (AMD Ryzen 7040Series) (A5)
+              `+oooooo:                  Kernel: Linux 6.16.1-arch1-1
+              -+oooooo+:                 Uptime: 8 hours, 29 mins
+            `/:-:++oooo+:                Packages: 1112 (pacman)
+           `/++++/+++++++:               Shell: bash 5.3.3
+          `/++++++++++++++:              Display (BOE0BCA): 2256x1504 @ 60 Hz in 13" [Built-in]
+         `/+++ooooooooooooo/`            DE: GNOME 48.4
+        ./ooosssso++osssssso+`           WM: Mutter (Wayland)
+       .oossssso-````/ossssss+`          WM Theme: Adwaita
+      -osssssso.      :ssssssso.         Theme: Adwaita [GTK2/3/4]
+     :osssssss/        osssso+++.        Icons: Adwaita [GTK2/3/4]
+    /ossssssss/        +ssssooo/-        Font: Adwaita Sans (11pt) [GTK2/3/4]
+  `/ossssso+/:-        -:/+osssso+-      Cursor: Adwaita (32px)
+ `+sso+:-`                 `.-/+oso:     Terminal: alacritty 0.15.1
+`++:.                           `-/+/    Terminal Font: monospace (11.0pt)
+.`                                 `/    CPU: AMD Ryzen 5 7640U (12) @ 4.97 GHz
+                                         GPU: AMD Radeon 760M Graphics [Integrated]
+                                         Memory: 4.74 GiB / 14.93 GiB (32%)
+                                         Swap: 0 B / 4.00 GiB (0%)
+                                         Disk (/): 15.81 GiB / 48.91 GiB (32%) - ext4
+                                         Disk (/home): 33.25 GiB / 865.61 GiB (4%) - ext4
+                                         Local IP (wlp1s0): 172.20.10.8/28
+                                         Battery (Framewo): 49% (2 hours, 14 mins remaining) [Discharging]
+                                         Locale: en_US.UTF-8```
+```                                    
+ 
