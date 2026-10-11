@@ -13,5 +13,12 @@ export GRAVEYARD=$WORKDIR/.trash/
 
 
 
-
-
+# flatten repo: useful for prompting ChatGPT
+flatten_repo() {
+  fd --type f --size -1m --print0 |
+    xargs -0 -I {} sh -c '
+      printf "\n--- %s ---\n" "$1"
+      cat -- "$1"
+      printf "\n"
+    ' sh {}
+}
