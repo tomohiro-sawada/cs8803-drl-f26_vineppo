@@ -12,6 +12,12 @@ export TRASH="$WORKDIR/.trash"
 export GRAVEYARD=$WORKDIR/.trash/
 
 
+# timestamp: current time in a compact, sortable format
+timestamp() {
+  local format='%Y%m%d-%H%M%S'
+  date "+$format"
+}
+
 
 # flatten repo: useful for prompting ChatGPT
 flatten_repo() {
