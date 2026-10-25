@@ -1,4 +1,5 @@
 # Project instructions
+<!-- Original conversation: https://chatgpt.com/share/6ade0732-7090-83e8-a66f-85597fcb474f --> 
 
 <!-- TEMPLATE SETUP (for the maintainer):
 Copy this file to AGENTS.md. Replace every <PLACEHOLDER>, remove irrelevant
