@@ -16,6 +16,8 @@ because notes you cannot `rg` for are notes you will not find.
 | How code in this repo should be written | [`conventions/`](conventions/) — canonical; `CLAUDE.md` and `.cursor/rules/` import from here |
 | A prompt I want to reuse | [`workflow/prompt/`](workflow/prompt/) |
 | Something to come back to | [`workflow/tasks/`](workflow/tasks/) |
+| Files I am unlikely to change due to external constraints (usually derived from group meetings and course instructions) | [`workflow/stable/`](workflow/stable/) |
+
 
 When in doubt, append to `knowledge-bases/dump/` — deciding costs more than filing does,
 and an unfiled note is worth more than an unwritten one.

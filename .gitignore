@@ -1,3 +1,14 @@
+# Tom
+cursor
+prose/workflow
+prose/conventions
+prose/agent-reports
+prose/knowledge-bases
+AGENTS.template.md
+bash.sh
+
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
