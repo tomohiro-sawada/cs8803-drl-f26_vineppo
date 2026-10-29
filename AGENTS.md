@@ -1,0 +1,2 @@
+I value robustness, minimizing total lines of code, avoiding bloat, avoiding duplication.
+I hate fallbacks, useless if-else statements (things like "elif code is broken then repair it" should not exist, it should fail loudly), and I love asserts, which allow to catch early bugs. Fallbacks hide bugs and bloat the code.
