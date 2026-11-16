@@ -6,6 +6,8 @@ prose/agent-reports
 prose/knowledge-bases
 AGENTS.template.md
 bash.sh
+.trash
+data
 
 
 
