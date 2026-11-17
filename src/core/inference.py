@@ -3,16 +3,67 @@
 Finish all rollouts (including MC branches) and cache detached old-policy scores
 before updating the shared actor. No old-policy copy or weight synchronization is
 needed. Tokenization and response/loss masks belong to the caller.
+
+We also introduce OpenRouter models purely for debugging purposes (of evaluation pipelines, maybe the advantage estimation logic) on my local machine.
+
+We separate the contract for the evaluation pipeline (just decode) from the training/inference (decode, send text, tokenize again) for simplicity.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from math import isfinite
-from typing import Literal
+from types import TracebackType
+from typing import Literal, Protocol, Self
 
 import torch
 from torch import Tensor
 from transformers import PreTrainedModel
+
+
+@dataclass(frozen=True)
+class TextCompletion:
+    """Continuation text with normal stopping or token-budget exhaustion.
+
+    ``stop`` means EOS or a configured stop condition; ``length`` means the
+    generation token budget was exhausted. Other reasons are errors, not valid
+    completions, and must never be silently mapped to either reason.
+    """
+
+    text: str
+    finish_reason: Literal["stop", "length"]
+
+    def __post_init__(self) -> None:
+        if self.finish_reason not in ("stop", "length"):
+            raise ValueError(f"Unsupported finish reason: {self.finish_reason!r}")
+
+
+class TextGenerator(Protocol):
+    """Text-only evaluation interface for trained models and blackbox APIs.
+
+    ``generate`` returns exactly ``len(prompts)`` groups in input prompt order,
+    including separate groups for duplicate prompts. Each group contains exactly
+    ``num_samples`` completions in backend sample order, never ranked or filtered.
+    Empty prompts input returns an empty list. Completion text is continuation
+    only, without the prompt; empty continuation text is allowed.
+
+    ``num_samples`` and ``max_new_tokens`` must be positive integers; temperature
+    must be finite and nonnegative. Zero temperature requests greedy decoding
+    with one sample. The token budget applies to each continuation independently.
+
+    Implementations must reject unsupported finish reasons and malformed result
+    cardinality explicitly. Backend, decoding, and validation exceptions propagate
+    to the caller: do not return partial batches, fabricate completions, or turn
+    failures into empty text. This structural protocol documents obligations;
+    implementations are responsible for enforcing them.
+    """
+    def generate(
+        self,
+        prompts: Sequence[str],
+        *,
+        num_samples: int,
+        max_new_tokens: int,
+        temperature: float,
+    ) -> list[list[TextCompletion]]: ...
 
 
 @dataclass
@@ -64,13 +115,35 @@ class HFInference:
     Supply padding explicitly (using EOS as padding is supported); EOS IDs come
     from model.generation_config. No tokenizer loading or model copying occurs.
     Calls leave the shared model in eval mode to keep dropout off for PPO.
+    The caller owns the model: close() only releases this wrapper's reference,
+    without moving or mutating the model or flushing global allocator caches.
+    Close is idempotent; generation and context re-entry after close raise.
+    A context manager closes on both normal and exceptional exit, without
+    suppressing exceptions. Generation and close must not run concurrently.
     """
 
     def __init__(self, model: PreTrainedModel, *, pad_token_id: int):
         assert not model.config.is_encoder_decoder, "Expected a decoder-only model"
         assert type(pad_token_id) is int and 0 <= pad_token_id < model.config.vocab_size
-        self.model = model
+        self.model: PreTrainedModel | None = model
         self.pad_token_id = pad_token_id
+
+    def close(self) -> None:
+        """Release the wrapper reference, leaving external model owners intact."""
+        self.model = None
+
+    def __enter__(self) -> Self:
+        if self.model is None:
+            raise RuntimeError("HFInference is closed")
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
 
     @torch.no_grad()
     def generate(
@@ -96,6 +169,8 @@ class HFInference:
         PPO, use temperature 1 and cache detached token_logprobs() before the
         first optimizer step.
         """
+        if self.model is None:
+            raise RuntimeError("HFInference is closed")
         assert type(num_samples) is int and num_samples > 0
         assert type(max_new_tokens) is int and max_new_tokens > 0
         assert isinstance(temperature, (int, float)) and isfinite(temperature)

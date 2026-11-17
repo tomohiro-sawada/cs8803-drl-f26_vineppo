@@ -1,5 +1,7 @@
 """Contracts for shared-model HF rollouts and differentiable token rescoring."""
 
+import gc
+import weakref
 from copy import deepcopy
 
 import pytest
@@ -7,7 +9,7 @@ import torch
 from transformers import GPT2Config, GPT2LMHeadModel
 from transformers.generation.utils import GenerateDecoderOnlyOutput
 
-from core.inference import Completion, HFInference, token_logprobs
+from core.inference import Completion, HFInference, TextCompletion, token_logprobs
 
 
 @pytest.fixture
@@ -448,3 +450,98 @@ def test_hf_inference_requires_legal_eos_ids(model, eos):
     model.generation_config.eos_token_id = eos
     with pytest.raises((AssertionError, TypeError, ValueError)):
         HFInference(model, pad_token_id=0).generate([[4]], max_new_tokens=1)
+
+
+@pytest.mark.parametrize("reason", ["stop", "length"])
+def test_text_completion_preserves_two_argument_interface(reason):
+    assert TextCompletion("", reason) == TextCompletion(text="", finish_reason=reason)
+    assert TextCompletion("answer", reason).text == "answer"
+
+
+@pytest.mark.parametrize("reason", ["tool_calls", "content_filter", "error", "", None])
+def test_text_completion_rejects_unsupported_finish_reasons(reason):
+    with pytest.raises(ValueError, match="Unsupported finish reason"):
+        TextCompletion("answer", reason)
+
+
+@pytest.mark.parametrize("use_context", [False, True])
+def test_hf_close_releases_actual_model_reference(model, use_context):
+    # The fixture retains its model; this copy has no owner outside the wrapper.
+    inference = HFInference(deepcopy(model), pad_token_id=0)
+    reference = weakref.ref(inference.model)
+    assert reference() is not None
+    if use_context:
+        with inference as entered:
+            assert entered is inference
+    else:
+        inference.close()
+    gc.collect()
+    assert reference() is None
+    assert inference.model is None
+    inference.close()
+
+
+def test_hf_close_preserves_external_model_and_does_not_flush_caches(model, monkeypatch):
+    inference = HFInference(model, pad_token_id=0)
+    model.train()
+    before = deepcopy(model.state_dict())
+    config = deepcopy(model.generation_config.to_dict())
+    parameters = list(model.parameters())
+    modes = [module.training for module in model.modules()]
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("close must not mutate the shared model or flush global caches")
+
+    with monkeypatch.context() as patch:
+        for method in ("to", "cpu", "cuda", "eval", "train"):
+            patch.setattr(model, method, forbidden)
+        patch.setattr(torch.cuda, "empty_cache", forbidden)
+        patch.setattr(torch.mps, "empty_cache", forbidden)
+        inference.close()
+        inference.close()
+
+    assert inference.model is None
+    assert all(old is new for old, new in zip(parameters, model.parameters(), strict=True))
+    assert [module.training for module in model.modules()] == modes
+    assert model.generation_config.to_dict() == config
+    for name, value in model.state_dict().items():
+        torch.testing.assert_close(value, before[name], rtol=0, atol=0)
+        assert value.device == before[name].device
+    # Another owner can still use the same model after this wrapper closes.
+    assert HFInference(model, pad_token_id=0).generate(
+        [[4]], max_new_tokens=1, temperature=0
+    )
+
+
+def test_hf_use_after_close_fails_before_argument_validation(model):
+    inference = HFInference(model, pad_token_id=0)
+    inference.close()
+    with pytest.raises(RuntimeError, match="HFInference is closed"):
+        inference.generate([], max_new_tokens=0)
+    with pytest.raises(RuntimeError, match="HFInference is closed"), inference:
+        pytest.fail("closed wrapper entered a context")
+
+
+def test_hf_context_closes_and_propagates_generation_exception(model, monkeypatch):
+    error = RuntimeError("backend failure")
+
+    def fail_generate(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(model, "generate", fail_generate)
+    inference = HFInference(model, pad_token_id=0)
+    with pytest.raises(RuntimeError) as caught, inference:
+        inference.generate([[4]], max_new_tokens=1)
+    assert caught.value is error
+    assert inference.model is None
+    inference.close()
+
+
+def test_hf_context_releases_reference_on_exception(model):
+    inference = HFInference(deepcopy(model), pad_token_id=0)
+    reference = weakref.ref(inference.model)
+    with pytest.raises(ValueError, match="body failure"), inference:
+        raise ValueError("body failure")
+    gc.collect()
+    assert inference.model is None
+    assert reference() is None
