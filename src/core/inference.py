@@ -1,147 +1,80 @@
-"""
-Inference backend used for:
+"""Single-model HF rollouts and differentiable selected-token log-probabilities.
 
-- efficient rollouts
-- running evals using a trained policy
-
-Desiderata:
-- We definitely want to fallback to Huggingface transformers (flash attention or sdpa) in case vLLM fails for whatever reason.
-
-- Use generate for both kinds of rollout. Pass the original prompt for a full trajectory. For a VinePPO value estimate, pass prompt_ids + trajectory_ids[:step_boundary] with num_samples=K, then average the returns. Reuse the exact prefix token IDs so the branch starts at the intended state.
-- Keep PPO’s old log-probs fixed across update epochs. For a first implementation, sample with temperature 1 and no top-k or top-p filtering, then score the sampled tokens once with Policy under torch.no_grad() before the first optimizer step. This assumes the rollout backend was synced to those weights. In the loss, use a separate completion mask aligned with the [B, T-1] scores. attention_mask handles padding.
-- Keep backend construction concrete. Start with HFInference(policy: Policy) sharing the training model, so sync_weights can be a no-op for that instance. Give VLLMInference its own constructor and engine, and sync it at the start of each rollout round. Put the lazy vLLM import at the start of its __init__. In your stub, move @abstractclass onto the interface methods and remove self.engine: Policy from the base class.
+Finish all rollouts (including MC branches) and cache detached old-policy scores
+before updating the shared actor. No old-policy copy or weight synchronization is
+needed. Tokenization and response/loss masks belong to the caller.
 """
 
-# typing
+from collections.abc import Sequence
 from dataclasses import dataclass
-from email import policy
-from typing import Literal, Sequence
-from abc import abstractclass
+from math import isfinite
+from typing import Literal
+
+import torch
 from torch import Tensor
-from torch.nn import Module
-from transformers import PreTrainedModel, AutoTokenizer
-
-
-# inference engines are lazy imported
-
+from transformers import PreTrainedModel
 
 
 @dataclass
 class Completion:
-    token_ids: list[int]     # continuation only
+    token_ids: list[int]  # Continuation only, including EOS when sampled.
     finish_reason: Literal["stop", "length"]
-    logprobs: list[float] | None = None  # one per returned token
+    logprobs: list[float] | None = None  # Sampling distribution, one per token.
 
 
-class Policy(Module):
-    def __init__(self, model: PreTrainedModel) -> None:
-        """
-        A wrapper around the model that provides a consistent interface for inference.
-        Interface used during both training an inference.
-        """
-        super().__init__(self)
+def token_logprobs(
+    model: PreTrainedModel,
+    input_ids: Tensor,
+    attention_mask: Tensor,
+) -> Tensor:
+    """Return float32 [B, T-1] raw log p(input_ids[:, 1:]), with gradients.
+
+    Padding positions have no meaningful scores: apply a separate response mask
+    aligned with the targets, not just attention_mask. Positions derived from the
+    mask make valid scores invariant to left/right padding. Dropout stays off
+    during both collection and PPO updates; eval() does not disable gradients.
+    """
+    assert not model.config.is_encoder_decoder, "Expected a decoder-only model"
+    assert input_ids.ndim == 2 and input_ids.shape[1] >= 2
+    assert input_ids.dtype == torch.long
+    assert attention_mask.shape == input_ids.shape
+    assert attention_mask.device == input_ids.device
+    assert ((attention_mask == 0) | (attention_mask == 1)).all()
+    assert attention_mask.bool().any(dim=1).all(), "Every row needs a prefix"
+
+    model.eval()
+    position_ids = attention_mask.long().cumsum(-1) - 1
+    position_ids.masked_fill_(attention_mask == 0, 0)
+    logits = (
+        model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            use_cache=False,
+        )
+        .logits[:, :-1]
+        .float()
+    )
+    return logits.log_softmax(-1).gather(-1, input_ids[:, 1:, None]).squeeze(-1)
+
+
+class HFInference:
+    """Generate from the training model itself, without a backend hierarchy.
+
+    Supply padding explicitly (using EOS as padding is supported); EOS IDs come
+    from model.generation_config. No tokenizer loading or model copying occurs.
+    Calls leave the shared model in eval mode to keep dropout off for PPO.
+    """
+
+    def __init__(self, model: PreTrainedModel, *, pad_token_id: int):
+        assert not model.config.is_encoder_decoder, "Expected a decoder-only model"
+        assert type(pad_token_id) is int and 0 <= pad_token_id < model.config.vocab_size
         self.model = model
-        self.tokenizer = AutoTokenizer.from_pretrained(model)
+        self.pad_token_id = pad_token_id
 
-    def forward(
-        self,
-        input_ids: Tensor,       # [B, T], prompt + completion
-        attention_mask: Tensor,  # [B, T], excludes padding
-    ) -> Tensor:                 # [B, T-1], log p(input_ids[:, 1:])
-        return self.model(input_ids=input_ids, attention_mask=attention_mask)
-
+    @torch.no_grad()
     def generate(
         self,
-        input_ids: Tensor,       # [B, T], prompt + completion
-        attention_mask: Tensor,  # [B, T], excludes padding
-    ) -> Tensor:                 # [B, T-1], log p(input_ids[:, 1:])
-        return self.model.generate(
-            input_ids=input_ids, attention_mask=attention_mask)
-
-    def tokenize(self, text: str) -> Tensor:
-        return self.tokenizer(text, return_tensors="pt").input_ids
-
-    def detokenize(self, input_ids: Tensor) -> str:
-        return self.tokenizer.decode(input_ids[0])
-
-
-
-@abstractclass
-class LLMInference:
-    def __init__(self,
-            policy: Policy
-    ):
-        """
-        Contract for inference methods.
-        We want different frameworks (vllm, HF transformers, etc.) to abide by the same contract.
-        Defining the class/method signature here will also let us start writing the
-        main training algorithms without implementing the inference pipeline yet.
-        """
-        self.engine: Policy = policy
-
-    @abstractclass
-    def generate(
-        self,
-        prefixes: Sequence[Sequence[int]],
-        *,
-        num_samples: int = 1,
-        max_new_tokens: int,
-        temperature: float = 1.0,
-        return_logprobs: bool = False,
-    ) -> list[list[Completion]]:   # [prefix][sample]
-        """
-        Generate completions for each prefix/sample pair, returning token IDs and termination reasons.
-
-        Args:
-            prefixes: list of prompt token IDs
-            num_samples: how many completions per prefix
-            max_new_tokens: maximum length of each completion
-            temperature: sampling temperature
-            return_logprobs: whether to return log-probabilities
-
-        Returns:
-            list of list of Completion objects (one per prefix, then per sample)
-        """
-        raise NotImplementedError("generate not implemented")
-
-
-    @abstractclass
-    def sync_weights(self, policy: Policy) -> None:
-        """
-        Syncs the model weights from the training backend to the inference backend.
-        """
-        raise NotImplementedError("sync_weights not implemented")
-
-class HFInference(LLMInference):
-    def __init__(self, policy: Policy):
-        """
-        Initializes the HFInference backend.
-        """
-        super().__init__(policy)
-        # lazy import HF inference backend
-        # inifitaluize the inference
-        pass
-
-
-    def generate(self, ):
-        pass
-
-
-class VLLMInference(LLMInference):
-    def __init__(self, policy: Policy):
-        """
-        Initializes the VLLMInference backend.
-        """
-        # Lazy check of dependencies; mostly vllm
-        try:
-            import vllm
-        except ImportError:
-            raise ImportError("vLLM is not installed")
-        else:
-            self.engine = vllm.LLM(model=policy.model)
-
-
-    def generate(self,
         prefixes: Sequence[Sequence[int]],
         *,
         num_samples: int = 1,
@@ -149,14 +82,120 @@ class VLLMInference(LLMInference):
         temperature: float = 1.0,
         return_logprobs: bool = False,
     ) -> list[list[Completion]]:
-        """
-        batched token-ID prompts → generated token IDs, lengths/termination information, and sampled-token log-probabilities when needed.
-        """
-        pass
+        """Return continuation-only completions in [prefix][sample] order.
 
+        Prefixes are exact, unpadded token IDs, including any trajectory tokens
+        preceding an MC branch. max_new_tokens is a per-continuation budget;
+        longest prefix + budget must fit the model context (no truncation).
 
-    def sync_weights(self, ):
+        Temperature 0 selects greedy evaluation (one sample); positive values
+        sample without top-k/nucleus filtering. The PPO correctness default is
+        temperature 1, deliberately unlike the paper's 0.6/top_p=0.9 recipe.
+        Optional logprobs describe the temperature-adjusted sampling distribution;
+        greedy decoding returns raw actor scores, not point-mass logprobs. For
+        PPO, use temperature 1 and cache detached token_logprobs() before the
+        first optimizer step.
         """
-        Syncs the model weights from the training backend to the inference backend.
-        """
-        pass
+        assert type(num_samples) is int and num_samples > 0
+        assert type(max_new_tokens) is int and max_new_tokens > 0
+        assert isinstance(temperature, (int, float)) and isfinite(temperature)
+        assert temperature >= 0
+        assert temperature > 0 or num_samples == 1, "Greedy decoding needs one sample"
+        assert len(prefixes) > 0 and all(len(prefix) > 0 for prefix in prefixes)
+        assert all(
+            type(token) is int and 0 <= token < self.model.config.vocab_size
+            for prefix in prefixes
+            for token in prefix
+        ), "Prefixes must contain valid integer token IDs"
+        width = max(map(len, prefixes))
+        assert width + max_new_tokens <= self.model.config.max_position_embeddings, (
+            "Longest prefix + max_new_tokens exceeds the model context"
+        )
+        eos = self.model.generation_config.eos_token_id
+        eos_ids = [eos] if type(eos) is int else eos
+        assert isinstance(eos_ids, list) and eos_ids, "Configure EOS token IDs"
+        assert all(
+            type(token) is int and 0 <= token < self.model.config.vocab_size
+            for token in eos_ids
+        ), "Invalid EOS token IDs"
+
+        device = self.model.device
+        input_ids = torch.full(
+            (len(prefixes), width), self.pad_token_id, dtype=torch.long, device=device
+        )
+        attention_mask = torch.zeros_like(input_ids)
+        for row, prefix in enumerate(prefixes):
+            input_ids[row, -len(prefix) :] = torch.tensor(prefix, device=device)
+            attention_mask[row, -len(prefix) :] = 1
+
+        self.model.eval()
+        # Explicit overrides prevent checkpoint sampling/penalty settings from
+        # silently changing the behavior distribution or forcing EOS at the budget.
+        output = self.model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            pad_token_id=self.pad_token_id,
+            eos_token_id=eos_ids,
+            max_new_tokens=max_new_tokens,
+            num_return_sequences=num_samples,
+            num_beams=1,
+            do_sample=temperature > 0,
+            temperature=temperature if temperature > 0 else 1.0,
+            top_k=0,
+            top_p=1.0,
+            typical_p=1.0,
+            min_p=None,
+            top_h=None,
+            epsilon_cutoff=0.0,
+            eta_cutoff=0.0,
+            repetition_penalty=1.0,
+            encoder_repetition_penalty=1.0,
+            no_repeat_ngram_size=0,
+            encoder_no_repeat_ngram_size=0,
+            min_length=0,
+            min_new_tokens=0,
+            forced_bos_token_id=None,
+            forced_eos_token_id=None,
+            bad_words_ids=None,
+            suppress_tokens=None,
+            begin_suppress_tokens=None,
+            sequence_bias=None,
+            exponential_decay_length_penalty=None,
+            guidance_scale=None,
+            watermarking_config=None,
+            token_healing=False,
+            stop_strings=None,
+            max_time=None,
+            use_cache=True,
+            return_dict_in_generate=True,
+            output_scores=return_logprobs,
+            output_logits=False,
+            output_attentions=False,
+            output_hidden_states=False,
+        )
+        continuations = output.sequences[:, width:].tolist()
+        scores = None
+        if return_logprobs:
+            scores = self.model.compute_transition_scores(
+                output.sequences, output.scores, normalize_logits=True
+            ).tolist()
+
+        completions = []
+        for row, tokens in enumerate(continuations):
+            end = next(
+                (i + 1 for i, token in enumerate(tokens) if token in eos_ids), None
+            )
+            assert end is not None or len(tokens) == max_new_tokens, (
+                "Generation stopped without EOS before exhausting its budget"
+            )
+            completions.append(
+                Completion(
+                    token_ids=tokens[:end],
+                    finish_reason="stop" if end is not None else "length",
+                    logprobs=scores[row][:end] if scores is not None else None,
+                )
+            )
+        return [
+            completions[start : start + num_samples]
+            for start in range(0, len(completions), num_samples)
+        ]

@@ -17,7 +17,9 @@ from jaxtyping import Tensor
 
 
 from core.data import Episode, TrainBatch
-from core.inference import Policy, Completion,LLMInference
+from transformers import PreTrainedModel
+
+from core.inference import Completion, HFInference
 from core.verifier import RewardVerifier
 from core.algorithm.base import AlgorithmConfig
 
@@ -38,8 +40,8 @@ class PPOTrainerConfig:
 class PPOTrainer:
     def __init__(self,
             config: PPOTrainerConfig,
-            policy: Policy,
-            inference: LLMInference,
+            policy: PreTrainedModel,
+            inference: HFInference,
             verifier: RewardVerifier,
     ):
         """
@@ -50,6 +52,7 @@ class PPOTrainer:
         We can specify the training objective (e.g. PPO, VinePPO) in the configuration, and find the advantage computation function. (If so, should we also define a registry for the advantage computation functions?)
         """
         self.config = config
+        assert inference.model is policy, "Inference must share the training actor"
         self.policy = policy
         self.inference = inference
         self.verifier = verifier
@@ -71,8 +74,6 @@ class PPOTrainer:
     def train(self, ):
         for iteration in range(self.config.num_iterations):
 
-            # sync weights
-            self.inference.sync_weights(self.policy)
 
             # generate episodes and estimate advantages
             # For VinePPO: this generates the partial context episodes

@@ -6,7 +6,7 @@ Enforce compatibility as we add new baselines to the codebase.
 from dataclasses import dataclass
 from abc import abstractclass
 
-from core.inference import Policy
+from transformers import PreTrainedModel
 
 
 @dataclass
@@ -17,7 +17,7 @@ class AlgorithmConfig:
 
 
 class RolloutGenerator:
-    def __init__(self, policy: Policy):
+    def __init__(self, policy: PreTrainedModel):
         """
         Sample trajectories under a frozen policy snapshot.
         Use cases: Primary rollouts, MC continuations
@@ -36,7 +36,7 @@ class StepSegmenter:
 
 @abstractclass
 class AdvantageEstimator:
-    def __init__(self, policy: Policy):
+    def __init__(self, policy: PreTrainedModel):
         """
         Estimate the advantage of a state or trajectory.
         This is the most important class in this codebase.
