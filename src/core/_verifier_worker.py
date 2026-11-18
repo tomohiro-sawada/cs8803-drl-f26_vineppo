@@ -1,7 +1,7 @@
 """Single-use bounded grading worker, invoked by verifier with Python -I.
 
 Resource limits are defense against expensive mathematics, NOT an OS security
-sandbox. Code execution is prevented by safe_symbolic's restricted construction.
+sandbox. Code execution is prevented by _safe_symbolic's restricted construction.
 """
 
 import json
@@ -17,9 +17,9 @@ def main():
     if sys.platform == "linux":
         resource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    # -I ignores PYTHONPATH; admit only the directory containing our vendor package.
+    # -I ignores PYTHONPATH; admit only the directory containing our core package.
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from vendor.math_grader_minerva import eval_math
+    from core.vendor.vineppo.math_grader_minerva import eval_math
 
     predictions, references = json.load(sys.stdin)
     correct = bool(eval_math({"prediction": predictions, "answer": references}))

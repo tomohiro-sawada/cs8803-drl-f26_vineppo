@@ -5,7 +5,7 @@ GSM8K uses the official original-format task (last ####, string equality).
 References are already final answers, not worked solutions. The question controls
 upstream comma splitting on both predictions and the reference. Multiple answers
 retain upstream deduplication, last-N selection and list matching. See
-vendor/NOTICE.md for the precise relationship to upstream's full-solution API.
+vendor/vineppo/NOTICE.md for the precise relationship to upstream's full-solution API.
 """
 
 import json
@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .vendor.gsm8k import GSM8K
-from .vendor.math_answer_exctraction import (
+from .vendor.vineppo.gsm8k import GSM8K
+from .vendor.vineppo.math_answer_exctraction import (
     extract_math_answer,
     split_math_answers,
     strip_string,
@@ -38,7 +38,7 @@ class VerificationResult:
 
 
 def _math_correct(predictions: list[str], references: list[str]) -> bool:
-    worker = Path(__file__).with_name("vendor") / "worker.py"
+    worker = Path(__file__).with_name("_verifier_worker.py")
     # run kills and reaps the worker on TimeoutExpired. Do not conflate resource
     # limits, startup delays or external termination with a mathematical nonmatch.
     result = subprocess.run(

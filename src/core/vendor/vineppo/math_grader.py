@@ -3,7 +3,7 @@
 # ruff: noqa
 import re
 from pylatexenc import latex2text
-from .safe_symbolic import parse_expr
+from ..._safe_symbolic import parse_expr
 
 def _sympy_parse(expr):
     return parse_expr(expr, implicit=True)

@@ -4,8 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from core import verifier
-from core.vendor.math_answer_exctraction import extract_answer, strip_string
-from core.vendor.safe_symbolic import parse_expr
+from core._safe_symbolic import parse_expr
+from core.vendor.vineppo.math_answer_exctraction import extract_answer, strip_string
 from core.verifier import VerificationResult, verify_response
 
 
@@ -137,6 +137,12 @@ def test_infrastructure_errors_are_not_scored(monkeypatch):
         verify_response(r"\boxed{2}", "2", task="math")
 
 
+def test_worker_bootstrap_is_independent_of_cwd(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    assert verify_response(r"\boxed{2*x}", "x+x", task="math").correct
+
+
 def test_threaded_caller():
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
@@ -151,7 +157,7 @@ def test_provenance():
     import json
     from pathlib import Path
 
-    from core.vendor import math_answer_exctraction
+    from core.vendor.vineppo import math_answer_exctraction
 
     assert verifier.UPSTREAM_COMMIT == "9f716e68bb934e71da86c226c1699c36b5553faf"
     assert verifier.UPSTREAM_COMMIT in verifier.VERIFIER_PROVENANCE
@@ -286,11 +292,11 @@ def test_both_symbolic_inputs_are_restricted():
 def test_question_aware_official_list_path(
     response, reference, question, gold, selected, correct
 ):
-    from core.vendor.math_answer_exctraction import (
+    from core.vendor.vineppo.math_answer_exctraction import (
         extract_math_answer,
         split_math_answers,
     )
-    from core.vendor.math_grader_minerva import eval_math
+    from core.vendor.vineppo.math_grader_minerva import eval_math
 
     # Upstream grade_answer_minerva_format ignores ground_truth and extracts gold
     # from the full solution. Show that this normalized scalar preserves that list.
@@ -340,7 +346,7 @@ def test_worker_termination_is_not_incorrect(monkeypatch, returncode):
     "fault", [RuntimeError, MemoryError, RecursionError, KeyboardInterrupt]
 )
 def test_symbolic_faults_propagate(monkeypatch, fault):
-    from core.vendor import math_grader_minerva as grader
+    from core.vendor.vineppo import math_grader_minerva as grader
 
     def broken(*args, **kwargs):
         raise fault("not a mathematical nonmatch")

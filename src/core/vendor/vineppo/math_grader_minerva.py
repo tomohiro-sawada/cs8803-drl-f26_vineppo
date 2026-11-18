@@ -11,7 +11,7 @@ from sympy.polys.polyerrors import PolynomialError
 MATH_INPUT_ERRORS = (ValueError, TypeError, SyntaxError, TokenError, PolynomialError, NotImplementedError, ArithmeticError)
 import regex
 from sympy import simplify
-from .safe_symbolic import parse_expr, numeric as N
+from ..._safe_symbolic import parse_expr, numeric as N
 from .math_grader import _sympy_parse, should_allow_eval, _parse_latex, _inject_implicit_mixed_number
 
 def parse_digits(num):

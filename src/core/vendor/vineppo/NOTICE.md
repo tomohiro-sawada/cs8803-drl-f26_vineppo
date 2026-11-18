@@ -27,7 +27,28 @@ License: MIT, copyright (c) 2024 McGill NLP (`LICENSE.VinePPO`). Also included
 are the upstream PRM800K MIT and DeepSeekMath code MIT notices
 (`LICENSE.prm800k`, `LICENSE.DeepSeekMath`). VinePPO explicitly identifies
 `math_grader.py` as copied from OpenAI PRM800K. Original source byte hashes are
-recorded in `sources.json`. `safe_symbolic.py` and `worker.py` are local code.
+recorded in `sources.json`.
+
+## Directory ownership
+
+`core/vendor/vineppo/` contains upstream-derived modules and their provenance,
+licenses, and documented local patches. Group by the repository imported from
+(VinePPO), rather than splitting its Minerva/PRM800K/DeepSeekMath ancestry into
+separate packages. Preserve upstream filenames (including `exctraction`) and
+formatting to keep upstream comparisons and source-hash checks straightforward.
+
+Locally authored infrastructure lives outside `vendor`: `core/_safe_symbolic.py`
+provides restricted parsing and `core/_verifier_worker.py` provides the bounded
+subprocess entry point. These follow normal project conventions; the vendored
+graders import the local parser as an explicit safety patch. `core.verifier`
+remains the public interface, without compatibility shims for internal imports.
+
+The worker runs as a script with Python `-I` and an empty environment. Its
+bootstrap adds only the directory containing `core` (the source root or installed
+package root), resolved from its own file, then imports
+`core.vendor.vineppo.math_grader_minerva`. It does not depend on the working
+directory or `PYTHONPATH`. Moving it must preserve this bootstrap, resource
+limits, JSON protocol, and propagation of infrastructure failures.
 
 ## Selected official configuration
 

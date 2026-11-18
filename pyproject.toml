@@ -23,7 +23,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"core.vendor" = ["LICENSE.*", "NOTICE.md", "sources.json"]
+"core.vendor.vineppo" = ["LICENSE.*", "NOTICE.md", "sources.json"]
 
 [dependency-groups]
 dev = [
