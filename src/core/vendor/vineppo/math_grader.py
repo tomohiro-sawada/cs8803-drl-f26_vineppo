@@ -5,12 +5,15 @@ import re
 from pylatexenc import latex2text
 from ..._safe_symbolic import parse_expr
 
+
 def _sympy_parse(expr):
     return parse_expr(expr, implicit=True)
+
 
 def _latex_to_text(expr):
     # The enclosing worker bounds the entire operation, not just a thread wait.
     return latex2text.LatexNodes2Text().latex_to_text(expr)
+
 
 BAD_SUBSTRINGS = ["^{", "^("]
 
@@ -21,6 +24,7 @@ BAD_REGEXES = [
     "\*\*-?[0-9][0-9]+",
     "[0-9][0-9][0-9]+!",
 ]
+
 
 def _parse_latex(expr: str) -> str:
     """Attempts to parse latex to an expression sympy can read."""
@@ -39,6 +43,7 @@ def _parse_latex(expr: str) -> str:
 
     return expr.strip()
 
+
 def _inject_implicit_mixed_number(step: str):
     """
     Automatically make a mixed number evalable
@@ -47,6 +52,7 @@ def _inject_implicit_mixed_number(step: str):
     p1 = re.compile("([0-9]) +([0-9])")
     step = p1.sub("\\1+\\2", step)  ## implicit mults
     return step
+
 
 def count_unknown_letters_in_expr(expr: str):
     expr = expr.replace("sqrt", "")
@@ -66,6 +72,7 @@ def count_unknown_letters_in_expr(expr: str):
     expr = expr.replace("exp", "")
     letters_in_expr = set([x for x in expr if x.isalpha()])
     return len(letters_in_expr)
+
 
 def should_allow_eval(expr: str):
     # we don't want to try parsing unknown text or functions of more than two variables

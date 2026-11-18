@@ -36,5 +36,6 @@ def main(config: DownloadConfig) -> None:
     """
     pass
 
+
 if __name__ == "__main__":
     pass

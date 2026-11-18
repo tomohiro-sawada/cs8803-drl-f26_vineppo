@@ -56,6 +56,7 @@ class TextGenerator(Protocol):
     failures into empty text. This structural protocol documents obligations;
     implementations are responsible for enforcing them.
     """
+
     def generate(
         self,
         prompts: Sequence[str],

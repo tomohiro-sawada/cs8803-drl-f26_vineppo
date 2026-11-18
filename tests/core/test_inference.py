@@ -481,7 +481,9 @@ def test_hf_close_releases_actual_model_reference(model, use_context):
     inference.close()
 
 
-def test_hf_close_preserves_external_model_and_does_not_flush_caches(model, monkeypatch):
+def test_hf_close_preserves_external_model_and_does_not_flush_caches(
+    model, monkeypatch
+):
     inference = HFInference(model, pad_token_id=0)
     model.train()
     before = deepcopy(model.state_dict())
@@ -501,7 +503,9 @@ def test_hf_close_preserves_external_model_and_does_not_flush_caches(model, monk
         inference.close()
 
     assert inference.model is None
-    assert all(old is new for old, new in zip(parameters, model.parameters(), strict=True))
+    assert all(
+        old is new for old, new in zip(parameters, model.parameters(), strict=True)
+    )
     assert [module.training for module in model.modules()] == modes
     assert model.generation_config.to_dict() == config
     for name, value in model.state_dict().items():

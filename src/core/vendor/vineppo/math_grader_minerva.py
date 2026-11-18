@@ -8,11 +8,25 @@ from tokenize import TokenError
 from sympy.polys.polyerrors import PolynomialError
 
 # Expected malformed/unsupported mathematical inputs, not arbitrary worker faults.
-MATH_INPUT_ERRORS = (ValueError, TypeError, SyntaxError, TokenError, PolynomialError, NotImplementedError, ArithmeticError)
+MATH_INPUT_ERRORS = (
+    ValueError,
+    TypeError,
+    SyntaxError,
+    TokenError,
+    PolynomialError,
+    NotImplementedError,
+    ArithmeticError,
+)
 import regex
 from sympy import simplify
 from ..._safe_symbolic import parse_expr, numeric as N
-from .math_grader import _sympy_parse, should_allow_eval, _parse_latex, _inject_implicit_mixed_number
+from .math_grader import (
+    _sympy_parse,
+    should_allow_eval,
+    _parse_latex,
+    _inject_implicit_mixed_number,
+)
+
 
 def parse_digits(num):
     # format: 234.23 || 23%
@@ -30,9 +44,11 @@ def parse_digits(num):
                 pass
     return None
 
+
 def is_digit(num):
     # paired with parse_digits
     return parse_digits(num) is not None
+
 
 def symbolic_equal(a_latex, b_latex):
     def _parse(s, fast_latex=False):
@@ -67,6 +83,7 @@ def symbolic_equal(a_latex, b_latex):
     except MATH_INPUT_ERRORS:
         pass
     return False
+
 
 def math_equal(
     prediction: Union[bool, float, str],
@@ -222,6 +239,7 @@ def math_equal(
 
     return False
 
+
 def is_correct(item, pred_key="prediction", prec=1e-3):
     pred = item[pred_key]
     ans = item["answer"]
@@ -263,6 +281,7 @@ def is_correct(item, pred_key="prediction", prec=1e-3):
             return label
     else:
         raise NotImplementedError()
+
 
 def eval_math(item, pred_key="prediction", prec=1e-3):
     pred = item[pred_key]

@@ -44,7 +44,4 @@ class AdvantageEstimator:
         self.policy = policy
 
 
-
-
-
 #

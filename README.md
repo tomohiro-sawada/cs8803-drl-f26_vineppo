@@ -29,15 +29,11 @@ from core.inference import HFInference, token_logprobs
 # taken from model.generation_config.eos_token_id.
 inference = HFInference(model, pad_token_id=tokenizer.eos_token_id)
 prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
-completions = inference.generate(
-    [prompt_ids], num_samples=3, max_new_tokens=256
-)[0]
+completions = inference.generate([prompt_ids], num_samples=3, max_new_tokens=256)[0]
 
 # Branch without decoding/retokenizing the trajectory.
 branch_ids = prompt_ids + completions[0].token_ids[:step_boundary]
-branches = inference.generate(
-    [branch_ids], num_samples=3, max_new_tokens=128
-)[0]
+branches = inference.generate([branch_ids], num_samples=3, max_new_tokens=128)[0]
 ```
 
 Results are nested `[prefix][sample]`. Each `Completion` contains only generated
