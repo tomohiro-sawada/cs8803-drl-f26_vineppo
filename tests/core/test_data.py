@@ -1,0 +1,332 @@
+from copy import deepcopy
+from dataclasses import FrozenInstanceError, fields
+
+import pytest
+import torch
+
+from core.data import (
+    Episode,
+    EpisodeWithAdvantages,
+    Example,
+    PolicyGradientBatch,
+    TrainBatch,
+    VinePPOEstimate,
+    collate,
+)
+
+
+def episode(**overrides):
+    values = {
+        "prompt_ids": [11, 12],
+        "response_ids": [21, 22],
+        "reward": 1.0,
+        "finish_reason": "stop",
+        "advantages": [0.25, 0.5],
+        "raw_step_advantages": [0.25, 0.5],
+        "step_boundaries": (0, 1, 2),
+        "mc_prefix_values": (0.75, 0.5),
+    }
+    return EpisodeWithAdvantages(**(values | overrides))
+
+
+def assert_batch(batch, episodes):
+    assert isinstance(batch, PolicyGradientBatch)
+    batch_size = len(episodes)
+    width = max(len(e.prompt_ids) + len(e.response_ids) for e in episodes)
+    dtypes = {
+        "input_ids": torch.int64,
+        "attention_mask": torch.bool,
+        "response_mask": torch.bool,
+        "old_logprobs": torch.float32,
+        "ref_logprobs": torch.float32,
+        "advantages": torch.float32,
+    }
+    for name, dtype in dtypes.items():
+        value = getattr(batch, name)
+        assert isinstance(value, torch.Tensor)
+        assert value.shape == (
+            batch_size,
+            width if name in ("input_ids", "attention_mask") else width - 1,
+        )
+        assert value.dtype == dtype
+        assert value.device.type == "cpu"
+        assert not value.requires_grad
+        assert value.grad_fn is None
+    for i, e in enumerate(episodes):
+        prompt_len, response_len = len(e.prompt_ids), len(e.response_ids)
+        assert batch.attention_mask[i].tolist() == [True] * (
+            prompt_len + response_len
+        ) + [False] * (width - prompt_len - response_len)
+        assert batch.response_mask[i].tolist() == [False] * (prompt_len - 1) + [
+            True
+        ] * response_len + [False] * (width - prompt_len - response_len)
+        assert batch.attention_mask[i].sum().item() == prompt_len + response_len
+        assert batch.response_mask[i].sum().item() == response_len
+    for name in ("old_logprobs", "ref_logprobs", "advantages"):
+        assert (
+            torch.count_nonzero(getattr(batch, name)[~batch.response_mask]).item() == 0
+        )
+
+
+def test_episode_stage_has_no_advantages():
+    result = Episode(
+        prompt_ids=[11], response_ids=[21], reward=1.0, finish_reason="stop"
+    )
+    assert {f.name for f in fields(result)} == {
+        "prompt_ids",
+        "response_ids",
+        "reward",
+        "finish_reason",
+    }
+    for name in (
+        "advantages",
+        "raw_step_advantages",
+        "step_boundaries",
+        "mc_prefix_values",
+    ):
+        assert not hasattr(result, name)
+    assert isinstance(episode(), Episode)
+
+
+@pytest.mark.parametrize(
+    "boundaries,mc_values,raw",
+    [((0, 2), (0.75,), [0.25]), ((0, 1, 2), (0.75, 0.5), [0.25, 0.5])],
+    ids=["single-step", "multi-step"],
+)
+def test_valid_episode_with_advantages(boundaries, mc_values, raw):
+    prompt, response, advantages = [11, 12], [21, 22], [0.25, 0.5]
+    result = episode(
+        prompt_ids=prompt,
+        response_ids=response,
+        advantages=advantages,
+        step_boundaries=boundaries,
+        mc_prefix_values=mc_values,
+        raw_step_advantages=raw,
+    )
+    assert result.prompt_ids is prompt
+    assert result.response_ids is response
+    assert result.advantages is advantages
+    assert result.raw_step_advantages is raw
+    assert result.step_boundaries == boundaries
+    assert result.mc_prefix_values == mc_values
+
+
+RECORDS = [
+    Example("id", "question", "answer"),
+    Episode([11], [21], 1.0, "stop"),
+    episode(),
+    VinePPOEstimate("id", Episode([11], [21], 1.0, "stop")),
+    TrainBatch(*(torch.zeros(1, 1) for _ in range(5))),
+    PolicyGradientBatch(*(torch.zeros(1, 1) for _ in range(6))),
+]
+
+
+@pytest.mark.parametrize(
+    "record,name",
+    [(record, f.name) for record in RECORDS for f in fields(record)],
+    ids=[
+        f"{type(record).__name__}.{f.name}"
+        for record in RECORDS
+        for f in fields(record)
+    ],
+)
+def test_records_reject_field_reassignment(record, name):
+    with pytest.raises(FrozenInstanceError):
+        setattr(record, name, getattr(record, name))
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"step_boundaries": ()},
+        {"step_boundaries": (0,)},
+        {"step_boundaries": (-1, 1, 2)},
+        {"step_boundaries": (0, 1, 3)},
+        {"step_boundaries": (0, 0, 2)},
+        {
+            "step_boundaries": (0, 2, 1, 3),
+            "response_ids": [21, 22, 23],
+            "advantages": [0.25, 0.5, 0.75],
+            "mc_prefix_values": (0.75, 0.5, 0.25),
+            "raw_step_advantages": [0.25, 0.5, 0.75],
+        },
+        {"mc_prefix_values": (0.75,)},
+        {"mc_prefix_values": (0.75, 0.5, 0.25)},
+        {"raw_step_advantages": [0.25]},
+        {"raw_step_advantages": [0.25, 0.5, 0.75]},
+        {"advantages": [0.25]},
+        {"advantages": [0.25, 0.5, 0.75]},
+    ],
+    ids=[
+        "no-boundaries",
+        "one-boundary",
+        "start",
+        "end",
+        "duplicate",
+        "descending",
+        "mc-short",
+        "mc-long",
+        "raw-short",
+        "raw-long",
+        "adv-short",
+        "adv-long",
+    ],
+)
+def test_episode_invariants(overrides):
+    with pytest.raises(AssertionError):
+        episode(**overrides)
+
+
+def test_collate_exact_two_rows_and_no_input_mutation():
+    episodes = [
+        episode(),
+        episode(
+            prompt_ids=[31],
+            response_ids=[41],
+            advantages=[-0.75],
+            step_boundaries=(0, 1),
+            mc_prefix_values=(0.75,),
+            raw_step_advantages=[-0.75],
+        ),
+    ]
+    old, ref = [[-0.125, -0.25], [-0.5]], [[-1.25, -1.5], [-1.75]]
+    snapshot = deepcopy((episodes, old, ref))
+    retained = [
+        (e.prompt_ids, e.response_ids, e.advantages, e.raw_step_advantages)
+        for e in episodes
+    ]
+    batch = collate(episodes, old_logprobs=old, ref_logprobs=ref, pad_token_id=99)
+    assert_batch(batch, episodes)
+    expected = {
+        "input_ids": [[11, 12, 21, 22], [31, 41, 99, 99]],
+        "attention_mask": [[True, True, True, True], [True, True, False, False]],
+        "response_mask": [[False, True, True], [True, False, False]],
+        "old_logprobs": [[0.0, -0.125, -0.25], [-0.5, 0.0, 0.0]],
+        "ref_logprobs": [[0.0, -1.25, -1.5], [-1.75, 0.0, 0.0]],
+        "advantages": [[0.0, 0.25, 0.5], [-0.75, 0.0, 0.0]],
+    }
+    for name, values in expected.items():
+        assert getattr(batch, name).tolist() == values
+    assert (episodes, old, ref) == snapshot
+    for e, originals in zip(episodes, retained):
+        for name, original in zip(
+            ("prompt_ids", "response_ids", "advantages", "raw_step_advantages"),
+            originals,
+        ):
+            assert getattr(e, name) is original
+
+
+@pytest.mark.parametrize(
+    "prompts,responses",
+    [
+        ([[11]], [[21]]),
+        ([[11, 12]], [[21, 22]]),
+        ([[99], [31, 32]], [[99], [41, 99]]),
+        ([[11, 12], [31]], [[21], [41, 42]]),
+    ],
+    ids=[
+        "minimum-singleton",
+        "singleton",
+        "real-pad-token",
+        "equal-total-different-prompts",
+    ],
+)
+def test_collate_edges(prompts, responses):
+    episodes = tuple(
+        episode(
+            prompt_ids=p,
+            response_ids=r,
+            advantages=[0.25 * (j + 1) for j in range(len(r))],
+            step_boundaries=(0, len(r)),
+            mc_prefix_values=(0.5,),
+            raw_step_advantages=[0.5],
+        )
+        for p, r in zip(prompts, responses)
+    )
+    old = tuple(
+        tuple(-float(i + j + 1) for j in range(len(r))) for i, r in enumerate(responses)
+    )
+    ref = tuple(tuple(value - 4.0 for value in row) for row in old)
+    batch = collate(episodes, old_logprobs=old, ref_logprobs=ref, pad_token_id=99)
+    assert_batch(batch, episodes)
+    width = batch.input_ids.shape[1]
+    for i, e in enumerate(episodes):
+        tokens = e.prompt_ids + e.response_ids
+        assert batch.input_ids[i].tolist() == tokens + [99] * (width - len(tokens))
+        for name, values in (
+            ("old_logprobs", old[i]),
+            ("ref_logprobs", ref[i]),
+            ("advantages", e.advantages),
+        ):
+            assert getattr(batch, name)[i, batch.response_mask[i]].tolist() == list(
+                values
+            )
+
+
+def test_collate_rejects_empty_batch():
+    with pytest.raises(AssertionError):
+        collate([], old_logprobs=[], ref_logprobs=[], pad_token_id=99)
+
+
+@pytest.mark.parametrize("name", ["old_logprobs", "ref_logprobs"])
+@pytest.mark.parametrize(
+    "scores",
+    [
+        [],
+        [[-1.0, -2.0]] * 3,
+        [[], [-1.0, -2.0]],
+        [[-1.0, -2.0], [-1.0]],
+        [[-1.0, -2.0], [-1.0, -2.0, -3.0]],
+    ],
+    ids=["outer-short", "outer-long", "inner-empty", "inner-short", "inner-long"],
+)
+def test_collate_rejects_score_length_mismatch(name, scores):
+    kwargs = {
+        "old_logprobs": [[-1.0, -2.0], [-3.0, -4.0]],
+        "ref_logprobs": [[-5.0, -6.0], [-7.0, -8.0]],
+    }
+    kwargs[name] = scores
+    with pytest.raises(AssertionError):
+        collate([episode(), episode()], **kwargs, pad_token_id=99)
+
+
+@pytest.mark.parametrize(
+    "name,replacement",
+    [
+        ("prompt_ids", []),
+        ("response_ids", []),
+        ("response_ids", [21]),
+        ("response_ids", [21, 22, 23]),
+        ("advantages", []),
+        ("advantages", [0.25]),
+        ("advantages", [0.25, 0.5, 0.75]),
+        ("raw_step_advantages", []),
+        ("raw_step_advantages", [0.25]),
+        ("raw_step_advantages", [0.25, 0.5, 0.75]),
+    ],
+    ids=[
+        "empty-prompt",
+        "empty-response",
+        "response-short",
+        "response-long",
+        "adv-empty",
+        "adv-short",
+        "adv-long",
+        "raw-empty",
+        "raw-short",
+        "raw-long",
+    ],
+)
+def test_collate_revalidates_mutated_lists(name, replacement):
+    invalid = episode()
+    getattr(invalid, name)[:] = replacement
+    if name == "response_ids":
+        # Keep token advantages and scores aligned to isolate the stale boundaries.
+        invalid.advantages[:] = [0.25] * len(replacement)
+    episodes = [episode(), invalid]
+    old = [[-1.0] * len(e.response_ids) for e in episodes]
+    ref = [[-2.0] * len(e.response_ids) for e in episodes]
+    snapshot = deepcopy((episodes, old, ref))
+    with pytest.raises(AssertionError):
+        collate(episodes, old_logprobs=old, ref_logprobs=ref, pad_token_id=99)
+    assert (episodes, old, ref) == snapshot
