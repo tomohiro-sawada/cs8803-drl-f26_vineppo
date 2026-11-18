@@ -10,7 +10,7 @@ from core.data import (
     Example,
     PolicyGradientBatch,
     TrainBatch,
-    VinePPOEstimate,
+    VinePPOValueEstimate,
     collate,
 )
 
@@ -22,9 +22,6 @@ def episode(**overrides):
         "reward": 1.0,
         "finish_reason": "stop",
         "advantages": [0.25, 0.5],
-        "raw_step_advantages": [0.25, 0.5],
-        "step_boundaries": (0, 1, 2),
-        "mc_prefix_values": (0.75, 0.5),
     }
     return EpisodeWithAdvantages(**(values | overrides))
 
@@ -88,35 +85,48 @@ def test_episode_stage_has_no_advantages():
     assert isinstance(episode(), Episode)
 
 
-@pytest.mark.parametrize(
-    "boundaries,mc_values,raw",
-    [((0, 2), (0.75,), [0.25]), ((0, 1, 2), (0.75, 0.5), [0.25, 0.5])],
-    ids=["single-step", "multi-step"],
-)
-def test_valid_episode_with_advantages(boundaries, mc_values, raw):
+def test_valid_episode_with_advantages():
     prompt, response, advantages = [11, 12], [21, 22], [0.25, 0.5]
     result = episode(
         prompt_ids=prompt,
         response_ids=response,
         advantages=advantages,
-        step_boundaries=boundaries,
-        mc_prefix_values=mc_values,
-        raw_step_advantages=raw,
     )
     assert result.prompt_ids is prompt
     assert result.response_ids is response
     assert result.advantages is advantages
-    assert result.raw_step_advantages is raw
+    assert {f.name for f in fields(result)} == {
+        "prompt_ids",
+        "response_ids",
+        "reward",
+        "finish_reason",
+        "advantages",
+    }
+
+
+@pytest.mark.parametrize(
+    "boundaries,mc_values,raw",
+    [((0, 2), (0.75,), (0.25,)), ((0, 1, 2), (0.75, 0.5), (-0.25, 0.5))],
+    ids=["single-step", "multi-step"],
+)
+def test_vineppo_estimate_keeps_step_diagnostics(boundaries, mc_values, raw):
+    source = Episode([11, 12], [21, 22], 1.0, "stop")
+    result = VinePPOValueEstimate("id", source, boundaries, mc_values, raw)
+    assert result.episode_id == "id"
+    assert result.episode is source
     assert result.step_boundaries == boundaries
     assert result.mc_prefix_values == mc_values
+    assert result.raw_step_advantages == raw
 
 
 RECORDS = [
     Example("id", "question", "answer"),
     Episode([11], [21], 1.0, "stop"),
     episode(),
-    VinePPOEstimate("id", Episode([11], [21], 1.0, "stop")),
-    TrainBatch(*(torch.zeros(1, 1) for _ in range(5))),
+    VinePPOValueEstimate(
+        "id", Episode([11], [21], 1.0, "stop"), (0, 1), (0.75,), (0.25,)
+    ),
+    TrainBatch(*(torch.zeros(1, 1) for _ in range(3))),
     PolicyGradientBatch(*(torch.zeros(1, 1) for _ in range(6))),
 ]
 
@@ -136,45 +146,13 @@ def test_records_reject_field_reassignment(record, name):
 
 
 @pytest.mark.parametrize(
-    "overrides",
-    [
-        {"step_boundaries": ()},
-        {"step_boundaries": (0,)},
-        {"step_boundaries": (-1, 1, 2)},
-        {"step_boundaries": (0, 1, 3)},
-        {"step_boundaries": (0, 0, 2)},
-        {
-            "step_boundaries": (0, 2, 1, 3),
-            "response_ids": [21, 22, 23],
-            "advantages": [0.25, 0.5, 0.75],
-            "mc_prefix_values": (0.75, 0.5, 0.25),
-            "raw_step_advantages": [0.25, 0.5, 0.75],
-        },
-        {"mc_prefix_values": (0.75,)},
-        {"mc_prefix_values": (0.75, 0.5, 0.25)},
-        {"raw_step_advantages": [0.25]},
-        {"raw_step_advantages": [0.25, 0.5, 0.75]},
-        {"advantages": [0.25]},
-        {"advantages": [0.25, 0.5, 0.75]},
-    ],
-    ids=[
-        "no-boundaries",
-        "one-boundary",
-        "start",
-        "end",
-        "duplicate",
-        "descending",
-        "mc-short",
-        "mc-long",
-        "raw-short",
-        "raw-long",
-        "adv-short",
-        "adv-long",
-    ],
+    "advantages",
+    [[], [0.25], [0.25, 0.5, 0.75]],
+    ids=["empty", "short", "long"],
 )
-def test_episode_invariants(overrides):
+def test_episode_rejects_advantage_length_mismatch(advantages):
     with pytest.raises(AssertionError):
-        episode(**overrides)
+        episode(advantages=advantages)
 
 
 def test_collate_exact_two_rows_and_no_input_mutation():
@@ -184,17 +162,11 @@ def test_collate_exact_two_rows_and_no_input_mutation():
             prompt_ids=[31],
             response_ids=[41],
             advantages=[-0.75],
-            step_boundaries=(0, 1),
-            mc_prefix_values=(0.75,),
-            raw_step_advantages=[-0.75],
         ),
     ]
     old, ref = [[-0.125, -0.25], [-0.5]], [[-1.25, -1.5], [-1.75]]
     snapshot = deepcopy((episodes, old, ref))
-    retained = [
-        (e.prompt_ids, e.response_ids, e.advantages, e.raw_step_advantages)
-        for e in episodes
-    ]
+    retained = [(e.prompt_ids, e.response_ids, e.advantages) for e in episodes]
     batch = collate(episodes, old_logprobs=old, ref_logprobs=ref, pad_token_id=99)
     assert_batch(batch, episodes)
     expected = {
@@ -210,7 +182,7 @@ def test_collate_exact_two_rows_and_no_input_mutation():
     assert (episodes, old, ref) == snapshot
     for e, originals in zip(episodes, retained):
         for name, original in zip(
-            ("prompt_ids", "response_ids", "advantages", "raw_step_advantages"),
+            ("prompt_ids", "response_ids", "advantages"),
             originals,
         ):
             assert getattr(e, name) is original
@@ -237,9 +209,6 @@ def test_collate_edges(prompts, responses):
             prompt_ids=p,
             response_ids=r,
             advantages=[0.25 * (j + 1) for j in range(len(r))],
-            step_boundaries=(0, len(r)),
-            mc_prefix_values=(0.5,),
-            raw_step_advantages=[0.5],
         )
         for p, r in zip(prompts, responses)
     )
@@ -300,9 +269,6 @@ def test_collate_rejects_score_length_mismatch(name, scores):
         ("advantages", []),
         ("advantages", [0.25]),
         ("advantages", [0.25, 0.5, 0.75]),
-        ("raw_step_advantages", []),
-        ("raw_step_advantages", [0.25]),
-        ("raw_step_advantages", [0.25, 0.5, 0.75]),
     ],
     ids=[
         "empty-prompt",
@@ -312,17 +278,12 @@ def test_collate_rejects_score_length_mismatch(name, scores):
         "adv-empty",
         "adv-short",
         "adv-long",
-        "raw-empty",
-        "raw-short",
-        "raw-long",
     ],
 )
 def test_collate_revalidates_mutated_lists(name, replacement):
     invalid = episode()
     getattr(invalid, name)[:] = replacement
-    if name == "response_ids":
-        # Keep token advantages and scores aligned to isolate the stale boundaries.
-        invalid.advantages[:] = [0.25] * len(replacement)
+
     episodes = [episode(), invalid]
     old = [[-1.0] * len(e.response_ids) for e in episodes]
     ref = [[-2.0] * len(e.response_ids) for e in episodes]

@@ -26,6 +26,14 @@ where = ["src"]
 [tool.setuptools.package-data]
 "core.vendor.vineppo" = ["LICENSE.*", "NOTICE.md", "sources.json"]
 
+[tool.pytest]
+minversion = "9.2"
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib", "-ra"]
+strict_config = true
+strict_markers = true
+strict_xfail = true
+
 [dependency-groups]
 dev = [
     "jupyterlab>=4.6.5",

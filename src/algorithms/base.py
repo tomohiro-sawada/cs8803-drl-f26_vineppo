@@ -4,7 +4,7 @@ Enforce compatibility as we add new baselines to the codebase.
 """
 
 from dataclasses import dataclass
-from abc import abstractclass
+from abc import ABC
 
 from transformers import PreTrainedModel
 
@@ -34,8 +34,8 @@ class StepSegmenter:
         pass
 
 
-@abstractclass
-class AdvantageEstimator:
+
+class AdvantageEstimator(ABC):
     def __init__(self, policy: PreTrainedModel):
         """
         Estimate the advantage of a state or trajectory.

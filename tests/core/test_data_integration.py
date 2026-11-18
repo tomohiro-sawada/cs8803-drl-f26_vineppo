@@ -35,9 +35,6 @@ def test_collated_response_logprobs_match_unpadded_episodes():
             reward=1.0,
             finish_reason="length",
             advantages=[advantage] * len(response),
-            raw_step_advantages=[advantage],
-            step_boundaries=(0, len(response)),
-            mc_prefix_values=(0.5,),
         )
         for prompt, response, advantage in [
             ([4], [0, 6], 0.5),
