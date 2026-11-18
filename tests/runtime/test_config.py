@@ -46,6 +46,18 @@ def test_training_rejects_instead_of_overriding_temperature(temperature):
         config(temperature=temperature)
 
 
+def test_length_budget_defaults():
+    assert config().max_sequence_length == 2048
+    assert config().max_new_tokens == 1024
+
+
+@pytest.mark.parametrize("name", ["max_sequence_length", "max_new_tokens"])
+@pytest.mark.parametrize("value", [0, -1, 1.5, True, False, "2048", None])
+def test_length_budgets_require_positive_integers(name, value):
+    with pytest.raises(ValueError, match=name):
+        config(**{name: value})
+
+
 def test_temperature_cannot_change_after_validation():
     settings = config()
     with pytest.raises(FrozenInstanceError):

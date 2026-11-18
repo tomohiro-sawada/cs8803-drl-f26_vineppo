@@ -19,6 +19,31 @@ class VinePPOConfig(AlgorithmConfig):
     pass
 
 
+def continuation_budget(
+    prefix_length: int, *, max_sequence_length: int, max_new_tokens: int
+) -> int:
+    """Cap new tokens by remaining total context, not remaining response budget.
+
+    The full prefix includes prompt/BOS and any existing response tokens. Like
+    upstream EfficientIIDExpander._compute_max_tokens, the response prefix is
+    subtracted only from total context, never separately from max_new_tokens.
+    Exact token IDs include special tokens (including generated EOS); unlike
+    upstream's text-tokenized 2047 context allowance, no extra BOS reservation
+    is needed inside the default 2048-token total limit.
+    """
+    for name, value in (
+        ("prefix_length", prefix_length),
+        ("max_sequence_length", max_sequence_length),
+        ("max_new_tokens", max_new_tokens),
+    ):
+        if type(value) is not int or value <= 0:
+            raise ValueError(f"{name} must be a positive integer")
+    remaining = max_sequence_length - prefix_length
+    if remaining <= 0:
+        raise ValueError("prefix exhausts max_sequence_length; no continuation fits")
+    return min(max_new_tokens, remaining)
+
+
 def _validate_boundaries(episode: Episode, boundaries: tuple[int, ...]) -> None:
     if not episode.prompt_ids or not episode.response_ids:
         raise ValueError("episode prompt and response must be nonempty")
@@ -70,7 +95,8 @@ def estimate_vineppo(
     inference: HFInference,
     score_response: Callable[[list[int], str], float],
     num_samples: int,
-    max_new_tokens: int,
+    max_new_tokens: int = 1024,
+    max_sequence_length: int = 2048,
     temperature: float,
     record_prefix_samples: Callable[[PrefixSamples], None] | None = None,
 ) -> VinePPOValueEstimate:
@@ -81,7 +107,11 @@ def estimate_vineppo(
     supplied reward; sampled truncations are scored by score_response.
 
     The scorer receives response-prefix plus continuation tokens (no prompt),
-    and the sampled finish reason. Generation budgets apply per continuation.
+    and the sampled finish reason. Each continuation receives
+    min(max_new_tokens, max_sequence_length - len(full_prefix)); see
+    continuation_budget for special-token and response-prefix semantics.
+    Model capacity is enforced by HFInference; the trainer also validates its
+    configured total limit against the actor before collection.
     Optional diagnostics retain every scored sample; omitting the callback
     retains only aggregate values. Generation, scoring, and recording errors
     propagate. The caller owns the inference model and its lifetime.
@@ -102,13 +132,25 @@ def estimate_vineppo(
     if not isfinite(episode.reward):
         raise ValueError("episode reward must be finite")
 
-    prefix_values = []
     prefixes = _get_prefixes(episode, step_boundaries)
-    for boundary, prefix in zip(step_boundaries[:-1], prefixes, strict=True):
+    budgets = [
+        continuation_budget(
+            len(prefix),
+            max_sequence_length=max_sequence_length,
+            max_new_tokens=max_new_tokens,
+        )
+        for prefix in prefixes
+    ]
+    if len(episode.prompt_ids) + len(episode.response_ids) > max_sequence_length:
+        raise ValueError("episode exceeds max_sequence_length")
+    prefix_values = []
+    for boundary, prefix, budget in zip(
+        step_boundaries[:-1], prefixes, budgets, strict=True
+    ):
         groups = inference.generate(
             prefixes=[prefix],
             num_samples=num_samples,
-            max_new_tokens=max_new_tokens,
+            max_new_tokens=budget,
             temperature=temperature,
         )
         if len(groups) != 1 or len(groups[0]) != num_samples:
