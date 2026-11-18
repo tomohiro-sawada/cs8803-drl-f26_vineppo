@@ -76,6 +76,7 @@ class Episode:
 class EpisodeWithAdvantages(Episode):
     """
     Represents a single episode of the agent-environment interaction with advantages.
+    Derived from `Episode`.
 
     Fields:
         step_boundaries: contains response-relative token offsets, including 0 and len(response_ids); length K+1
@@ -83,40 +84,95 @@ class EpisodeWithAdvantages(Episode):
     """
 
     advantages: list[float]
-    raw_step_advantages: list[float]
-    step_boundaries: tuple[int, ...]
-    mc_prefix_values: tuple[float, ...]
 
     def __post_init__(self):
         # validate invariants
-        b = self.step_boundaries
-        assert len(b) >= 2, f"{b=} must contain at least a start and end boundary"
-        assert b[0] == 0, f"{b[0]=} must be 0 (the start boundary)"
-        assert b[-1] == len(self.response_ids), (
-            f"{b[-1]=} must equal the response length {len(self.response_ids)=}"
-        )
-        assert all(start < end for start, end in pairwise(b)), (
-            f"{b=} must be strictly increasing"
-        )
-        assert len(self.mc_prefix_values) == len(b) - 1, (
-            f"{self.mc_prefix_values=} must have one value per step ({len(b) - 1=})"
-        )
-        assert len(self.raw_step_advantages) == len(b) - 1, (
-            f"{self.raw_step_advantages=} must have one value per step ({len(b) - 1=})"
-        )
         assert len(self.advantages) == len(self.response_ids), (
             f"{self.advantages=} must have one value per response token ({len(self.response_ids)=})"
         )
 
 
 @dataclass(frozen=True)
-class VinePPOEstimate:
+class ValueEstimate:
     """
-    Represents the estimated value of a state under a given policy.
+    Value estimate for each class.
+
+    Used e.g. for logging to Wandb and comparing across baselines.
     """
 
     episode_id: str
     episode: Episode
+
+
+@dataclass(frozen=True)
+class PPOValueEstimate(ValueEstimate):
+    """
+    Represents the estimated value for PPO.
+
+    Fields:
+    - critic_value_estimates[t]: the cached, pre-update value of the state immediately before response token t.
+    - return_estimates[t]: the fixed value-regression target for that same state.
+
+    raw_advantages = GAE(rewards, cached_values, bootstrap_value, gamma, lambda)
+    return_estimates = raw_advantages + cached_values
+    """
+
+    episode_id: str
+    episode: Episode
+    critic_value_estimates: list[float]
+    return_estimates: list[float]
+
+    def __post_init__(self):
+        assert len(self.critic_value_estimates) == len(self.episode.response_ids), (
+            f"{len(self.critic_value_estimates)=} must match response length "
+            f"({len(self.episode.response_ids)=})"
+        )
+        assert len(self.return_estimates) == len(self.episode.response_ids), (
+            f"{len(self.return_estimates)=} must match response length "
+            f"({len(self.episode.response_ids)=})"
+        )
+
+
+@dataclass(frozen=True)
+class VinePPOValueEstimate(ValueEstimate):
+    """
+    Represents the estimated value of a state under a given policy for VinePPO.
+
+    Diagnostics:
+        def estimate_vineppo(
+            ...,
+            record_prefix_samples: Callable[[PrefixSamples], None] | None = None,
+        ) -> VinePPOEstimate:
+            ...
+    """
+
+    episode_id: str
+    episode: Episode
+    step_boundaries: tuple[int, ...]
+    mc_prefix_values: tuple[float, ...]
+    raw_step_advantages: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class MCContinuation:
+    """
+    MC continuations for VinePPO
+    """
+
+    response_ids: tuple[int, ...]
+    finish_reason: str
+    reward: float
+
+
+@dataclass(frozen=True)
+class PrefixSamples:
+    """
+    Prefix samples for VinePPO
+    """
+
+    episode_id: str
+    response_prefix_length: int
+    continuations: tuple[MCContinuation, ...]
 
 
 @dataclass(frozen=True)
@@ -134,12 +190,22 @@ class TrainBatch:
     input_ids: Int64[Tensor, "B T"]
     attention_mask: Bool[Tensor, "B T"]
     response_mask: Bool[Tensor, "B T-1"]
-    old_logprobs: Float32[Tensor, "B T-1"]
-    ref_logprobs: Float32[Tensor, "B T-1"]
 
 
 @dataclass(frozen=True)
-class PolicyGradientBatch:
+class CriticBatch(TrainBatch):
+    """
+    Represents a batch of training data for the critic network.
+    This is enough for an initial unclipped value loss
+
+    Note: Value clipping is an algorithm choice, distinct from policy-ratio clipping. Only add old_values if I need value clipping.
+    """
+
+    returns: Float32[Tensor, "B T-1"]
+
+
+@dataclass(frozen=True)
+class PolicyGradientBatch(TrainBatch):
     """
     Represents a batch of training data for policy gradient-based methods.
     """
@@ -150,6 +216,15 @@ class PolicyGradientBatch:
     old_logprobs: Float32[Tensor, "B T-1"]
     advantages: Float32[Tensor, "B T-1"]
     ref_logprobs: Float32[Tensor, "B T-1"]
+
+
+def _collate_token_layout():
+    """
+    Private helper for token-layout shared between collate() and collate_critic()
+    """
+    # concatenate prompt and response;
+    # right-pad;
+    # construct attention and response masks.
 
 
 def collate(
@@ -226,3 +301,10 @@ def collate(
         advantages=advantages,
         ref_logprobs=ref_scores,
     )
+
+
+def collate_critic(estimates, *, pad_token_id) -> CriticBatch:
+    """
+    Collates a list of critic value estimates into a single batch.
+    """
+    pass

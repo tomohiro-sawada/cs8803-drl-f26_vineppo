@@ -9,7 +9,6 @@ TODO: for now, DPO+ and RestEM are out of scope;
 we would need to implement a separate trainer for them.
 """
 
-
 # typing
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,7 +21,6 @@ from transformers import PreTrainedModel
 from core.inference import Completion, HFInference
 from core.verifier import RewardVerifier
 from core.algorithm.base import AlgorithmConfig
-
 
 
 @dataclass
@@ -38,11 +36,12 @@ class PPOTrainerConfig:
 
 
 class PPOTrainer:
-    def __init__(self,
-            config: PPOTrainerConfig,
-            policy: PreTrainedModel,
-            inference: HFInference,
-            verifier: RewardVerifier,
+    def __init__(
+        self,
+        config: PPOTrainerConfig,
+        policy: PreTrainedModel,
+        inference: HFInference,
+        verifier: RewardVerifier,
     ):
         """
         Trainer method for both PPO and VinePPO.
@@ -57,42 +56,35 @@ class PPOTrainer:
         self.inference = inference
         self.verifier = verifier
 
-
         # get advantage method
         # TODO: refactor this later when we have more algorithms
         if self.config.algorithm_config.name == "PPO":
             from algorithms.ppo import ppo_advantage_method
+
             self.advantage_method = ppo_advantage_method
         elif self.config.algorithm_config.name == "VinePPO":
             from algorithms.vineppo import vineppo_advantage_method
+
             self.advantage_method = vineppo_advantage_method
         else:
             raise ValueError(f"Unknown algorithm: {self.config.algorithm_config.name}")
 
-
-
-    def train(self, ):
+    def train(
+        self,
+    ):
         for iteration in range(self.config.num_iterations):
-
-
             # generate episodes and estimate advantages
             # For VinePPO: this generates the partial context episodes
             episodes = self.generate_episodes(...)
 
-
             # compute token-level advantages
             # TODO: again, refactor once we have more algorithms
-            advantage: Tensor["float32", ...] = self.advantage_method(
-                episodes, ...)
+            advantage: Tensor["float32", ...] = self.advantage_method(episodes, ...)
 
             # update policy and save checkpoint
             batch = make_train_batch(episodes, advantage)
             self.update_policy(batch, ...)
             self.save_checkpoint(...)
-
-
-
-
 
     def save_checkpoint(self):
         pass
@@ -108,9 +100,9 @@ class PPOTrainer:
         # update the policy
         self.policy.update(loss)
 
-
-    def generate_episodes(self,
-        ...
+    def generate_episodes(
+        self,
+        # ...
     ):
         """
         Generate episodes using the current policy.
