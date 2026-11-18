@@ -18,7 +18,7 @@ timestamp() {
   date "+$format"
 }
 
-# flatten repo for LLM context 
+# flatten repo for LLM context
 flatten_repo() {
     # Help
     if [[ "${1:-}" == "-h" ]]; then
@@ -32,4 +32,11 @@ flatten_repo() {
       printf "\n"
     ' sh {}
 
+}
+
+
+# timestamp: current time in a compact, sortable format
+timestamp() {
+  local format='%Y%m%d-%H%M%S'
+  date "+$format"
 }
