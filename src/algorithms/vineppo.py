@@ -4,7 +4,7 @@ Estimation precedes token expansion, policy-batch collation, and actor updates.
 VinePPO does not require a critic batch or critic update.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 from math import isfinite
@@ -39,6 +39,27 @@ def _get_prefixes(
         episode.prompt_ids + episode.response_ids[:boundary]
         for boundary in step_boundaries[:-1]
     ]
+
+
+def compute_step_advantages(
+    prefix_values: Sequence[float], reward: float
+) -> tuple[float, ...]:
+    """Compute raw advantages for terminal-only reward, gamma=1, and terminal V=0.
+
+    prefix_values contains one nonterminal pre-step value per step, excluding
+    the terminal value. Each advantage is the next value minus the current
+    value, except the last, which is reward minus the final pre-step value.
+    """
+    if len(prefix_values) == 0:
+        raise ValueError("prefix_values must be nonempty")
+    if any(not isfinite(value) for value in prefix_values):
+        raise ValueError("prefix_values must be finite")
+    if not isfinite(reward):
+        raise ValueError("reward must be finite")
+    return tuple(
+        next_value - current_value
+        for current_value, next_value in pairwise(prefix_values)
+    ) + (reward - prefix_values[-1],)
 
 
 def estimate_vineppo(
@@ -120,17 +141,12 @@ def estimate_vineppo(
                 )
             )
 
-    raw_step_advantages = [
-        next_value - current_value
-        for current_value, next_value in pairwise(prefix_values)
-    ]
-    raw_step_advantages.append(episode.reward - prefix_values[-1])
     return VinePPOValueEstimate(
         episode_id=episode_id,
         episode=episode,
         step_boundaries=step_boundaries,
         mc_prefix_values=tuple(prefix_values),
-        raw_step_advantages=tuple(raw_step_advantages),
+        raw_step_advantages=compute_step_advantages(prefix_values, episode.reward),
     )
 
 

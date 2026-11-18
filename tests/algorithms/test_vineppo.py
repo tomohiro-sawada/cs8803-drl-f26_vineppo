@@ -5,7 +5,11 @@ from dataclasses import replace
 
 import pytest
 
-from algorithms.vineppo import estimate_vineppo, vineppo_advantage_method
+from algorithms.vineppo import (
+    compute_step_advantages,
+    estimate_vineppo,
+    vineppo_advantage_method,
+)
 from core.data import Episode, MCContinuation, PrefixSamples, VinePPOValueEstimate
 from core.inference import Completion
 
@@ -25,6 +29,48 @@ INVALID_BOUNDARIES = [
     (0, 2.0, 6),
     (0, "2", 6),
 ]
+
+
+@pytest.mark.parametrize("sequence_type", [list, tuple])
+@pytest.mark.parametrize(
+    "values, reward, expected",
+    [
+        ((0.25, 0.75, 0.5), 1.0, (0.5, -0.25, 0.5)),
+        ((0.75, 0.5, 0.25), 0.0, (-0.25, -0.25, -0.25)),
+        ((0.5,), 0.75, (0.25,)),
+        ((0.5,), 0.0, (-0.5,)),
+        ((-1.0, 2.0, -0.5, 1.5), -0.25, (3.0, -2.5, 2.0, -1.75)),
+    ],
+)
+def test_compute_step_advantages(values, reward, expected, sequence_type):
+    prefix_values = sequence_type(values)
+    before = deepcopy(prefix_values)
+    advantages = compute_step_advantages(prefix_values, reward)
+    assert isinstance(advantages, tuple)
+    assert advantages == expected
+    assert sum(advantages) == reward - values[0]
+    assert prefix_values == before
+
+
+@pytest.mark.parametrize("values", [[], ()])
+def test_compute_step_advantages_rejects_empty_values(values):
+    with pytest.raises(ValueError, match="prefix_values must be nonempty"):
+        compute_step_advantages(values, 1.0)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize("index", [0, 1, 2])
+def test_compute_step_advantages_rejects_nonfinite_values(value, index):
+    values = [0.25, 0.75, 0.5]
+    values[index] = value
+    with pytest.raises(ValueError, match="prefix_values must be finite"):
+        compute_step_advantages(values, 1.0)
+
+
+@pytest.mark.parametrize("reward", [float("nan"), float("inf"), -float("inf")])
+def test_compute_step_advantages_rejects_nonfinite_reward(reward):
+    with pytest.raises(ValueError, match="reward must be finite"):
+        compute_step_advantages((0.25, 0.75, 0.5), reward)
 
 
 class FakeInference:

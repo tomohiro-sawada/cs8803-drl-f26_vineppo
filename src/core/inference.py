@@ -4,9 +4,9 @@ Finish all rollouts (including MC branches) and cache detached old-policy scores
 before updating the shared actor. No old-policy copy or weight synchronization is
 needed. Tokenization and response/loss masks belong to the caller.
 
-We also introduce OpenRouter models purely for debugging purposes (of evaluation pipelines, maybe the advantage estimation logic) on my local machine.
-
-We separate the contract for the evaluation pipeline (just decode) from the training/inference (decode, send text, tokenize again) for simplicity.
+TextGenerator is the text-only evaluation contract, including remote backends.
+Training uses exact token prefixes through HFInference, never a decode/send/
+retokenize round trip. Its temperature restriction belongs to the trainer.
 """
 
 from collections.abc import Sequence
@@ -79,12 +79,18 @@ def token_logprobs(
     input_ids: Tensor,
     attention_mask: Tensor,
 ) -> Tensor:
-    """Return float32 [B, T-1] raw log p(input_ids[:, 1:]), with gradients.
+    """Return float32 [B, T-1] normalized, unscaled log p(input_ids[:, 1:]).
+
+    "Raw" scores are normalized log-probabilities without temperature scaling,
+    not logits. PPO forward passes use dropout-disabled behavior, with gradients
+    enabled during optimization. This function preserves the caller's grad mode;
+    collection explicitly uses no_grad(). eval() currently disables dropout.
+    Checkpointing that requires training mode needs a revised contract and tests,
+    not a silent switch to train().
 
     Padding positions have no meaningful scores: apply a separate response mask
     aligned with the targets, not just attention_mask. Positions derived from the
-    mask make valid scores invariant to left/right padding. Dropout stays off
-    during both collection and PPO updates; eval() does not disable gradients.
+    mask make valid scores invariant to left/right padding.
     """
     assert not model.config.is_encoder_decoder, "Expected a decoder-only model"
     assert input_ids.ndim == 2 and input_ids.shape[1] >= 2
@@ -115,7 +121,9 @@ class HFInference:
 
     Supply padding explicitly (using EOS as padding is supported); EOS IDs come
     from model.generation_config. No tokenizer loading or model copying occurs.
-    Calls leave the shared model in eval mode to keep dropout off for PPO.
+    PPO forward passes use dropout-disabled behavior, with gradients enabled
+    during optimization. Generation itself runs without gradients. Currently
+    eval() implements the dropout policy and calls leave the model in that mode.
     The caller owns the model: close() only releases this wrapper's reference,
     without moving or mutating the model or flushing global allocator caches.
     Close is idempotent; generation and context re-entry after close raise.
