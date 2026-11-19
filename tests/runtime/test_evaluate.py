@@ -31,6 +31,28 @@ class FakeGenerator:
         self.close_count += 1
 
 
+@pytest.mark.parametrize("full_solution", [False, True])
+def test_math_solution_reference_opt_in(full_solution):
+    reference = r"First \boxed{1}, then \boxed{2}." if full_solution else "2"
+    examples = [Example("row", "Find both answers.", reference)]
+    generator = FakeGenerator(
+        {examples[0].question: [TextCompletion(r"\boxed{2}", "stop")]}
+    )
+    records, metrics = evaluate(
+        examples,
+        generator,
+        task="math",
+        batch_size=1,
+        num_samples=1,
+        max_new_tokens=10,
+        temperature=0,
+        reference_is_solution=full_solution,
+    )
+    assert records[0].reference_answer == reference
+    assert records[0].correct is (not full_solution)
+    assert metrics["accuracy"] == (0.0 if full_solution else 1.0)
+
+
 @pytest.fixture
 def examples():
     return tuple(Example(f"row-{i}", f"Question {i}?", str(i)) for i in range(5))

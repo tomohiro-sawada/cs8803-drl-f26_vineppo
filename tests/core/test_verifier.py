@@ -85,6 +85,36 @@ def test_official_normalization(source, expected):
     assert strip_string(source) == expected
 
 
+@pytest.mark.parametrize(
+    "response,correct",
+    [(r"\boxed{2}", False), (r"\boxed{1}\boxed{2}", True)],
+)
+def test_full_solution_preserves_multiple_reference_answers(response, correct):
+    solution = r"First \boxed{1}, then \boxed{2}."
+    result = verify_response(
+        response, solution, task="math", reference_is_solution=True
+    )
+    assert result.correct is correct
+    # Reducing the reference to its last answer incorrectly accepts a partial answer.
+    assert verify_response(r"\boxed{2}", "2", task="math").correct
+
+
+@pytest.mark.parametrize("task,response", [("math", r"\boxed{2}"), ("gsm8k", "#### 2")])
+def test_explicit_final_answer_flag_preserves_default(task, response):
+    assert verify_response(response, "2", task=task, reference_is_solution=False) == (
+        verify_response(response, "2", task=task)
+    )
+
+
+def test_solution_reference_validation():
+    with pytest.raises(ValueError, match="only for MATH"):
+        verify_response("#### 2", "#### 2", task="gsm8k", reference_is_solution=True)
+    with pytest.raises(ValueError, match="nonempty reference"):
+        verify_response(
+            r"\boxed{2}", r"\boxed{}", task="math", reference_is_solution=True
+        )
+
+
 def test_malformed_box_suppresses_number_fallback():
     assert extract_answer(r"42 then \boxed{broken") == ""
     assert extract_answer(r"\boxed{42} then \boxed{broken") == "42"

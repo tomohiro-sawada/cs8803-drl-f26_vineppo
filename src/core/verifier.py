@@ -2,7 +2,7 @@
 
 MATH uses the official no-answer-prefix/Minerva extraction and grading path;
 GSM8K uses the official original-format task (last ####, string equality).
-References are already final answers, not worked solutions. The question controls
+References default to final answers; MATH can opt into full solutions. The question controls
 upstream comma splitting on both predictions and the reference. Multiple answers
 retain upstream deduplication, last-N selection and list matching. See
 vendor/vineppo/NOTICE.md for the precise relationship to upstream's full-solution API.
@@ -62,6 +62,7 @@ def verify_response(
     *,
     task: Literal["math", "gsm8k"],
     question: str = "",
+    reference_is_solution: bool = False,
 ) -> VerificationResult:
     """Score extracted text regardless of stop/length finish reason.
 
@@ -69,10 +70,14 @@ def verify_response(
     the empty default preserves older callers, not full question-aware parity.
     extracted_answers contains all deduplicated, last-N selected predictions;
     extracted_answer is its final member (or None for missing/empty extraction).
+    reference_is_solution extracts all reference answers from a MATH solution;
+    the default retains the final-answer API. GSM8K does not support this option.
     Timeout/resource/infrastructure failures raise rather than assign a score.
     """
     if task not in ("math", "gsm8k"):
         raise ValueError(f"Unsupported task: {task!r}")
+    if reference_is_solution and task != "math":
+        raise ValueError("reference_is_solution is supported only for MATH")
     if not all(
         isinstance(value, str) for value in (response, reference_answer, question)
     ):
@@ -92,10 +97,15 @@ def verify_response(
             and grader.grade_answer(given_answer=answer, ground_truth=reference_answer),
             (answer,) if answer else (),
         )
-    reference = strip_string(reference_answer)
-    if not reference:
-        raise ValueError("MATH reference normalizes to an empty answer")
-    references = split_math_answers(question, [reference])
+    if reference_is_solution:
+        references = extract_math_answer(question, reference_answer)
+        if not references or not all(references):
+            raise ValueError("MATH solution must contain nonempty reference answers")
+    else:
+        reference = strip_string(reference_answer)
+        if not reference:
+            raise ValueError("MATH reference normalizes to an empty answer")
+        references = split_math_answers(question, [reference])
     predictions = extract_math_answer(question, response)
     # Mirror eval_math's selection for reporting; send original lists for grading.
     selected = tuple(dict.fromkeys(predictions))[-len(set(references)) :]
