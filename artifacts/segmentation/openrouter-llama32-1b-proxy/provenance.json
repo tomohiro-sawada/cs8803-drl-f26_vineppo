@@ -1,0 +1,293 @@
+{
+  "timestamp_utc": "2026-11-19T02:50:48.624264+00:00",
+  "git_commit": "ff7809f2679d3f96613d21509027489509f92581",
+  "limitation": "General instruction-tuned Llama 3.2 1B proxy, not math-tuned RhoMath. API text is re-encoded with the pinned RhoMath tokenizer. These are NOT the provider's or RhoMath's sampled token IDs. No sampled EOS is available or synthesized. Rejection frequencies do not estimate RhoMath training risk.",
+  "endpoint": "https://openrouter.ai/api/v1/chat/completions",
+  "model": "meta-llama/llama-3.2-1b-instruct",
+  "provider": "cloudflare",
+  "num_prompts_per_task": 16,
+  "selection_seed": 42,
+  "manifest_sha256": "726b62612ce0f4a14034deae8fbe269923cb3cd4e70fad9d92330fb3ed62477b",
+  "source_sha256": {
+    "scripts/diagnostics/sample_openrouter_segmentation.py": "cf7add4417232a79a0d35a872e6791f2ab79aa8904361b45b3d44832d213caec",
+    "scripts/diagnostics/sample_segmentation.py": "798689ef44fe4a24f9942706ea27b1ead1f4bb25204989987578b9f8596b3aa0",
+    "src/core/segmentation.py": "12988f2079cdcbb22875a035b7922ba1a90e16602c4986d5659e144143122bd9",
+    "src/core/vendor/vineppo/math_extract_steps_inplace.py": "7423fcf0853ae6ded7be60e864f1b0776147b22ab52adc75c5ec850edb173e1f"
+  },
+  "versions": {
+    "transformers": "5.22.1",
+    "tokenizers": "0.23.3",
+    "datasets": "5.1.0"
+  },
+  "tasks": {
+    "gsm8k": {
+      "tokenizer_model": {
+        "kind": "model",
+        "task": "gsm8k",
+        "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-GSM8K",
+        "repo_id": "realtreetune/rho-1b-sft-GSM8K",
+        "requested_revision": "main",
+        "revision": "b28fda3216f8178c1f37c3c764196e3ca2439a30"
+      },
+      "tokenizer_sha256": "bcd04f0eadf90287bd26e1a183ac487d8a141b09b06aecb7725bbdd343640f2e",
+      "dataset": {
+        "kind": "dataset",
+        "task": "gsm8k",
+        "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/gsm8k",
+        "archive_member": "wandb_export_root/datasets/data-gsm8k-w_valid_split.zip",
+        "splits": {
+          "train": {
+            "rows": 7100,
+            "columns": [
+              "question",
+              "answer"
+            ]
+          },
+          "validation": {
+            "rows": 373,
+            "columns": [
+              "question",
+              "answer"
+            ]
+          },
+          "test": {
+            "rows": 1319,
+            "columns": [
+              "question",
+              "answer"
+            ]
+          }
+        },
+        "url": "https://github.com/McGill-NLP/VinePPO/releases/download/latest/wandb_export_root.zip",
+        "release_asset_id": 196429828,
+        "sha256": "c25d3977febe21260a1d6fe484ef368774e3d99ef10ef3f07a4531f4cd02a503",
+        "size_bytes": 8127691
+      },
+      "split": "train",
+      "selection": [
+        {
+          "id": "gsm8k:train:204",
+          "index": 204,
+          "prompt": "[MATH_TASK] Problem:\nCadence has worked for her new company five months longer than she worked for her old company. If she worked at her old company for 3 years earning $5000 per month, and she's now earning 20% more in the new company, calculate the total amount of money she's earned in both companies in the period she's worked for them?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:712",
+          "index": 712,
+          "prompt": "[MATH_TASK] Problem:\nSasha made 30 chocolate muffins for her school bake sale fundraiser. Melissa made 4 times as many muffins as Sasha, and Tiffany made half of Sasha and Melissa's total number of muffins. If one muffin sold for $4, how much money did Sasha, Melissa, and Tiffany contribute to the fundraiser?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:839",
+          "index": 839,
+          "prompt": "[MATH_TASK] Problem:\nJohn uses the bathroom every 50 minutes.  How many times does he use the bathroom during a 2.5-hour movie?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:912",
+          "index": 912,
+          "prompt": "[MATH_TASK] Problem:\nCordelia is dyeing her hair red. To get the color she wants, she first has to bleach her dark brown hair to blonde, and then she has to apply the dye. The whole process will take 9 hours. Dyeing takes twice as long as bleaching. How many hours will it take Cordelia to bleach her hair?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:1143",
+          "index": 1143,
+          "prompt": "[MATH_TASK] Problem:\nJo reads at a steady pace. Her current book has 210 pages. Now, she is at page 90. An hour ago, she was at page 60. For how many hours will she be reading the book?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:1828",
+          "index": 1828,
+          "prompt": "[MATH_TASK] Problem:\nJermaine, Terrence, and Emilee earn a total of $90. Jermaine earns $5 more than Terrence in a month. If Terrence earns $30, how much does Emilee earn?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:2006",
+          "index": 2006,
+          "prompt": "[MATH_TASK] Problem:\nMary is writing a story, and wants her 60 characters to be split according to their initials. Half of her characters have the initial A, and half of this amount have the initial C. Mary wants the rest of her characters to have the initials D and E, but she wants there to be twice as many characters with the initial D as there are characters with the initial E. How many of Mary’s characters have the initial D?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:2253",
+          "index": 2253,
+          "prompt": "[MATH_TASK] Problem:\nThe result from the 40-item Statistics exam Marion and Ella took already came out. Ella got 4 incorrect answers while Marion got 6 more than half the score of Ella. What is Marion's score?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:3456",
+          "index": 3456,
+          "prompt": "[MATH_TASK] Problem:\nDave bought 8 books about animals, 6 books about outer space, and 3 books about trains to keep him busy over the holidays. Each book cost $6. How much did Dave spend on the books?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:4467",
+          "index": 4467,
+          "prompt": "[MATH_TASK] Problem:\nSheena is sewing the bridesmaid’s dresses for her sister’s wedding. She can sew one dress in 12 hours. There are 5 bridesmaids in the wedding. If Sheena sews the dresses 4 hours each week, how many weeks will it take her to complete them?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:4837",
+          "index": 4837,
+          "prompt": "[MATH_TASK] Problem:\nMary, Edna, and Lucy are athletes who train every Saturday. Mary ran 3/8 of a 24-kilometer field on one Saturday. Edna ran 2/3 of the distance of Edna, and Lucy ran 5/6 of the distance of Edna. How many more kilometers should Lucy run to cover the same distance as Mary?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:5238",
+          "index": 5238,
+          "prompt": "[MATH_TASK] Problem:\nMatilda bought a smartphone for $300. Then she decided she wouldn't use it anyway and sold it for $255. What percentage of the initial cost did she lose?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:5543",
+          "index": 5543,
+          "prompt": "[MATH_TASK] Problem:\nTom is playing a game and gets 10 points for killing an enemy.  If he kills at least 100 enemies he gets a 50% bonus to his score.  What was his total score if he killed 150 enemies?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:6033",
+          "index": 6033,
+          "prompt": "[MATH_TASK] Problem:\nJasmine wants to organize her books in order of most number of pages to least number of pages. Jasmine's longest book has 396 pages and her shortest book has one-fourth as many pages as the longest. If the book in the middle of her shelf has three times the number of pages of the shortest book, then how many pages does the middle book have?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:6067",
+          "index": 6067,
+          "prompt": "[MATH_TASK] Problem:\nKaylee needs to sell 33 boxes of biscuits. So far, she has sold 12 boxes of lemon biscuits to her aunt, 5 boxes of chocolate biscuits to her mother, and 4 boxes of oatmeal biscuits to a neighbor. How many more boxes of biscuits does Kaylee need to sell?\n\nSolution:"
+        },
+        {
+          "id": "gsm8k:train:6074",
+          "index": 6074,
+          "prompt": "[MATH_TASK] Problem:\nAaron has some brothers. Bennett has 6 brothers. If the number of Bennett's brothers is two less than twice the number of Aaron's brothers, what is the number of Aaron's brothers?\n\nSolution:"
+        }
+      ]
+    },
+    "math": {
+      "tokenizer_model": {
+        "kind": "model",
+        "task": "math",
+        "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-MATH",
+        "repo_id": "realtreetune/rho-1b-sft-MATH",
+        "requested_revision": "main",
+        "revision": "f4d0f86bfce159f0042cca9116a52c0b972f34aa"
+      },
+      "tokenizer_sha256": "bcd04f0eadf90287bd26e1a183ac487d8a141b09b06aecb7725bbdd343640f2e",
+      "dataset": {
+        "kind": "dataset",
+        "task": "math",
+        "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/math",
+        "archive_member": "wandb_export_root/datasets/data-math-openai_split.zip",
+        "splits": {
+          "train": {
+            "rows": 11500,
+            "columns": [
+              "problem",
+              "solution",
+              "answer",
+              "subject",
+              "level",
+              "unique_id",
+              "gold_solution_steps"
+            ]
+          },
+          "validation": {
+            "rows": 500,
+            "columns": [
+              "problem",
+              "solution",
+              "answer",
+              "subject",
+              "level",
+              "unique_id",
+              "gold_solution_steps"
+            ]
+          },
+          "test": {
+            "rows": 500,
+            "columns": [
+              "problem",
+              "solution",
+              "answer",
+              "subject",
+              "level",
+              "unique_id",
+              "gold_solution_steps"
+            ]
+          }
+        },
+        "url": "https://github.com/McGill-NLP/VinePPO/releases/download/latest/wandb_export_root.zip",
+        "release_asset_id": 196429828,
+        "sha256": "c25d3977febe21260a1d6fe484ef368774e3d99ef10ef3f07a4531f4cd02a503",
+        "size_bytes": 8127691
+      },
+      "split": "train",
+      "selection": [
+        {
+          "id": "math:train:409",
+          "index": 409,
+          "prompt": "[MATH_TASK] Problem:\nHow many 0's are located to the right of the decimal point and before the first non-zero digit in the terminating decimal representation of $\\frac{1}{2^5\\cdot5^8}$?\n\nSolution:"
+        },
+        {
+          "id": "math:train:488",
+          "index": 488,
+          "prompt": "[MATH_TASK] Problem:\nAssuming $x\\ne0$, simplify $\\frac{12}{x \\cdot x} \\cdot \\frac{x^4}{14x}\\cdot \\frac{35}{3x}$.\n\nSolution:"
+        },
+        {
+          "id": "math:train:520",
+          "index": 520,
+          "prompt": "[MATH_TASK] Problem:\nFind all real numbers $p$ so that\n\\[x^4 + 2px^3 + x^2 + 2px + 1 = 0\\]has at least two distinct negative real roots.\n\nSolution:"
+        },
+        {
+          "id": "math:train:1424",
+          "index": 1424,
+          "prompt": "[MATH_TASK] Problem:\nIn the middle of a vast prairie, a firetruck is stationed at the intersection of two perpendicular straight highways. The truck travels at $50$ miles per hour along the highways and at $14$ miles per hour across the prairie. Consider the set of points that can be reached by the firetruck within six minutes. The area of this region is $m/n$ square miles, where $m$ and $n$ are relatively prime positive integers. Find $m + n$.\n\nSolution:"
+        },
+        {
+          "id": "math:train:1535",
+          "index": 1535,
+          "prompt": "[MATH_TASK] Problem:\nIf $s$ is an integer and the root(s) of the quadratic expression $\\frac{1}{2}x^2+sx-\\frac{1}{2}$ are integers, find the sum of all possible values of $s$.\n\nSolution:"
+        },
+        {
+          "id": "math:train:1679",
+          "index": 1679,
+          "prompt": "[MATH_TASK] Problem:\nThe number 210 is the product of two consecutive positive integers and is also the product of three consecutive integers. What is the sum of those five integers?\n\nSolution:"
+        },
+        {
+          "id": "math:train:1824",
+          "index": 1824,
+          "prompt": "[MATH_TASK] Problem:\nHow many 3-letter \"words\" can be formed from the standard 26-letter alphabet, if the first letter must be a vowel (A, E, I, O, or U)? (We aren't necessarily talking about English words; something like EQX is perfectly valid here.)\n\nSolution:"
+        },
+        {
+          "id": "math:train:2286",
+          "index": 2286,
+          "prompt": "[MATH_TASK] Problem:\nKaleb defined a $\\emph{clever integer}$ as an even integer that is greater than 20, less than 120, and such that the sum of its digits is 9. What fraction of all clever integers is divisible by 27? Express your answer as a common fraction.\n\nSolution:"
+        },
+        {
+          "id": "math:train:3657",
+          "index": 3657,
+          "prompt": "[MATH_TASK] Problem:\nSquares are constructed on each of the sides of triangle $\\triangle ABC$, as shown.  If the perimeter of $\\triangle ABC$ is 17, then what is the perimeter of the nine-sided figure that is composed of the remaining three sides of each of the squares? [asy]\nimport olympiad; size(150); defaultpen(linewidth(0.8)); dotfactor=4;\npicture a;\ndraw(a,(0,0)--(3,0)--(0,4)--cycle);\nlabel(\"$A$\",(-2.1,-2.2),SW);\nlabel(\"$B$\",(3.1,-2.2),SE);\nlabel(\"$C$\",(0.05,0.3),N);\ndraw(a,(3,0)--(3,-3)--(0,-3)--(0,0));\ndraw(a,(0,0)--(-4,0)--(-4,4)--(0,4));\ndraw(a,shift(-2.4,2.2)*rotate(90 - aTan(4/3))*((3,0)--(8,0)--(8,-5)--(3,-5)));\nadd(currentpicture,rotate(-130)*a);\n[/asy]\n\nSolution:"
+        },
+        {
+          "id": "math:train:4012",
+          "index": 4012,
+          "prompt": "[MATH_TASK] Problem:\nWhat is $2121_3 - 212_3?$ Express your answer in base 3.\n\nSolution:"
+        },
+        {
+          "id": "math:train:4506",
+          "index": 4506,
+          "prompt": "[MATH_TASK] Problem:\nTim is doing a cakewalk with $11$ steps. He takes his first step on step $1$ and takes a total of $139$ steps, walking in a circle (so that after the 11th step he reaches the first step again). Which step of the cakewalk does he end on?\n\nSolution:"
+        },
+        {
+          "id": "math:train:6912",
+          "index": 6912,
+          "prompt": "[MATH_TASK] Problem:\nWhat is the greatest digit that can be placed in the circle so that the six-digit number is divisible by 4? $$3\\:5\\:2\\:9 \\bigcirc 2$$\n\nSolution:"
+        },
+        {
+          "id": "math:train:8935",
+          "index": 8935,
+          "prompt": "[MATH_TASK] Problem:\nA pet store has 15 puppies, 6 kittens, and 8 hamsters. Alice, Bob, and Charlie each want to buy a pet. For variety, they each want a different kind of pet. How many ways can Alice, Bob, and Charlie buy pets and leave the store satisfied?\n\nSolution:"
+        },
+        {
+          "id": "math:train:9674",
+          "index": 9674,
+          "prompt": "[MATH_TASK] Problem:\nIf $x+y=4$ and $x^2+y^2=8$, find $x^3+y^3$.\n\nSolution:"
+        },
+        {
+          "id": "math:train:10476",
+          "index": 10476,
+          "prompt": "[MATH_TASK] Problem:\n$5$ green balls and $2$ red balls together weigh $10$ pounds, and $1$ green ball and $4$ red balls together weigh $7$ pounds. If all red balls weigh the same amount and all green balls weigh the same, then what is the weight of $8$ red and $8$ green balls together?\n\nSolution:"
+        },
+        {
+          "id": "math:train:11087",
+          "index": 11087,
+          "prompt": "[MATH_TASK] Problem:\nLet $a,$ $b,$ $c$ be complex numbers satisfying\n\\begin{align*}\n(a + 1)(b + 1)(c + 1) &= 1, \\\\\n(a + 2)(b + 2)(c + 2) &= 2, \\\\\n(a + 3)(b + 3)(c + 3) &= 3.\n\\end{align*}Find $(a + 4)(b + 4)(c + 4).$\n\nSolution:"
+        }
+      ]
+    }
+  }
+}

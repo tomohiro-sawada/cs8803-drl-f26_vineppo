@@ -55,6 +55,7 @@ def evaluate(
     max_new_tokens: int,
     temperature: float,
     formatter: Callable[[str], str] | None = None,
+    reference_is_solution: bool = False,
 ) -> tuple[list[EvaluationRecord], dict[str, int | float]]:
     """Borrow a text generator; never close it, even on failure.
 
@@ -62,6 +63,7 @@ def evaluate(
     is total_correct / total_count across *all* samples, not pass@k or voting.
     Given identical ordered completions, batching cannot change the result.
     A formatter sees only the question; absent one, the question is the prompt.
+    reference_is_solution opts into full-solution MATH references; default false.
     """
     assert examples, "Evaluation requires at least one example"
     assert all(isinstance(e.id, str) and e.id.strip() for e in examples), (
@@ -69,6 +71,9 @@ def evaluate(
     )
     assert len({e.id for e in examples}) == len(examples), "Example IDs must be unique"
     assert task in ("math", "gsm8k"), "Unsupported task"
+    assert not reference_is_solution or task == "math", (
+        "Solution references require MATH"
+    )
     for name, value in (
         ("batch_size", batch_size),
         ("num_samples", num_samples),
@@ -110,6 +115,7 @@ def evaluate(
                     example.reference_answer,
                     task=task,
                     question=example.question,
+                    reference_is_solution=reference_is_solution,
                 )
                 records.append(
                     EvaluationRecord(

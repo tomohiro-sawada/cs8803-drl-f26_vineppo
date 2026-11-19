@@ -1,0 +1,10 @@
+W1118 18:06:43.945000 2612232 .venv-inference-glibc2.39/lib/python3.13/site-packages/torch/_opaque_base.py:6] torch._opaque_base is deprecated, use torch._custom_class_base instead
+W1118 18:06:43.945000 2612232 .venv-inference-glibc2.39/lib/python3.13/site-packages/torch/_library/opaque_object.py:288] register_opaque_type is deprecated, use register_custom_class instead
+W1118 18:06:43.946000 2612232 .venv-inference-glibc2.39/lib/python3.13/site-packages/torch/_library/opaque_object.py:211] typ='value' is deprecated, use typ='constant' instead
+W1118 18:07:17.627000 2612453 .venv-inference-glibc2.39/lib/python3.13/site-packages/torch/_opaque_base.py:6] torch._opaque_base is deprecated, use torch._custom_class_base instead
+W1118 18:07:17.627000 2612453 .venv-inference-glibc2.39/lib/python3.13/site-packages/torch/_library/opaque_object.py:288] register_opaque_type is deprecated, use register_custom_class instead
+W1118 18:07:17.628000 2612453 .venv-inference-glibc2.39/lib/python3.13/site-packages/torch/_library/opaque_object.py:211] typ='value' is deprecated, use typ='constant' instead
+Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:30<00:00, 30.27s/it]
+Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:30<00:00, 30.27s/it]
+

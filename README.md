@@ -15,6 +15,89 @@ uv run python -c "from core.inference import HFInference, token_logprobs"
 The root project installs the packages under `src` in editable mode, so source
 changes are immediately available to imports.
 
+## Optional accelerated-inference environment
+
+The default `uv sync` selects `dev` + `sdpa` (Torch >=2.15), with no vLLM or
+FlashAttention. To opt in without modifying `.venv`, run from the repository root:
+
+```sh
+.venv/bin/python scripts/setup/install.py --inference
+# Preview resolution without installing:
+.venv/bin/python scripts/setup/install.py --inference --dry-run
+```
+
+The installer uses `.venv-inference-glibc<VERSION>` for the **current host's**
+GLIBC, Python 3.13, and the mutually exclusive `inference` group. vLLM 0.34.0
+requires Torch 2.14.0; the common dependency floor allows that version, while the
+`sdpa` group preserves the default Torch >=2.15 requirement. `uv.lock` records
+both stacks. The flag belongs to the setup script, not to uv itself.
+
+For example, on GLIBC 2.39, use the isolated environment explicitly:
+
+```sh
+.venv-inference-glibc2.39/bin/python -c 'import torch, vllm, vllm._C_stable_libtorch, flash_attn, flash_attn_2_cuda; print(torch.__version__)'
+# If using uv run, select the same groups (otherwise uv selects SDPA):
+UV_PROJECT_ENVIRONMENT=.venv-inference-glibc2.39 uv run --locked --no-group sdpa --group inference python your_script.py
+```
+
+Return to SDPA by using the original `.venv` / ordinary `uv run`; no runtime
+backend fallback is added. Installing these packages does not replace
+`HFInference` with a vLLM backend or change the model's attention implementation.
+
+FlashAttention is pinned to upstream commit
+`68bd095cdd338c5171bccb9c200529f3620b85c9` (version 2.8.4), which includes the
+C++20 build fix required by Torch >=2.13. PyPI 2.8.3.post2 failed to compile
+against Torch 2.14 because it explicitly selects C++17. Build prerequisites are
+installed first, against the selected Torch. The upstream build may fetch a
+GitHub wheel or compile locally; this can require substantial downloads, disk,
+RAM, and time.
+If the wheel has an incompatible GLIBC/ABI, explicitly request a source build:
+
+```sh
+# Run on the target compute-node OS with a matching CUDA toolkit/nvcc loaded.
+.venv/bin/python scripts/setup/install.py --inference --build-flash-attn
+```
+
+This sets `FLASH_ATTENTION_FORCE_BUILD=TRUE`, bypasses the cache, and reinstalls
+FlashAttention; `MAX_JOBS` defaults to 4 and can be set lower. A GLIBC error is
+**not** caused by the absence of a GPU and must not be ignored. Separate paths
+prevent cross-OS reuse but do not prove compatibility: check native imports and
+GPU execution on each target node. Do not assume PyPI supplies GLIBC-specific
+FlashAttention wheels; PyPI 2.8.3.post2 publishes only a source distribution.
+A source build on a newer GLIBC host does not make it portable to older nodes.
+
+Validation on `dave` in the existing `slurm_2` allocation (GLIBC 2.39, A40):
+vLLM 0.34.0 and Torch 2.14.0+cu130 installed; vLLM's native
+`_C_stable_libtorch` extension imported successfully, and a Torch CUDA tensor
+operation passed. This is **not** an end-to-end vLLM generation test.
+FlashAttention's pinned source build started but the Slurm step was cancelled
+before completion; FlashAttention is **not installed/validated yet**. No GLIBC
+error occurred. The base `.venv` was not modified by these installation attempts.
+
+Resume on an allocated A40 with a CUDA toolkit loaded (allow sufficient build
+time). The architecture setting below is A40-focused, not a universal GPU build:
+
+```sh
+FLASH_ATTN_CUDA_ARCHS=80 NVCC_THREADS=1 .venv/bin/python scripts/setup/install.py --inference
+```
+
+Then validate FlashAttention forward/backward kernels and vLLM generation before
+using the stack for experiments. Do not run another installer concurrently in
+the same environment.
+
+## Step segmentation
+
+`src/core/segmentation.py` provides `math_step_boundaries()` and
+`gsm8k_step_boundaries()`, returning response-relative token boundaries for
+VinePPO. MATH preserves the original in-place splitter's heuristics (including
+its quirks); GSM8K preserves newline splitting and the upstream answer-suffix
+handling. Neither rewrites the sampled token sequence.
+
+Callers must supply verified character spans for the **actual sampled tokens**.
+A character boundary inside a token raises rather than silently rounding it.
+Thus this is an exact-boundary utility, not yet a tokenizer-offset extraction or
+training integration. Sampled trailing EOS tokens belong to the final step.
+
 ## HF inference
 
 `src/core/inference.py` uses the loaded decoder-only training model directly;

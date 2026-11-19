@@ -296,6 +296,42 @@ def test_errors_propagate(episode, inference, source):
     assert caught.value is error
 
 
+@pytest.mark.parametrize(
+    "limit,expected", [(8, [3, 3, 1]), (9, [3, 3, 2]), (10, [3, 3, 3])]
+)
+def test_mc_budget_uses_full_prefix_not_remaining_response_cap(
+    episode, inference, limit, expected
+):
+    estimate(episode, inference, max_sequence_length=limit)
+    assert [call[2] for call in inference.calls] == expected
+
+
+@pytest.mark.parametrize("limit", [0, -1, True, 8.0, None, 2, 7])
+def test_invalid_or_exhausted_total_budget_before_generation(episode, inference, limit):
+    with pytest.raises(ValueError):
+        estimate(episode, inference, max_sequence_length=limit)
+    assert inference.calls == []
+
+
+def test_overlong_episode_rejected_before_generation(episode, inference):
+    with pytest.raises(ValueError, match="episode exceeds"):
+        estimate(episode, inference, step_boundaries=(0, 6), max_sequence_length=7)
+    assert inference.calls == []
+
+
+def test_mc_default_generation_cap(episode, inference):
+    estimate_vineppo(
+        "default",
+        episode,
+        inference=inference,
+        step_boundaries=BOUNDARIES,
+        score_response=score_response,
+        num_samples=2,
+        temperature=1.0,
+    )
+    assert [call[2] for call in inference.calls] == [1024, 1024, 1024]
+
+
 def test_advantage_expansion_without_mutation(value_estimate):
     before = deepcopy(value_estimate)
     assert vineppo_advantage_method(value_estimate) == [

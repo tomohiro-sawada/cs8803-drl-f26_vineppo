@@ -1,0 +1,25 @@
+{
+  "complete": true,
+  "proxy_only": true,
+  "tasks": {
+    "gsm8k": {
+      "count": 16,
+      "by_category": {
+        "success": 16
+      },
+      "by_finish_reason": {
+        "stop": 16
+      }
+    },
+    "math": {
+      "count": 16,
+      "by_category": {
+        "success": 14,
+        "inside_token": 2
+      },
+      "by_finish_reason": {
+        "stop": 16
+      }
+    }
+  }
+}

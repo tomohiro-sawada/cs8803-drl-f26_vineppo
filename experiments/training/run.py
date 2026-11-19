@@ -1,0 +1,625 @@
+"""Offline, single-CUDA-device PPO/VinePPO/GRPO/RLOO training.
+
+Both modes perform real updates; --num-iterations (default 3) is the TOTAL target,
+including resumed iterations. Set it explicitly for longer training. Benchmark
+excludes the first --warmup-iterations of THIS invocation only from its summary.
+Native BF16 is not AMP: parameters, gradients and AdamW moments are BF16 (the
+optimizer step counter is FP32); there are no FP32 master weights. With LoRA,
+only the actor adapters are trainable, in FP32 with FP32 AdamW moments; the base
+and separate frozen reference use --dtype. PPO's critic remains full-parameter.
+Core scoring and losses use FP32. No quantization, gradient checkpointing or DDP.
+
+Checkpoint retention applies only to this fresh output directory. Atomic writes
+need space for keep-checkpoints + 1 full checkpoints before pruning (three with
+the default retention). A checkpoint includes actor, reference, optimizer and,
+for PPO, critic/optimizer. Resume requires matching core execution/data identity.
+
+Timing uses synchronized CUDA wall clocks, not CUDA events. MC estimation includes
+MC generation and continuation verification, but not primary verification or
+segmentation. Those, collation, sampling and instrumentation are in other_seconds.
+MC generation is a nested diagnostic: do not add it to MC estimation again.
+Iteration totals include scheduled checkpoint serialization/pruning but exclude
+JSONL writing and initial model/data loading/tokenization. Token counts include
+sampled EOS, exclude padding/prompt tokens, and count all MC continuations.
+"""
+
+import argparse
+import hashlib
+import json
+import math
+import os
+import platform
+import subprocess
+import sys
+from collections import defaultdict
+from contextlib import contextmanager
+from dataclasses import asdict
+from datetime import UTC, datetime
+from functools import wraps
+from importlib.metadata import version
+from pathlib import Path
+from time import perf_counter
+
+# Must precede all HF imports, including transitive runtime imports.
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["HF_DATASETS_OFFLINE"] = "1"
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
+
+import torch
+from datasets import DatasetDict, load_from_disk
+from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
+
+from algorithms.grpo import GRPOConfig
+from algorithms.ppo import PPOConfig, TokenCritic
+from algorithms.rloo import RLOOConfig
+from algorithms.vineppo import VinePPOConfig
+from core.data import Example
+from core.inference import HFInference
+from core.lora import apply_lora, lora_identity
+from runtime.config import PPOTrainerConfig
+from runtime.train import PPOTrainer
+
+# Identical to scripts/paper_artifact_replications/evaluate_sft.py; no test loader.
+PROMPT = "[MATH_TASK] Problem:\n{question}\n\nSolution:"
+PHASES = (
+    "primary_generation",
+    "mc_estimation",
+    "ppo_estimation",
+    "score_cache",
+    "actor_update",
+    "critic_update",
+    "checkpoint",
+)
+
+
+def paper_prompt(question: str) -> str:
+    return PROMPT.format(question=question)
+
+
+def positive_int(text: str) -> int:
+    value = int(text)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
+    return value
+
+
+def positive_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value) or value <= 0:
+        raise argparse.ArgumentTypeError("must be finite and positive")
+    return value
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("--mode", choices=("train", "benchmark"), required=True)
+    parser.add_argument(
+        "--algorithm", choices=("vineppo", "ppo", "grpo", "rloo"), required=True
+    )
+    parser.add_argument("--task", choices=("gsm8k", "math"), required=True)
+    for name in ("model-path", "dataset-path", "output"):
+        parser.add_argument(f"--{name}", type=Path, required=True)
+    parser.add_argument(
+        "--expected-gpu", help="Case-insensitive substring of CUDA device name"
+    )
+    for name, default in (
+        ("num-iterations", 3),
+        ("prompts-per-iteration", 2),
+        ("num-samples", 1),
+        ("mc-num-samples", 4),
+        ("update-epochs", 1),
+        ("minibatch-size", 2),
+        ("microbatch-size", 1),
+        ("max-sequence-length", 2048),
+        ("max-new-tokens", 1024),
+        ("keep-checkpoints", 2),
+    ):
+        parser.add_argument(f"--{name}", type=positive_int, default=default)
+    parser.add_argument(
+        "--warmup-iterations",
+        type=int,
+        default=1,
+        help="Benchmark-only summary exclusion; still real updates (default: 1)",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=positive_float,
+        help="Default: 1e-6 full tuning, 1e-5 LoRA; tune independently",
+    )
+    parser.add_argument("--critic-learning-rate", type=positive_float, default=1e-5)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--checkpoint-every",
+        type=positive_int,
+        help="Default: every train iteration; benchmark final only. Final always saved.",
+    )
+    parser.add_argument(
+        "--resume", type=Path, help="Core iteration-N.pt; output must still be new"
+    )
+    parser.add_argument("--dtype", choices=("float32", "bfloat16"), default="float32")
+    parser.add_argument("--finetuning", choices=("full", "lora"), default="full")
+    parser.add_argument("--lora-rank", type=positive_int)
+    parser.add_argument("--lora-alpha", type=positive_float)
+    args = parser.parse_args(argv)
+    if args.finetuning == "full" and (
+        args.lora_rank is not None or args.lora_alpha is not None
+    ):
+        parser.error("LoRA options require --finetuning lora")
+    if args.finetuning == "lora":
+        args.lora_rank = 16 if args.lora_rank is None else args.lora_rank
+        args.lora_alpha = 32.0 if args.lora_alpha is None else args.lora_alpha
+    if args.learning_rate is None:
+        args.learning_rate = 1e-5 if args.finetuning == "lora" else 1e-6
+    if args.algorithm in ("grpo", "rloo") and args.num_samples < 2:
+        parser.error("GRPO/RLOO require --num-samples >= 2 per prompt")
+    if args.warmup_iterations < 0 or not 0 <= args.seed < 2**64:
+        parser.error("warmup must be nonnegative; seed must be in [0, 2**64)")
+    if args.mode == "benchmark" and args.warmup_iterations >= args.num_iterations:
+        parser.error("benchmark needs at least one non-warmup iteration")
+    for name in ("model_path", "dataset_path"):
+        path = getattr(args, name).expanduser().resolve(strict=True)
+        assert path.is_dir(), f"Expected local directory: {path}"
+        setattr(args, name, path)
+    args.output = args.output.expanduser().resolve()
+    assert not args.output.exists(), (
+        "Output must be a new directory, including on resume"
+    )
+    if args.resume is not None:
+        args.resume = args.resume.expanduser().resolve(strict=True)
+        assert args.resume.is_file(), "Resume must be a checkpoint file"
+    return args
+
+
+def load_examples(path: Path, task: str):
+    """Use only train rows; IDs preserve deterministic source split/index order."""
+    dataset = load_from_disk(str(path))
+    assert isinstance(dataset, DatasetDict), "Expected a locally saved DatasetDict"
+    train = dataset["train"]
+    examples = []
+    for index, row in enumerate(train):
+        question = row["question" if task == "gsm8k" else "problem"]
+        answer = row["answer" if task == "gsm8k" else "solution"]
+        assert isinstance(question, str) and question.strip(), (
+            f"Empty question: {index}"
+        )
+        assert isinstance(answer, str) and answer.strip(), f"Empty reference: {index}"
+        if task == "gsm8k":
+            parts = answer.split("####")
+            assert len(parts) == 2, f"Malformed GSM8K reference: {index}"
+            answer = parts[1].strip()
+        assert answer.strip(), f"Empty final reference: {index}"
+        examples.append(Example(f"{task}:train:{index}", question.strip(), answer))
+    assert examples, "Empty train split"
+    digest = hashlib.sha256()
+    for example in examples:
+        digest.update(
+            (
+                json.dumps(asdict(example), sort_keys=True, ensure_ascii=False) + "\n"
+            ).encode()
+        )
+    return examples, {
+        "split": "train",
+        "rows": len(train),
+        "fingerprint": train._fingerprint,
+        "normalized_sha256": digest.hexdigest(),
+    }
+
+
+def timed(phase):
+    def decorate(method):
+        @wraps(method)
+        def wrapped(self, *args, **kwargs):
+            with self.meter.phase(phase):
+                return method(self, *args, **kwargs)
+
+        return wrapped
+
+    return decorate
+
+
+class Meter:
+    """Scalar-only instrumentation; never samples, reseeds, or retains rollouts."""
+
+    def __init__(self):
+        self.active = None
+        self.seconds = defaultdict(float)
+        self.counts = defaultdict(int)
+
+    def start(self):
+        self.seconds.clear()
+        self.counts.clear()
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+        self.started = perf_counter()
+
+    @contextmanager
+    def phase(self, name):
+        previous = self.active
+        self.active = name
+        torch.cuda.synchronize()
+        started = perf_counter()
+        try:
+            yield
+        finally:
+            torch.cuda.synchronize()
+            self.seconds[name] += perf_counter() - started
+            self.active = previous
+
+
+class MeasuredInference(HFInference):
+    def __init__(self, *args, meter, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.meter = meter
+
+    def generate(self, prefixes, **kwargs):
+        assert self.meter.active in ("primary_generation", "mc_estimation")
+        kind = "mc" if self.meter.active == "mc_estimation" else "primary"
+        with self.meter.phase(f"{kind}_generate_call"):
+            result = super().generate(prefixes, **kwargs)
+        self.meter.counts[f"{kind}_continuations"] += sum(map(len, result))
+        self.meter.counts[f"{kind}_tokens"] += sum(
+            len(c.token_ids) for group in result for c in group
+        )
+        if kind == "mc":
+            self.meter.counts["mc_expansions"] += len(prefixes)
+        return result
+
+
+class MeasuredTrainer(PPOTrainer):
+    """Thin wrappers around core hooks; checkpoint-aware metric finalization."""
+
+    def __init__(
+        self, *args, meter, stream, warmup_iterations, keep_checkpoints, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.meter = meter
+        self.stream = stream
+        self.warmup_iterations = warmup_iterations
+        self.keep_checkpoints = keep_checkpoints
+        self.rows = []
+        self.pending = None
+        self.saved = []
+
+    def _prepare_inputs(self, *args, **kwargs):
+        result = super()._prepare_inputs(*args, **kwargs)
+        assert all(len(ids) < self.config.max_sequence_length for ids in result[0]), (
+            "A train prompt exhausts context; increase --max-sequence-length"
+        )
+        self.meter.start()
+        return result
+
+    @timed("primary_generation")
+    def collect_completions(self, *args, **kwargs):
+        return super().collect_completions(*args, **kwargs)
+
+    @timed("mc_estimation")
+    def estimate_vineppo(self, *args, **kwargs):
+        return super().estimate_vineppo(*args, **kwargs)
+
+    @timed("ppo_estimation")
+    def _estimate_ppo(self, *args, **kwargs):
+        return super()._estimate_ppo(*args, **kwargs)
+
+    @timed("score_cache")
+    def _cache_scores(self, *args, **kwargs):
+        return super()._cache_scores(*args, **kwargs)
+
+    @timed("actor_update")
+    def update_policy(self, *args, **kwargs):
+        return super().update_policy(*args, **kwargs)
+
+    @timed("critic_update")
+    def update_value(self, *args, **kwargs):
+        return super().update_value(*args, **kwargs)
+
+    def record_metrics(self, metrics):
+        assert self.pending is None
+        self.pending = metrics
+        if (
+            self.iteration % self.config.checkpoint_every
+            and self.iteration != self.config.num_iterations
+        ):
+            self.finish_iteration()
+
+    def save_checkpoint(self, path=None):
+        assert path is None, "Runner checkpoints must stay in this run's directory"
+        with self.meter.phase("checkpoint"):
+            saved = super().save_checkpoint()
+            self.meter.counts["checkpoint_bytes"] = saved.stat().st_size
+            self.saved.append(saved)
+            # Track only files actually created by this instance, never glob a resume directory.
+            while len(self.saved) > self.keep_checkpoints:
+                self.saved.pop(0).unlink()
+        assert self.pending is not None
+        self.finish_iteration()
+        return saved
+
+    def finish_iteration(self):
+        torch.cuda.synchronize()
+        elapsed = perf_counter() - self.meter.started
+        phases = {f"{name}_seconds": self.meter.seconds[name] for name in PHASES}
+        counts = {
+            name: self.meter.counts[name]
+            for name in (
+                "primary_tokens",
+                "mc_tokens",
+                "primary_continuations",
+                "mc_continuations",
+                "mc_expansions",
+                "checkpoint_bytes",
+            )
+        }
+        tokens = counts["primary_tokens"] + counts["mc_tokens"]
+        row = (
+            self.pending
+            | counts
+            | phases
+            | {
+                "warmup": len(self.rows) < self.warmup_iterations,
+                "iteration_seconds": elapsed,
+                "other_seconds": elapsed - sum(phases.values()),
+                "mc_generation_seconds": self.meter.seconds["mc_generate_call"],
+                "sampled_tokens": tokens,
+                "sampled_tokens_per_second": tokens / elapsed,
+                "peak_allocated_bytes": torch.cuda.max_memory_allocated(),
+                "peak_reserved_bytes": torch.cuda.max_memory_reserved(),
+                "allocated_bytes_end": torch.cuda.memory_allocated(),
+                "reserved_bytes_end": torch.cuda.memory_reserved(),
+            }
+        )
+        self.stream.write(json.dumps(row, allow_nan=False) + "\n")
+        self.stream.flush()
+        self.rows.append(row)
+        self.pending = None
+        self.meter.start()
+
+
+def write_json(path, value):
+    with path.open("x") as stream:
+        json.dump(value, stream, indent=2, default=str, allow_nan=False)
+        stream.write("\n")
+
+
+def git(*args):
+    return subprocess.check_output(
+        ["git", "--no-pager", "--no-optional-locks", *args], cwd=ROOT, text=True
+    ).strip()
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    assert torch.cuda.is_available(), "CUDA required; no CPU/MPS fallback"
+    assert torch.cuda.device_count() == 1, (
+        "Expose exactly one GPU with CUDA_VISIBLE_DEVICES"
+    )
+    gpu = torch.cuda.get_device_properties(0)
+    assert (
+        args.expected_gpu is None or args.expected_gpu.casefold() in gpu.name.casefold()
+    ), f"Expected GPU {args.expected_gpu!r}, found {gpu.name!r}"
+    if args.dtype == "bfloat16":
+        assert torch.cuda.is_bf16_supported(including_emulation=False), (
+            "Native BF16 required"
+        )
+    torch.cuda.set_device(0)
+    torch.manual_seed(args.seed)
+    examples, dataset_info = load_examples(args.dataset_path, args.task)
+    assert len(examples) >= args.prompts_per_iteration
+    checkpoint_every = args.checkpoint_every
+    if checkpoint_every is None:
+        checkpoint_every = args.num_iterations if args.mode == "benchmark" else 1
+    config = PPOTrainerConfig(
+        checkpoint_dir=args.output / "checkpoints",
+        algorithm_config={
+            "vineppo": VinePPOConfig,
+            "ppo": PPOConfig,
+            "grpo": GRPOConfig,
+            "rloo": RLOOConfig,
+        }[args.algorithm](),
+        checkpoint_every=checkpoint_every,
+        **{
+            name: getattr(args, name)
+            for name in (
+                "num_iterations",
+                "prompts_per_iteration",
+                "num_samples",
+                "mc_num_samples",
+                "update_epochs",
+                "minibatch_size",
+                "microbatch_size",
+                "max_sequence_length",
+                "max_new_tokens",
+                "seed",
+            )
+        },
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        str(args.model_path),
+        local_files_only=True,
+        trust_remote_code=False,
+        use_fast=True,
+    )
+    assert tokenizer.is_fast and tokenizer.eos_token_id is not None
+    pad_was_missing = tokenizer.pad_token_id is None
+    if pad_was_missing:
+        tokenizer.pad_token = tokenizer.eos_token
+    model_kwargs = {
+        "local_files_only": True,
+        "trust_remote_code": False,
+        "dtype": getattr(torch, args.dtype),
+        "attn_implementation": "sdpa",
+        "use_safetensors": True,
+    }
+    actor = AutoModelForCausalLM.from_pretrained(
+        str(args.model_path), **model_kwargs
+    ).to("cuda:0")
+    reference = AutoModelForCausalLM.from_pretrained(
+        str(args.model_path), **model_kwargs
+    ).to("cuda:0")
+    reference.requires_grad_(False).eval()
+    if args.finetuning == "lora":
+        actor = apply_lora(actor, rank=args.lora_rank, alpha=args.lora_alpha)
+    optimizer = torch.optim.AdamW(
+        [p for p in actor.parameters() if p.requires_grad],
+        lr=args.learning_rate,
+        weight_decay=0.0,
+    )
+    critic = critic_optimizer = None
+    if args.algorithm == "ppo":
+        critic = TokenCritic(
+            AutoModel.from_pretrained(str(args.model_path), **model_kwargs).to("cuda:0")
+        )
+        critic_optimizer = torch.optim.AdamW(
+            critic.parameters(), lr=args.critic_learning_rate, weight_decay=0.0
+        )
+    # Reserve only after configuration, data and model validation; never reuse an output.
+    args.output.mkdir(parents=True, exist_ok=False)
+    meter = Meter()
+    warmup = args.warmup_iterations if args.mode == "benchmark" else 0
+    with (
+        (args.output / "metrics.jsonl").open("x") as stream,
+        MeasuredInference(
+            actor, pad_token_id=tokenizer.pad_token_id, meter=meter
+        ) as inference,
+    ):
+        trainer = MeasuredTrainer(
+            config,
+            actor,
+            inference,
+            optimizer=optimizer,
+            reference_policy=reference,
+            critic=critic,
+            critic_optimizer=critic_optimizer,
+            meter=meter,
+            stream=stream,
+            warmup_iterations=warmup,
+            keep_checkpoints=args.keep_checkpoints,
+        )
+        inputs = {
+            "examples": examples,
+            "tokenizer": tokenizer,
+            "task": args.task,
+            "formatter": paper_prompt,
+            "reference_is_solution": args.task == "math",
+        }
+        if args.resume is not None:
+            trainer.load_checkpoint(args.resume, **inputs)
+            assert all(g["lr"] == args.learning_rate for g in optimizer.param_groups), (
+                "--learning-rate must match the resumed optimizer"
+            )
+            if critic_optimizer is not None:
+                assert all(
+                    g["lr"] == args.critic_learning_rate
+                    for g in critic_optimizer.param_groups
+                ), "--critic-learning-rate must match the resumed optimizer"
+        assert args.num_iterations - trainer.iteration > warmup, (
+            "Need non-warmup new iterations after resume"
+        )
+        metadata = {
+            "schema_version": 1,
+            "created_at": datetime.now(UTC).isoformat(),
+            "cli": vars(args),
+            "trainer_config": asdict(config),
+            "model": {
+                "path": str(args.model_path),
+                "config": actor.config.to_dict(),
+                "config_sha256": hashlib.sha256(
+                    (args.model_path / "config.json").read_bytes()
+                ).hexdigest(),
+                "parameters": sum(p.numel() for p in actor.parameters()),
+                "trainable_parameters": sum(
+                    p.numel() for p in actor.parameters() if p.requires_grad
+                ),
+                "trainable_dtypes": sorted(
+                    {str(p.dtype) for p in actor.parameters() if p.requires_grad}
+                ),
+                "lora": lora_identity(actor) if args.finetuning == "lora" else None,
+                "weights_content_hashed": False,
+            },
+            "dataset": {"path": str(args.dataset_path), **dataset_info},
+            "prompt": PROMPT,
+            "pad_uses_eos_because_missing": pad_was_missing,
+            "software": {
+                "python": sys.version,
+                "platform": platform.platform(),
+                **{
+                    name: version(name)
+                    for name in ("torch", "transformers", "datasets", "peft")
+                },
+                "cuda": torch.version.cuda,
+                "cudnn": torch.backends.cudnn.version(),
+            },
+            "gpu": {
+                "name": gpu.name,
+                "total_memory": gpu.total_memory,
+                "capability": [gpu.major, gpu.minor],
+                "visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+            },
+            "git": {
+                "commit": git("rev-parse", "HEAD"),
+                "dirty": bool(git("status", "--porcelain")),
+            },
+            "start_iteration": trainer.iteration,
+            "precision": (
+                "FP32 actor adapters/gradients/moments; frozen base/reference use dtype; "
+                "PPO critic native dtype; no AMP/master weights"
+                if args.finetuning == "lora"
+                else "Native dtype; AdamW moments follow parameters; FP32 step counter; no AMP/master weights"
+            ),
+            "measurement_contract": __doc__,
+        }
+        write_json(args.output / "metadata.json", metadata)
+        trainer.train(**inputs, record_metrics=trainer.record_metrics)
+        assert trainer.pending is None
+        measured = [row for row in trainer.rows if not row["warmup"]]
+        seconds = sum(row["iteration_seconds"] for row in measured)
+        tokens = sum(row["sampled_tokens"] for row in measured)
+        write_json(
+            args.output / "summary.json",
+            {
+                "schema_version": 1,
+                "mode": args.mode,
+                "completed_iteration": trainer.iteration,
+                "iterations_executed": len(trainer.rows),
+                "iterations_measured": len(measured),
+                "warmup_iterations_excluded": warmup,
+                "iteration_seconds_total": seconds,
+                "iteration_seconds_mean": seconds / len(measured),
+                "sampled_tokens": tokens,
+                "sampled_tokens_per_second": tokens / seconds,
+                "phase_seconds_total": {
+                    name: sum(row[f"{name}_seconds"] for row in measured)
+                    for name in PHASES
+                },
+                "sampling_totals": {
+                    name: sum(row[name] for row in measured)
+                    for name in (
+                        "primary_tokens",
+                        "mc_tokens",
+                        "primary_continuations",
+                        "mc_continuations",
+                        "mc_expansions",
+                    )
+                },
+                "peak_allocated_bytes": max(
+                    row["peak_allocated_bytes"] for row in measured
+                ),
+                "peak_reserved_bytes": max(
+                    row["peak_reserved_bytes"] for row in measured
+                ),
+                "checkpoints": [
+                    {"path": str(path), "bytes": path.stat().st_size}
+                    for path in trainer.saved
+                ],
+            },
+        )
+    print(
+        f"Completed iteration {trainer.iteration}; metrics and summary: {args.output}"
+    )
+
+
+if __name__ == "__main__":
+    main()

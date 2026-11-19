@@ -5,13 +5,16 @@ import pytest
 import torch
 
 from core.data import (
+    CriticBatch,
     Episode,
     EpisodeWithAdvantages,
     Example,
     PolicyGradientBatch,
+    PPOValueEstimate,
     TrainBatch,
     VinePPOValueEstimate,
     collate,
+    collate_critic,
 )
 
 
@@ -291,3 +294,92 @@ def test_collate_revalidates_mutated_lists(name, replacement):
     with pytest.raises(AssertionError):
         collate(episodes, old_logprobs=old, ref_logprobs=ref, pad_token_id=99)
     assert (episodes, old, ref) == snapshot
+
+
+@pytest.mark.parametrize(
+    "prompts,responses",
+    [
+        ([[11, 12], [31]], [[21, 22], [41]]),
+        ([[11]], [[21]]),
+        ([[99], [31, 32]], [[99], [41, 99]]),
+        ([[11, 12], [31]], [[21], [41, 42]]),
+    ],
+    ids=["mixed-lengths", "minimum-singleton", "real-pad-token", "equal-totals"],
+)
+def test_collate_critic_layout_and_targets(prompts, responses):
+    estimates = tuple(
+        PPOValueEstimate(
+            str(i),
+            Episode(p, r, 1.0, "stop"),
+            [-10.0] * len(r),
+            [float(i + j + 1) for j in range(len(r))],
+        )
+        for i, (p, r) in enumerate(zip(prompts, responses, strict=True))
+    )
+    snapshot = deepcopy(estimates)
+    batch = collate_critic(estimates, pad_token_id=99)
+    assert isinstance(batch, CriticBatch)
+    width = max(len(p) + len(r) for p, r in zip(prompts, responses, strict=True))
+    for name, dtype in (
+        ("input_ids", torch.int64),
+        ("attention_mask", torch.bool),
+        ("response_mask", torch.bool),
+        ("returns", torch.float32),
+    ):
+        tensor = getattr(batch, name)
+        assert tensor.shape == (
+            len(estimates),
+            width if name in ("input_ids", "attention_mask") else width - 1,
+        )
+        assert tensor.dtype == dtype
+        assert tensor.device.type == "cpu"
+        assert not tensor.requires_grad
+        assert tensor.grad_fn is None
+    for i, estimate in enumerate(estimates):
+        p, r = estimate.episode.prompt_ids, estimate.episode.response_ids
+        padding = width - len(p) - len(r)
+        assert batch.input_ids[i].tolist() == p + r + [99] * padding
+        assert (
+            batch.attention_mask[i].tolist()
+            == [True] * (len(p) + len(r)) + [False] * padding
+        )
+        assert (
+            batch.response_mask[i].tolist()
+            == [False] * (len(p) - 1) + [True] * len(r) + [False] * padding
+        )
+        assert batch.returns[i].tolist() == (
+            [0.0] * (len(p) - 1) + estimate.return_estimates + [0.0] * padding
+        )
+    assert estimates == snapshot
+
+
+def test_collate_critic_rejects_empty_batch():
+    with pytest.raises(AssertionError, match="episodes must be nonempty"):
+        collate_critic([], pad_token_id=99)
+
+
+@pytest.mark.parametrize(
+    "name,replacement,message",
+    [
+        ("prompt_ids", [], "prompt must be nonempty"),
+        ("response_ids", [], "response must be nonempty"),
+        ("response_ids", [21], "must match response length"),
+        ("response_ids", [21, 22, 23], "must match response length"),
+        ("critic_value_estimates", [], "must match response length"),
+        ("critic_value_estimates", [0.5], "must match response length"),
+        ("critic_value_estimates", [0.5] * 3, "must match response length"),
+        ("return_estimates", [], "must match response length"),
+        ("return_estimates", [1.0], "must match response length"),
+        ("return_estimates", [1.0] * 3, "must match response length"),
+    ],
+)
+def test_collate_critic_revalidates_mutated_lists(name, replacement, message):
+    estimate = PPOValueEstimate(
+        "id", Episode([11], [21, 22], 1.0, "stop"), [0.5, 0.5], [1.0, 1.0]
+    )
+    owner = estimate.episode if name in ("prompt_ids", "response_ids") else estimate
+    getattr(owner, name)[:] = replacement
+    snapshot = deepcopy(estimate)
+    with pytest.raises(AssertionError, match=message):
+        collate_critic([estimate], pad_token_id=99)
+    assert estimate == snapshot
