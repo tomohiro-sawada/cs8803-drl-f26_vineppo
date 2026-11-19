@@ -378,6 +378,7 @@ def measured_trainer():
     trainer.keep_checkpoints = 2
     trainer.rows, trainer.saved = [], []
     trainer.pending = None
+    trainer.tracker = None
     return trainer
 
 
@@ -428,9 +429,22 @@ def test_retention_only_prunes_owned_files_after_success(monkeypatch, tmp_path, 
 @pytest.mark.parametrize(
     "finetuning,dtype", [("full", "float32"), ("lora", "bfloat16")]
 )
+@pytest.mark.parametrize("tracking_mode", ["disabled", "offline"])
 def test_main_local_model_assembly_and_real_warmup_summary(
-    cli, tmp_path, monkeypatch, clock, algorithm, task, finetuning, dtype
+    cli, tmp_path, monkeypatch, clock, algorithm, task, finetuning, dtype, tracking_mode
 ):
+    tracked_run = SimpleNamespace(
+        id="fake-run",
+        url=None,
+        summary={},
+        define_metric=Mock(),
+        log=Mock(),
+        finish=Mock(),
+    )
+    sdk = SimpleNamespace(
+        init=Mock(return_value=tracked_run), Settings=lambda **kwargs: kwargs
+    )
+    monkeypatch.setitem(sys.modules, "wandb", sdk)
     model_path = tmp_path / "model"
     (model_path / "config.json").write_text("{}")
     row = (
@@ -509,6 +523,8 @@ def test_main_local_model_assembly_and_real_warmup_summary(
         trainer.meter = kwargs["meter"]
         trainer.stream = kwargs["stream"]
         trainer.warmup_iterations = kwargs["warmup_iterations"]
+        trainer.optimizer = SimpleNamespace(param_groups=[{"lr": 1e-5}])
+        trainer.critic_optimizer = None
         return trainer
 
     assembly = Mock(side_effect=assemble)
@@ -558,7 +574,20 @@ def test_main_local_model_assembly_and_real_warmup_summary(
     ]
     if finetuning == "lora":
         options += ["--lora-rank", "8", "--lora-alpha", "12.5"]
-    runner.main(cli + options)
+    runner.main(cli + options + ["--wandb-mode", tracking_mode])
+    if tracking_mode == "offline":
+        sdk.init.assert_called_once()
+        tracked_run.finish.assert_called_once_with(exit_code=0)
+        assert tracked_run.log.call_count == 3
+        assert [c.kwargs["step"] for c in tracked_run.log.call_args_list] == [1, 2, 3]
+        assert tracked_run.summary["iterations_measured"] == 2
+        assert (
+            json.loads((tmp_path / "output" / "wandb.json").read_text())["id"]
+            == "fake-run"
+        )
+        assert tracked_run.log.call_args.args[0]["budget/primary_tokens"] == 924
+    else:
+        sdk.init.assert_not_called()
     kwargs = {
         "local_files_only": True,
         "trust_remote_code": False,
@@ -664,3 +693,37 @@ def test_main_local_model_assembly_and_real_warmup_summary(
     assert rows[1]["mc_generation_seconds"] == (0.75 if uses_mc else 0)
     assert trainer.pending is None
     inference.__exit__.assert_called_once()
+
+
+def test_iteration_is_logged_after_local_write_with_learning_rates(clock):
+    trainer = measured_trainer()
+    tracker = Mock()
+    trainer.tracker = tracker
+    trainer.optimizer = SimpleNamespace(param_groups=[{"lr": 1e-5}])
+    trainer.critic_optimizer = SimpleNamespace(param_groups=[{"lr": 2e-5}])
+    trainer.pending = {"iteration": 7, "loss": 0.5}
+    trainer.meter.start()
+    clock.now += 2
+
+    def capture(row):
+        assert json.loads(trainer.stream.getvalue()) == row
+        assert row["actor_learning_rate"] == 1e-5
+        assert row["critic_learning_rate"] == 2e-5
+
+    tracker.log_iteration.side_effect = capture
+    trainer.finish_iteration()
+    tracker.log_iteration.assert_called_once_with(trainer.rows[0])
+
+
+def test_tracking_failure_propagates_after_preserving_local_row(clock):
+    trainer = measured_trainer()
+    trainer.tracker = Mock()
+    trainer.tracker.log_iteration.side_effect = RuntimeError("logging failed")
+    trainer.optimizer = SimpleNamespace(param_groups=[{"lr": 1e-5}])
+    trainer.critic_optimizer = None
+    trainer.pending = {"iteration": 1, "loss": 0.5}
+    trainer.meter.start()
+    clock.now += 1
+    with pytest.raises(RuntimeError, match="logging failed"):
+        trainer.finish_iteration()
+    assert json.loads(trainer.stream.getvalue())["iteration"] == 1

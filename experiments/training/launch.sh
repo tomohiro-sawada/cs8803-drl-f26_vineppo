@@ -21,6 +21,7 @@ while (( $# )); do
                 ppo) [[ $cluster == pace_ice ]] || fail 'PPO is not supported on Skynet; use PACE ICE' ;;
                 *) fail "Unsupported algorithm: $2 (choose vineppo, ppo, grpo, or rloo)" ;;
             esac ;;
+        --wandb-mode|--wandb-project|--wandb-entity|--wandb-group|--wandb-name) ;;
         --task) task=$2 ;;
         --model-path) model=$2 ;;
         --dataset-path) dataset=$2 ;;
@@ -65,7 +66,7 @@ defaults=(--mode "$mode" --algorithm vineppo --expected-gpu "$expected_gpu"
     --prompts-per-iteration 2 --num-samples 2 --mc-num-samples 2
     --update-epochs 1 --minibatch-size 2 --microbatch-size 1
     --max-sequence-length 2048 --max-new-tokens 1024
-    --keep-checkpoints 2 --dtype float32)
+    --keep-checkpoints 2 --dtype float32 --wandb-mode online)
 case "$mode" in
     train) defaults+=(--num-iterations 100 --warmup-iterations 0 --checkpoint-every 10) ;;
     benchmark) defaults+=(--num-iterations 3 --warmup-iterations 1) ;;

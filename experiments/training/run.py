@@ -32,7 +32,7 @@ import platform
 import subprocess
 import sys
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from functools import wraps
@@ -46,6 +46,7 @@ os.environ["HF_DATASETS_OFFLINE"] = "1"
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
 
 import torch
 from datasets import DatasetDict, load_from_disk
@@ -58,6 +59,7 @@ from algorithms.vineppo import VinePPOConfig
 from core.data import Example
 from core.inference import HFInference
 from core.lora import apply_lora, lora_identity
+from experiments.training.tracking import WandBTracker
 from runtime.config import PPOTrainerConfig
 from runtime.train import PPOTrainer
 
@@ -144,6 +146,13 @@ def parse_args(argv=None):
     parser.add_argument("--finetuning", choices=("full", "lora"), default="full")
     parser.add_argument("--lora-rank", type=positive_int)
     parser.add_argument("--lora-alpha", type=positive_float)
+    parser.add_argument(
+        "--wandb-mode", choices=("disabled", "offline", "online"), default="disabled"
+    )
+    parser.add_argument("--wandb-project", default="vineppo")
+    parser.add_argument("--wandb-entity")
+    parser.add_argument("--wandb-group")
+    parser.add_argument("--wandb-name")
     args = parser.parse_args(argv)
     if args.finetuning == "full" and (
         args.lora_rank is not None or args.lora_alpha is not None
@@ -283,6 +292,7 @@ class MeasuredTrainer(PPOTrainer):
         self.rows = []
         self.pending = None
         self.saved = []
+        self.tracker = None
 
     def _prepare_inputs(self, *args, **kwargs):
         result = super()._prepare_inputs(*args, **kwargs)
@@ -371,9 +381,17 @@ class MeasuredTrainer(PPOTrainer):
                 "reserved_bytes_end": torch.cuda.memory_reserved(),
             }
         )
+        if self.tracker is not None:
+            row["actor_learning_rate"] = self.optimizer.param_groups[0]["lr"]
+            if self.critic_optimizer is not None:
+                row["critic_learning_rate"] = self.critic_optimizer.param_groups[0][
+                    "lr"
+                ]
         self.stream.write(json.dumps(row, allow_nan=False) + "\n")
         self.stream.flush()
         self.rows.append(row)
+        if self.tracker is not None:
+            self.tracker.log_iteration(row)
         self.pending = None
         self.meter.start()
 
@@ -480,6 +498,7 @@ def main(argv=None):
     meter = Meter()
     warmup = args.warmup_iterations if args.mode == "benchmark" else 0
     with (
+        ExitStack() as tracking_context,
         (args.output / "metrics.jsonl").open("x") as stream,
         MeasuredInference(
             actor, pad_token_id=tokenizer.pad_token_id, meter=meter
@@ -572,6 +591,9 @@ def main(argv=None):
             "measurement_contract": __doc__,
         }
         write_json(args.output / "metadata.json", metadata)
+        tracker = tracking_context.enter_context(WandBTracker(args, metadata))
+        if args.wandb_mode != "disabled":
+            trainer.tracker = tracker
         trainer.train(**inputs, record_metrics=trainer.record_metrics)
         assert trainer.pending is None
         measured = [row for row in trainer.rows if not row["warmup"]]
@@ -616,6 +638,7 @@ def main(argv=None):
                 ],
             },
         )
+        tracker.finish_summary(json.loads((args.output / "summary.json").read_text()))
     print(
         f"Completed iteration {trainer.iteration}; metrics and summary: {args.output}"
     )

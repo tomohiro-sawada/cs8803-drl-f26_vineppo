@@ -114,6 +114,7 @@ def test_wrapper_defaults_are_valid_runner_argv_and_offline(launch, cluster, gpu
     assert srun == ["--ntasks=1", launch.env["PYTHON"], *captured["argv"]]
     assert captured["cwd"] == str(ROOT)
     args = runner.parse_args(captured["argv"][1:])
+    assert args.wandb_mode == "online"
     assert (args.mode, args.algorithm, args.expected_gpu, args.dtype) == (
         mode,
         "vineppo",
@@ -323,3 +324,31 @@ def test_wrapper_resource_directives(cluster, mode):
             "--gpus=1",
             "--constraint=gpu-h100|gpu-h200",
         } <= directives
+
+
+@pytest.mark.parametrize("mode", ["online", "offline", "disabled"])
+def test_tracking_flags_reach_runner(launch, mode):
+    result = launch.run(
+        extra=[
+            "--wandb-mode",
+            mode,
+            "--wandb-project",
+            "project",
+            "--wandb-entity",
+            "team",
+            "--wandb-group",
+            "group",
+            "--wandb-name",
+            "named-run",
+        ]
+    )
+    assert result.returncode == 0, result.stderr
+    captured = json.loads(Path(launch.env["PYTHON_CAPTURE"]).read_text())
+    args = runner.parse_args(captured["argv"][1:])
+    assert (
+        args.wandb_mode,
+        args.wandb_project,
+        args.wandb_entity,
+        args.wandb_group,
+        args.wandb_name,
+    ) == (mode, "project", "team", "group", "named-run")

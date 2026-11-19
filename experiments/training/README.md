@@ -4,7 +4,8 @@ Submit these launchers **from the repository root**. They call
 `experiments/training/run.py`, the shared offline runner for both training and
 synchronized throughput measurements. Segmentation validation remains a separate
 cluster task; errors propagate rather than being skipped.
-No cluster jobs have been executed to validate these launchers.
+Numerical acceptance is a separate gate; successful logging does not establish
+GPU numerical correctness or learning quality.
 
 ## Cluster profiles
 
@@ -31,8 +32,9 @@ critic. See [algorithm and LoRA details](#lora-and-grouped-algorithms) and the
 ## Prerequisites and paths
 
 Provision the environment and local artifacts separately, before submission.
-The launchers never install packages, download artifacts, SSH, source `bash.sh`
-or secrets, or change `CUDA_VISIBLE_DEVICES`. SLURM controls GPU visibility.
+The launchers never install packages, download model/data artifacts, SSH, source
+`bash.sh` or shell secrets, or change `CUDA_VISIBLE_DEVICES`. W&B online logging
+is enabled by default in the Slurm wrappers; see [tracking](#wandb-tracking). SLURM controls GPU visibility.
 They use the preinstalled `.venv/bin/python`; optionally export `PYTHON` with an
 explicit executable path (not a command with arguments). The runner and its
 required dependencies must already be present.
@@ -163,6 +165,7 @@ arguments are:
 --learning-rate --critic-learning-rate --seed
 --checkpoint-every --keep-checkpoints --resume --dtype
 --finetuning --lora-rank --lora-alpha
+--wandb-mode --wandb-project --wandb-entity --wandb-group --wandb-name
 ```
 
 `--dtype` accepts `float32` or `bfloat16`. FP32 is the conservative numerical
@@ -325,3 +328,87 @@ bash -n experiments/training/skynet/benchmark.slurm
 bash -n experiments/training/pace_ice/train.slurm
 bash -n experiments/training/pace_ice/benchmark.slurm
 ```
+
+## W&B tracking
+
+Slurm train/benchmark wrappers default to `--wandb-mode online` and project
+`vineppo`. Direct `run.py` calls default to `disabled` to preserve offline/local
+usage. Explicit arguments override wrapper defaults:
+
+```sh
+# Append to a normal training/benchmark submission:
+--wandb-mode online --wandb-project vineppo --wandb-group rho-gsm8k-lora
+# Disconnected compute node: write a real local W&B run for later sync:
+--wandb-mode offline
+# Deliberately disable tracking:
+--wandb-mode disabled
+```
+
+`--wandb-entity` selects a team/user; otherwise W&B uses the authenticated default.
+`--wandb-name` supplies a display name. Online mode uses an exported
+`WANDB_API_KEY`, or reads **only that key** from the repository-root `.env` via
+`python-dotenv` without variable interpolation or shell execution. An empty
+exported key is an error, not a request to replace it. `.env` stays git-ignored;
+never pass keys as CLI arguments. Offline/disabled modes do not read `.env`.
+`uv sync --locked` installs both tracking dependencies before submission.
+
+Online mode sends scalar metrics, allowlisted run configuration/provenance, and
+SDK system telemetry to W&B; network access is required. It does not upload
+model/checkpoint weights, dataset rows, sampled text, `.env`, console output,
+source code, or Git patches. SDK metadata/requirements capture is disabled.
+Online authentication/initialization failures propagate; there is no silent
+switch to offline mode. Mid-run SDK unrecoverable errors stop the run. Local
+`metrics.jsonl` remains the primary per-iteration record and is written first.
+W&B logging and final upload time are excluded from iteration compute timings.
+
+The output contains `wandb.json` (run ID, URL, mode) and the SDK's local `wandb/`
+records. Each invocation, **including trainer checkpoint resume**, creates a
+fresh W&B run. `iteration` is the absolute completed trainer iteration;
+`budget/*` counters include warmup but restart at zero for this invocation.
+They must not be interpreted as whole-training budgets after a resume. Use a
+shared group and the recorded resume path to relate runs. Failures after tracker
+initialization finish with nonzero status and log the exception **type**, not
+its potentially sensitive message. Startup failures before tracking initializes
+remain in the Slurm/local logs. Run summary mirrors `summary.json` and excludes
+benchmark warmup. No automatic checkpoint artifact uploads occur.
+
+### Diagnostics and paper interpretation
+
+All existing finite scalar metrics are logged unchanged, including policy loss,
+`grad_norm` (before clipping), `clip_frac`, `ratio_mean`, `approx_kl`,
+`reference_kl`, `kl_loss`, PPO `critic/*`, actor/critic learning rates, phase
+seconds, primary/MC tokens and continuations, memory peaks and checkpoint bytes.
+Cumulative `budget/primary_tokens`, `budget/mc_tokens`, `budget/sampled_tokens`,
+`budget/primary_continuations`, `budget/mc_continuations`,
+`budget/mc_expansions`, and `budget/iteration_seconds` support cost comparisons.
+MC generation timing is nested inside MC estimation, not additive.
+
+Additional cheap diagnostics use existing rollouts only:
+- `response_length_mean/max` include generated special tokens;
+  `truncation_fraction` distinguishes capped outputs.
+- `reward_mean` includes truncation penalties. `stopped_correctness_mean` is
+  correctness **conditional on stopped responses**, omitted if none stopped;
+  neither is held-out test accuracy.
+- `raw_advantage_token_std/zero_fraction` are token-weighted, before whitening.
+- `group_zero_reward_variance_fraction` identifies GRPO/RLOO groups without
+  policy signal.
+- `vineppo/step_count`, `vineppo/steps_per_response_mean/std`, and
+  `vineppo/mc_prefix_value_mean/std` describe step structure and prefix-weighted
+  values. Prefix-value dispersion is **not** Monte Carlo standard error.
+
+Actor/critic iteration diagnostics average optimizer-step metrics. `approx_kl`
+is relative to the old policy; RLOO uses sequence log-ratios, GRPO/PPO/VinePPO
+use token ratios. `reference_kl` is the sampled k3 regularizer: PPO/VinePPO clamp
+per-token k3 to 10 and sum per sequence, GRPO averages per completion token,
+RLOO sums per sequence. These scales are not directly interchangeable and are
+not an exact current-policy/reference KL after updates.
+
+The original paper (https://arxiv.org/html/2410.01679) motivates accuracy versus
+primary episodes, total sampling cost, wall time and reference-policy drift;
+its value-network analysis motivates MC-value diagnostics. **Not implemented by
+this logger:** periodic held-out evaluation, validation-best checkpoint
+selection, MC return standard errors, or independent high-K critic probes.
+Figure 4 requires validation-selected test Pass@1, averaged over 16 evaluation
+sampling rounds (not pass@16). The paper's 256-continuation value probes are
+separate expensive evaluations; critic training loss is not a substitute.
+Do not infer replication readiness or learning success from these logging checks.

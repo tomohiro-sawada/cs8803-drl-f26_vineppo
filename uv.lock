@@ -897,6 +897,7 @@ dependencies = [
     { name = "jaxtyping" },
     { name = "peft" },
     { name = "pylatexenc" },
+    { name = "python-dotenv" },
     { name = "regex" },
     { name = "sympy" },
     { name = "torch", version = "2.14.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'group-22-cs8803-drl-f26-vineppo-inference') or (platform_machine == 's390x' and extra == 'group-22-cs8803-drl-f26-vineppo-inference' and extra == 'group-22-cs8803-drl-f26-vineppo-sdpa') or (sys_platform == 'darwin' and extra == 'group-22-cs8803-drl-f26-vineppo-inference' and extra == 'group-22-cs8803-drl-f26-vineppo-sdpa') or (sys_platform == 'emscripten' and extra == 'group-22-cs8803-drl-f26-vineppo-inference' and extra == 'group-22-cs8803-drl-f26-vineppo-sdpa') or (sys_platform == 'win32' and extra == 'group-22-cs8803-drl-f26-vineppo-inference' and extra == 'group-22-cs8803-drl-f26-vineppo-sdpa')" },
@@ -904,6 +905,7 @@ dependencies = [
     { name = "tqdm" },
     { name = "transformers" },
     { name = "typing-extensions" },
+    { name = "wandb" },
 ]
 
 [package.dev-dependencies]
@@ -913,7 +915,6 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "ruff-format" },
-    { name = "wandb" },
 ]
 inference = [
     { name = "flash-attn", marker = "python_full_version < '3.15' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
@@ -934,12 +935,14 @@ requires-dist = [
     { name = "jaxtyping", specifier = ">=0.3.11" },
     { name = "peft", specifier = ">=0.21.2,<0.22" },
     { name = "pylatexenc", specifier = "==2.10" },
+    { name = "python-dotenv", specifier = ">=1.2,<2" },
     { name = "regex", specifier = ">=2023.12.25" },
     { name = "sympy", specifier = "==1.14.0" },
     { name = "torch", specifier = ">=2.14.0" },
     { name = "tqdm", specifier = ">=4.70.1" },
     { name = "transformers", specifier = ">=5.22.1" },
     { name = "typing-extensions", specifier = ">=4.16.0" },
+    { name = "wandb", specifier = ">=0.31.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -949,7 +952,6 @@ dev = [
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "ruff", specifier = ">=0.17.3" },
     { name = "ruff-format", specifier = ">=0.5.4" },
-    { name = "wandb", specifier = ">=0.31.0" },
 ]
 inference = [
     { name = "flash-attn", marker = "python_full_version >= '3.13' and python_full_version < '3.15' and platform_machine == 'x86_64' and sys_platform == 'linux'", git = "https://github.com/Dao-AILab/flash-attention.git?rev=68bd095cdd338c5171bccb9c200529f3620b85c9" },

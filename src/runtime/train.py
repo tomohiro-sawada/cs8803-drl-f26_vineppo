@@ -16,6 +16,7 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import asdict
 from hashlib import sha256
+from math import isfinite, sqrt
 from pathlib import Path
 from typing import Literal
 
@@ -57,6 +58,63 @@ from core.lora import lora_identity
 from core.segmentation import step_boundaries_from_tokens
 from core.verifier import verify_response
 from runtime.config import PPOTrainerConfig
+
+
+class _Moments:
+    """Streaming population moments; no samples or trajectories retained."""
+
+    def __init__(self):
+        self.count = 0
+        self.mean = self.m2 = 0.0
+
+    def add(self, values: Sequence[float]) -> None:
+        for value in values:
+            assert isfinite(value), "Diagnostic inputs must be finite"
+            self.count += 1
+            delta = value - self.mean
+            self.mean += delta / self.count
+            self.m2 += delta * (value - self.mean)
+
+    def metrics(self, prefix: str) -> dict[str, float]:
+        assert self.count > 0
+        return {
+            f"{prefix}_mean": self.mean,
+            f"{prefix}_std": sqrt(self.m2 / self.count),
+        }
+
+
+def _training_diagnostics(
+    episodes: Sequence[EpisodeWithAdvantages], *, group_size: int | None
+) -> dict[str, float]:
+    """Primary-only lengths/correctness and pre-normalization token advantages.
+
+    Length includes generated special tokens. Correctness is conditional on stop:
+    length-limited responses have penalty rewards, not correctness labels. Omit
+    correctness when no stopped responses exist. All standard deviations are
+    population statistics, not sample uncertainty estimates.
+    """
+    lengths = [len(e.response_ids) for e in episodes]
+    advantages = torch.tensor(
+        [a for e in episodes for a in e.advantages], dtype=torch.float64
+    )
+    assert advantages.numel() and torch.isfinite(advantages).all()
+    metrics = {
+        "response_length_mean": sum(lengths) / len(lengths),
+        "response_length_max": float(max(lengths)),
+        "raw_advantage_token_zero_fraction": (advantages == 0).double().mean().item(),
+        "raw_advantage_token_std": advantages.std(correction=0).item(),
+    }
+    stopped = [e.reward for e in episodes if e.finish_reason == "stop"]
+    if stopped:
+        metrics["stopped_correctness_mean"] = sum(stopped) / len(stopped)
+    if group_size is not None:
+        rewards = torch.tensor(
+            [e.reward for e in episodes], dtype=torch.float64
+        ).reshape(-1, group_size)
+        metrics["group_zero_reward_variance_fraction"] = (
+            (rewards == rewards[:, :1]).all(dim=1).double().mean().item()
+        )
+    return metrics
 
 
 class PPOTrainer:
@@ -186,10 +244,13 @@ class PPOTrainer:
 
     def _validate_training(self) -> None:
         assert isinstance(
-            self.config.algorithm_config, (VinePPOConfig, PPOConfig, GRPOConfig, RLOOConfig)
+            self.config.algorithm_config,
+            (VinePPOConfig, PPOConfig, GRPOConfig, RLOOConfig),
         ), "Unsupported training algorithm"
         if isinstance(self.config.algorithm_config, (GRPOConfig, RLOOConfig)):
-            assert self.config.num_samples >= 2, "Grouped training requires num_samples >= 2"
+            assert self.config.num_samples >= 2, (
+                "Grouped training requires num_samples >= 2"
+            )
         assert self.optimizer is not None, "Training requires an explicit optimizer"
         assert self.reference_policy is not None, "Training requires a reference policy"
         assert self.inference.model is self.policy, (
@@ -387,6 +448,8 @@ class PPOTrainer:
                 selected, num_samples=self.config.num_samples
             )
             episodes = []
+            prefix_values = _Moments()
+            step_counts = _Moments()
             raw_episodes, episode_ids = [], []
             for index, groups in zip(indices, completions, strict=True):
                 example = examples[index]
@@ -439,6 +502,8 @@ class PPOTrainer:
                         num_samples=self.config.mc_num_samples,
                         record_prefix_samples=record_prefix_samples,
                     )
+                    prefix_values.add(estimate.mc_prefix_values)
+                    step_counts.add([len(estimate.mc_prefix_values)])
                     if record_value_estimate is not None:
                         record_value_estimate(estimate)
                     episodes.append(
@@ -477,6 +542,13 @@ class PPOTrainer:
                 if record_value_estimate is not None:
                     for estimate in estimates:
                         record_value_estimate(estimate)
+            diagnostics = _training_diagnostics(
+                episodes, group_size=self.config.num_samples if grouped else None
+            )
+            if isinstance(algorithm, VinePPOConfig):
+                diagnostics.update(step_counts.metrics("vineppo/steps_per_response"))
+                diagnostics["vineppo/step_count"] = float(prefix_values.count)
+                diagnostics.update(prefix_values.metrics("vineppo/mc_prefix_value"))
             old, ref = self._cache_scores(episodes)
             batch = collate(
                 episodes,
@@ -507,6 +579,7 @@ class PPOTrainer:
                 truncation_fraction=sum(e.finish_reason == "length" for e in episodes)
                 / len(episodes),
             )
+            metrics.update(diagnostics)
             self.iteration += 1
             self._at_boundary = True
             history.append(metrics)
