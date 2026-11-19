@@ -1,6 +1,9 @@
 # Tom
 cursor
-prose/workflow
+prose/workflow/*
+!prose/workflow/tasks
+prose/workflow/tasks/*
+!prose/workflow/tasks/agent-tasks
 prose/conventions
 prose/agent-reports
 prose/knowledge-bases
@@ -9,6 +12,7 @@ bash.sh
 .trash
 data
 tmp
+*.pt
 
 
 
