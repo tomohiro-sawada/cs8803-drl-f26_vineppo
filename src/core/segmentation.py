@@ -42,8 +42,14 @@ def step_boundaries_from_tokens(
     *,
     dataset: Literal["math", "gsm8k"],
     eos_token_ids: Sequence[int],
+    context_ids: Sequence[int] = (),
 ) -> tuple[int, ...]:
     """Segment sampled IDs using verified fast-tokenizer character offsets.
+
+    context_ids are the prompt tokens the response was sampled after. They are
+    decoded and re-encoded together with the response, because tokenizers such
+    as Llama's encode standalone text differently from a continuation (a dummy
+    prefix token). One leading BOS is dropped; offsets are response-relative.
 
     Supply EOS IDs from the generation configuration, not tokenizer defaults.
     One terminal EOS is excluded from text and assigned to the final step;
@@ -78,20 +84,34 @@ def step_boundaries_from_tokens(
     assert not set(content_ids).intersection(
         set(tokenizer.all_special_ids) | set(eos_token_ids)
     ), "Only one terminal EOS is supported; response contains other special tokens"
-    text = tokenizer.decode(
-        content_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False
+    context = list(context_ids)
+    if context and context[0] == tokenizer.bos_token_id:
+        context = context[1:]
+    assert not set(context).intersection(tokenizer.all_special_ids), (
+        "Context contains special tokens other than one leading BOS"
     )
+    prefix, full = (
+        tokenizer.decode(
+            ids, skip_special_tokens=False, clean_up_tokenization_spaces=False
+        )
+        for ids in (context, context + content_ids)
+    )
+    assert full.startswith(prefix), "Context does not decode to a prefix"
+    text = full[len(prefix) :]
     encoded = tokenizer(
-        text,
+        full,
         add_special_tokens=False,
         padding=False,
         truncation=False,
         return_offsets_mapping=True,
     )
-    assert encoded["input_ids"] == content_ids, (
+    assert encoded["input_ids"] == context + content_ids, (
         "Decoded text does not roundtrip to the exact sampled token IDs"
     )
-    spans = list(encoded["offset_mapping"])
+    spans = [
+        (start - len(prefix), end - len(prefix))
+        for start, end in encoded["offset_mapping"][len(context) :]
+    ]
     if has_eos:
         spans.append((len(text), len(text)))
     segment = math_step_boundaries if dataset == "math" else gsm8k_step_boundaries

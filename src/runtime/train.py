@@ -499,6 +499,7 @@ class PPOTrainer:
                             tokenizer,
                             dataset=task,
                             eos_token_ids=eos_ids,
+                            context_ids=episode.prompt_ids,
                         ),
                         score_response=score_response,
                         num_samples=self.config.mc_num_samples,

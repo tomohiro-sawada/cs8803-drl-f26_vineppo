@@ -199,7 +199,9 @@ def test_only_production_assertion_and_valueerror_are_caught(monkeypatch):
     monkeypatch.setattr(sampler, "step_boundaries_from_tokens", production)
     with pytest.raises(RuntimeError, match="infrastructure"):
         sampler.assess([2], Tokenizer(), task="gsm8k", eos_token_ids=[2])
-    production.assert_called_once_with([2], ANY, dataset="gsm8k", eos_token_ids=[2])
+    production.assert_called_once_with(
+        [2], ANY, dataset="gsm8k", eos_token_ids=[2], context_ids=()
+    )
 
 
 def test_empty_does_not_override_an_earlier_production_failure():
@@ -231,7 +233,7 @@ def test_batches_budgets_all_samples_and_metrics(tmp_path):
     config = sampler.Config(
         "gsm8k", tmp_path, num_prompts=4, num_samples=2, batch_size=3
     )
-    prefixes = [[1] * length for length in (3, 1500, 3, 3)]
+    prefixes = [[1] + tokens("p") * (length - 1) for length in (3, 1500, 3, 3)]
     tokenizer = Tokenizer(prefixes=prefixes)
 
     def generate(prefixes, **kwargs):

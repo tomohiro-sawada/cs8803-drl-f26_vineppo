@@ -98,7 +98,9 @@ def select_prompts(
     return selected
 
 
-def assess(response_ids, tokenizer, *, task: str, eos_token_ids) -> dict:
+def assess(
+    response_ids, tokenizer, *, task: str, eos_token_ids, context_ids=()
+) -> dict:
     """Run production first; labels describe its first failure, never a repair.
 
     Unknown/assertion-without-message upstream or span failures stay grouped.
@@ -106,7 +108,11 @@ def assess(response_ids, tokenizer, *, task: str, eos_token_ids) -> dict:
     """
     try:
         boundaries = step_boundaries_from_tokens(
-            response_ids, tokenizer, dataset=task, eos_token_ids=eos_token_ids
+            response_ids,
+            tokenizer,
+            dataset=task,
+            eos_token_ids=eos_token_ids,
+            context_ids=context_ids,
         )
     except (AssertionError, ValueError) as error:
         message = str(error)
@@ -197,6 +203,7 @@ def run_samples(
                             tokenizer,
                             task=config.task,
                             eos_token_ids=eos_ids,
+                            context_ids=ids,
                         )
                         record = prompt | {
                             "sample_index": sample_index,

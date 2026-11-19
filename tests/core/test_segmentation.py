@@ -435,3 +435,51 @@ def test_eos_only_response_is_rejected(byte_tokenizer):
             dataset="gsm8k",
             eos_token_ids=[byte_tokenizer.eos_token_id],
         )
+
+
+def test_prompt_context_resolves_standalone_encoding_mismatch(byte_tokenizer):
+    # Like Llama's dummy prefix: a response is not the canonical encoding of its
+    # own text, but is the canonical continuation of the prompt it followed.
+    byte_tokenizer.add_tokens(["Q:a"])
+    prompt = byte_tokenizer.encode("Q:", add_special_tokens=False)
+    response = byte_tokenizer.encode(
+        "a first step\nsecond step", add_special_tokens=False
+    )
+    merged = byte_tokenizer.encode(
+        "Q:a first step\nsecond step", add_special_tokens=False
+    )
+    assert merged != prompt + response
+    with pytest.raises(AssertionError, match="exact sampled token IDs"):
+        step_boundaries_from_tokens(
+            response,
+            byte_tokenizer,
+            dataset="gsm8k",
+            eos_token_ids=[],
+            context_ids=prompt,
+        )
+    byte_tokenizer_response = byte_tokenizer.encode(
+        "first step\nsecond step", add_special_tokens=False
+    )
+    plain = step_boundaries_from_tokens(
+        byte_tokenizer_response, byte_tokenizer, dataset="gsm8k", eos_token_ids=[]
+    )
+    assert plain == step_boundaries_from_tokens(
+        byte_tokenizer_response,
+        byte_tokenizer,
+        dataset="gsm8k",
+        eos_token_ids=[],
+        context_ids=byte_tokenizer.encode("Q: ", add_special_tokens=False),
+    )
+    assert plain == (0, len("first step"), len(byte_tokenizer_response))
+
+
+def test_context_with_special_tokens_is_rejected(byte_tokenizer):
+    ids = byte_tokenizer.encode("first step\nsecond", add_special_tokens=False)
+    with pytest.raises(AssertionError, match="Context contains special tokens"):
+        step_boundaries_from_tokens(
+            ids,
+            byte_tokenizer,
+            dataset="gsm8k",
+            eos_token_ids=[],
+            context_ids=[byte_tokenizer.pad_token_id, *ids],
+        )

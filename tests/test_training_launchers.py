@@ -406,3 +406,60 @@ def test_resume_selection_reaches_runner_and_missing_file_is_rejected(launch, tm
         checkpoint.resolve(),
         manifest.resolve(),
     )
+
+
+def test_resumable_wrapper_resumes_latest_checkpoint_into_new_attempt(launch, tmp_path):
+    root = tmp_path / "run"
+    base = [
+        "bash",
+        str(TRAINING / "skynet/train_resumable.slurm"),
+        str(root),
+        "--task",
+        "gsm8k",
+        "--model-path",
+        str(launch.model),
+        "--dataset-path",
+        str(launch.dataset),
+    ]
+
+    def run(extra=()):
+        return subprocess.run(
+            [*base, *extra],
+            env=launch.env,
+            cwd=tmp_path,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+
+    def parsed():
+        captured = json.loads(Path(launch.env["PYTHON_CAPTURE"]).read_text())
+        return runner.parse_args(captured["argv"][1:])
+
+    first = run()
+    assert first.returncode == 0, first.stderr
+    assert parsed().output == (root / "attempt-00").resolve()
+    assert parsed().resume is None and parsed().mode == "train"
+    for attempt, iterations in (("attempt-00", (2, 10)), ("attempt-01", (9, 10))):
+        directory = root / attempt / "checkpoints"
+        directory.mkdir(parents=True)
+        for iteration in iterations:
+            (directory / f"iteration-{iteration}.pt").write_bytes(b"checkpoint")
+        (directory / "iteration-99.pt.tmp").write_bytes(b"partial")
+    second = run()
+    assert second.returncode == 0, second.stderr
+    latest = (root / "attempt-01/checkpoints/iteration-10.pt").resolve()
+    assert (parsed().output, parsed().resume) == (
+        (root / "attempt-02").resolve(),
+        latest,
+    )
+    assert parsed().resume_selection is None
+    (root / "attempt-01/selection.json").write_text("{}")
+    third = run(["--evaluation", "validation-test"])
+    assert third.returncode == 0, third.stderr
+    assert parsed().resume == latest
+    assert parsed().resume_selection == (root / "attempt-01/selection.json").resolve()
+    for option in ("--output", "--resume", "--resume-selection"):
+        rejected = run([option, "value"])
+        assert rejected.returncode == 2 and "chosen by this wrapper" in rejected.stderr
