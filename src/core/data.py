@@ -218,13 +218,31 @@ class PolicyGradientBatch(TrainBatch):
     ref_logprobs: Float32[Tensor, "B T-1"]
 
 
-def _collate_token_layout():
-    """
-    Private helper for token-layout shared between collate() and collate_critic()
-    """
-    # concatenate prompt and response;
-    # right-pad;
-    # construct attention and response masks.
+def _collate_token_layout(
+    episodes: Sequence[Episode], *, pad_token_id: int
+) -> TrainBatch:
+    """Construct a right-padded CPU layout with shifted response positions."""
+    assert len(episodes) > 0, "episodes must be nonempty"
+    for episode in episodes:
+        assert len(episode.prompt_ids) > 0, "prompt must be nonempty"
+        assert len(episode.response_ids) > 0, "response must be nonempty"
+
+    batch_size = len(episodes)
+    width = max(len(e.prompt_ids) + len(e.response_ids) for e in episodes)
+    input_ids = torch.full(
+        (batch_size, width), pad_token_id, dtype=torch.int64, device="cpu"
+    )
+    attention_mask = torch.zeros((batch_size, width), dtype=torch.bool, device="cpu")
+    response_mask = torch.zeros((batch_size, width - 1), dtype=torch.bool, device="cpu")
+    for i, episode in enumerate(episodes):
+        prompt_length = len(episode.prompt_ids)
+        length = prompt_length + len(episode.response_ids)
+        input_ids[i, :length] = torch.tensor(
+            episode.prompt_ids + episode.response_ids, dtype=torch.int64, device="cpu"
+        )
+        attention_mask[i, :length] = True
+        response_mask[i, prompt_length - 1 : length - 1] = True
+    return TrainBatch(input_ids, attention_mask, response_mask)
 
 
 def collate(
@@ -246,7 +264,7 @@ def collate(
     Masks depend on lengths, never on token IDs. Device transfer, model scoring,
     verification, and advantage estimation belong outside this function.
     """
-    assert len(episodes) > 0, "episodes must be nonempty"
+    layout = _collate_token_layout(episodes, pad_token_id=pad_token_id)
     assert len(old_logprobs) == len(episodes), (
         "old_logprobs must have one row per episode"
     )
@@ -254,8 +272,6 @@ def collate(
         "ref_logprobs must have one row per episode"
     )
     for episode, old, ref in zip(episodes, old_logprobs, ref_logprobs, strict=True):
-        assert len(episode.prompt_ids) > 0, "prompt must be nonempty"
-        assert len(episode.response_ids) > 0, "response must be nonempty"
         episode.__post_init__()
         assert len(old) == len(episode.response_ids), (
             "old_logprobs must have one value per response token"
@@ -264,28 +280,14 @@ def collate(
             "ref_logprobs must have one value per response token"
         )
 
-    batch_size = len(episodes)
-    width = max(len(e.prompt_ids) + len(e.response_ids) for e in episodes)
-    input_ids = torch.full(
-        (batch_size, width), pad_token_id, dtype=torch.int64, device="cpu"
-    )
-    attention_mask = torch.zeros((batch_size, width), dtype=torch.bool, device="cpu")
-    response_mask = torch.zeros((batch_size, width - 1), dtype=torch.bool, device="cpu")
     old_scores, advantages, ref_scores = (
-        torch.zeros((batch_size, width - 1), dtype=torch.float32, device="cpu")
+        torch.zeros(layout.response_mask.shape, dtype=torch.float32, device="cpu")
         for _ in range(3)
     )
     for i, (episode, old, ref) in enumerate(
         zip(episodes, old_logprobs, ref_logprobs, strict=True)
     ):
-        prompt_length = len(episode.prompt_ids)
-        length = prompt_length + len(episode.response_ids)
-        targets = slice(prompt_length - 1, length - 1)
-        input_ids[i, :length] = torch.tensor(
-            episode.prompt_ids + episode.response_ids, dtype=torch.int64, device="cpu"
-        )
-        attention_mask[i, :length] = True
-        response_mask[i, targets] = True
+        targets = layout.response_mask[i]
         for output, values in (
             (old_scores, old),
             (advantages, episode.advantages),
@@ -294,17 +296,36 @@ def collate(
             output[i, targets] = torch.tensor(values, dtype=torch.float32, device="cpu")
 
     return PolicyGradientBatch(
-        input_ids=input_ids,
-        attention_mask=attention_mask,
-        response_mask=response_mask,
+        input_ids=layout.input_ids,
+        attention_mask=layout.attention_mask,
+        response_mask=layout.response_mask,
         old_logprobs=old_scores,
         advantages=advantages,
         ref_logprobs=ref_scores,
     )
 
 
-def collate_critic(estimates, *, pad_token_id) -> CriticBatch:
+def collate_critic(
+    estimates: Sequence[PPOValueEstimate], *, pad_token_id: int
+) -> CriticBatch:
+    """Construct a right-padded CPU critic batch, preserving estimate order.
+
+    Revalidate mutable estimate contents. Fixed return targets are detached
+    float32, aligned with the states before response tokens in [B, T-1].
+    Off-response targets are zero. No input is modified or targets recomputed.
     """
-    Collates a list of critic value estimates into a single batch.
-    """
-    pass
+    layout = _collate_token_layout(
+        [estimate.episode for estimate in estimates], pad_token_id=pad_token_id
+    )
+    returns = torch.zeros(layout.response_mask.shape, dtype=torch.float32, device="cpu")
+    for i, estimate in enumerate(estimates):
+        estimate.__post_init__()
+        returns[i, layout.response_mask[i]] = torch.tensor(
+            estimate.return_estimates, dtype=torch.float32, device="cpu"
+        )
+    return CriticBatch(
+        input_ids=layout.input_ids,
+        attention_mask=layout.attention_mask,
+        response_mask=layout.response_mask,
+        returns=returns,
+    )
