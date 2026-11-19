@@ -1,0 +1,2796 @@
+{
+  "schema_version": 1,
+  "frozen": false,
+  "task": "gsm8k",
+  "training_output": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/interrupted",
+  "tie_rule": "highest_validation_accuracy_then_earliest_iteration",
+  "validation_protocol": {
+    "temperature": 0.35,
+    "top_p": 0.9,
+    "top_k": 0,
+    "max_new_tokens": 1024,
+    "context_size": 2047,
+    "num_samples": 1,
+    "prompt": "[MATH_TASK] Problem:\n{question}\n\nSolution:",
+    "stop": "\n\n\nProblem:",
+    "stop_policy": "trim after generation",
+    "seed_policy": "seed + zero-based round index",
+    "accuracy_policy": "mean Pass@1; no truncation penalty",
+    "rounds": 1,
+    "seed": 42,
+    "batch_size": 32
+  },
+  "test_protocol": {
+    "temperature": 0.35,
+    "top_p": 0.9,
+    "top_k": 0,
+    "max_new_tokens": 1024,
+    "context_size": 2047,
+    "num_samples": 1,
+    "prompt": "[MATH_TASK] Problem:\n{question}\n\nSolution:",
+    "stop": "\n\n\nProblem:",
+    "stop_policy": "trim after generation",
+    "seed_policy": "seed + zero-based round index",
+    "accuracy_policy": "mean Pass@1; no truncation penalty",
+    "rounds": 16,
+    "seed": 42,
+    "batch_size": 32
+  },
+  "candidate_iterations": [
+    1,
+    2,
+    3
+  ],
+  "best": {
+    "schema_version": 1,
+    "task": "gsm8k",
+    "split": "validation",
+    "checkpoint": {
+      "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/interrupted/checkpoints/iteration-1.pt",
+      "sha256": "d7788a9aa936ed62e612bcb05cef5de40a2b48090bc8a75a3844c93cdd7e5130",
+      "iteration": 1
+    },
+    "protocol": {
+      "temperature": 0.35,
+      "top_p": 0.9,
+      "top_k": 0,
+      "max_new_tokens": 1024,
+      "context_size": 2047,
+      "num_samples": 1,
+      "prompt": "[MATH_TASK] Problem:\n{question}\n\nSolution:",
+      "stop": "\n\n\nProblem:",
+      "stop_policy": "trim after generation",
+      "seed_policy": "seed + zero-based round index",
+      "accuracy_policy": "mean Pass@1; no truncation penalty",
+      "rounds": 1,
+      "seed": 42,
+      "batch_size": 32
+    },
+    "dataset": {
+      "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/gsm8k",
+      "fingerprint": "576e2ee88ca003fd",
+      "rows": 373,
+      "examples_sha256": "209804cc2b194141cd89b813b03217d85808d0c18538e7aa1a7d1f7a5c4f2c2f"
+    },
+    "training_run": {
+      "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/interrupted",
+      "wandb": null
+    },
+    "checkpoint_source": {
+      "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/interrupted",
+      "metadata_sha256": "f830ca910b498c1dc711edabb684221d7cfb8a4566816aad99e475431d996995"
+    },
+    "evaluation_run": {
+      "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/interrupted",
+      "wandb": null
+    },
+    "complete": true,
+    "accuracy": 0.5308310991957105,
+    "total_count": 373,
+    "total_correct": 198,
+    "num_examples": 373,
+    "rounds_completed": 1,
+    "round_accuracy_std_population": 0.0,
+    "rounds": [
+      {
+        "round": 0,
+        "seed": 42,
+        "total_correct": 198,
+        "total_count": 373,
+        "accuracy": 0.5308310991957105,
+        "complete": true
+      }
+    ]
+  },
+  "candidates": [
+    {
+      "schema_version": 1,
+      "task": "gsm8k",
+      "split": "validation",
+      "checkpoint": {
+        "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/interrupted/checkpoints/iteration-1.pt",
+        "sha256": "d7788a9aa936ed62e612bcb05cef5de40a2b48090bc8a75a3844c93cdd7e5130",
+        "iteration": 1
+      },
+      "protocol": {
+        "temperature": 0.35,
+        "top_p": 0.9,
+        "top_k": 0,
+        "max_new_tokens": 1024,
+        "context_size": 2047,
+        "num_samples": 1,
+        "prompt": "[MATH_TASK] Problem:\n{question}\n\nSolution:",
+        "stop": "\n\n\nProblem:",
+        "stop_policy": "trim after generation",
+        "seed_policy": "seed + zero-based round index",
+        "accuracy_policy": "mean Pass@1; no truncation penalty",
+        "rounds": 1,
+        "seed": 42,
+        "batch_size": 32
+      },
+      "dataset": {
+        "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/gsm8k",
+        "fingerprint": "576e2ee88ca003fd",
+        "rows": 373,
+        "examples_sha256": "209804cc2b194141cd89b813b03217d85808d0c18538e7aa1a7d1f7a5c4f2c2f"
+      },
+      "training_run": {
+        "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/interrupted",
+        "wandb": null
+      },
+      "checkpoint_source": {
+        "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/interrupted",
+        "metadata_sha256": "f830ca910b498c1dc711edabb684221d7cfb8a4566816aad99e475431d996995"
+      },
+      "evaluation_run": {
+        "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/interrupted",
+        "wandb": null
+      },
+      "complete": true,
+      "accuracy": 0.5308310991957105,
+      "total_count": 373,
+      "total_correct": 198,
+      "num_examples": 373,
+      "rounds_completed": 1,
+      "round_accuracy_std_population": 0.0,
+      "rounds": [
+        {
+          "round": 0,
+          "seed": 42,
+          "total_correct": 198,
+          "total_count": 373,
+          "accuracy": 0.5308310991957105,
+          "complete": true
+        }
+      ]
+    }
+  ],
+  "plan": {
+    "trainer_config": {
+      "algorithm_config": {
+        "eps": 1e-06
+      },
+      "num_iterations": 3,
+      "temperature": 1.0,
+      "max_sequence_length": 2048,
+      "max_new_tokens": 1024,
+      "prompts_per_iteration": 2,
+      "num_samples": 4,
+      "mc_num_samples": 4,
+      "update_epochs": 1,
+      "minibatch_size": 2,
+      "microbatch_size": 1,
+      "clip_eps": 0.2,
+      "kl_coef": 0.0001,
+      "max_grad_norm": 1.0,
+      "truncation_reward": -1.0,
+      "seed": 42,
+      "checkpoint_every": 1
+    },
+    "checkpoint_every": 1,
+    "evaluation": "validation",
+    "dataset": {
+      "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/gsm8k",
+      "split": "train",
+      "rows": 7100,
+      "fingerprint": "2b2cae6d63fc502a",
+      "normalized_sha256": "aab4b433693d5173ff65b4dbbc9af36b0956e21bfeb292f661a4641a10d9447d"
+    },
+    "model": {
+      "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-GSM8K",
+      "config": {
+        "transformers_version": "5.22.1",
+        "architectures": [
+          "LlamaForCausalLM"
+        ],
+        "output_hidden_states": false,
+        "return_dict": true,
+        "dtype": "bfloat16",
+        "chunk_size_feed_forward": 0,
+        "is_encoder_decoder": false,
+        "id2label": {
+          "0": "LABEL_0",
+          "1": "LABEL_1"
+        },
+        "label2id": {
+          "LABEL_0": 0,
+          "LABEL_1": 1
+        },
+        "problem_type": null,
+        "vocab_size": 32000,
+        "hidden_size": 2048,
+        "intermediate_size": 5632,
+        "num_hidden_layers": 22,
+        "num_attention_heads": 32,
+        "num_key_value_heads": 4,
+        "hidden_act": "silu",
+        "max_position_embeddings": 2048,
+        "initializer_range": 0.02,
+        "rms_norm_eps": 1e-05,
+        "use_cache": true,
+        "pad_token_id": null,
+        "bos_token_id": 1,
+        "eos_token_id": 2,
+        "pretraining_tp": 1,
+        "tie_word_embeddings": false,
+        "rope_parameters": {
+          "rope_theta": 10000.0,
+          "rope_type": "default"
+        },
+        "attention_bias": false,
+        "attention_dropout": 0.0,
+        "mlp_bias": false,
+        "head_dim": 64,
+        "_name_or_path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-GSM8K",
+        "model_type": "llama",
+        "output_attentions": false
+      },
+      "config_sha256": "1b177f10c7dc8ebae3e9cbf3a296d7c27b307bbd96a354032be76bedda2e06bd",
+      "parameters": 1112664064,
+      "trainable_parameters": 12615680,
+      "trainable_dtypes": [
+        "torch.float32"
+      ],
+      "lora": {
+        "adapters": {
+          "default": {
+            "alora_invocation_tokens": null,
+            "alpha_pattern": {},
+            "arrow_config": null,
+            "auto_mapping": null,
+            "base_model_name_or_path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-GSM8K",
+            "bias": "none",
+            "corda_config": null,
+            "ensure_weight_tying": false,
+            "eva_config": null,
+            "exclude_modules": null,
+            "fan_in_fan_out": false,
+            "inference_mode": false,
+            "init_lora_weights": true,
+            "kasa_config": null,
+            "layer_replication": null,
+            "layers_pattern": null,
+            "layers_to_transform": null,
+            "loftq_config": {},
+            "lora_alpha": 32.0,
+            "lora_bias": false,
+            "lora_dropout": 0.0,
+            "lora_ga_config": null,
+            "megatron_config": null,
+            "megatron_core": "megatron.core",
+            "modules_to_save": null,
+            "monteclora_config": null,
+            "peft_type": "LORA",
+            "peft_version": "0.21.3",
+            "qalora_group_size": 16,
+            "r": 16,
+            "rank_pattern": {},
+            "revision": null,
+            "target_modules": [
+              "down_proj",
+              "gate_proj",
+              "k_proj",
+              "o_proj",
+              "q_proj",
+              "up_proj",
+              "v_proj"
+            ],
+            "target_parameters": null,
+            "task_type": "CAUSAL_LM",
+            "trainable_token_indices": null,
+            "use_bdlora": null,
+            "use_dora": false,
+            "use_qalora": false,
+            "use_rslora": false,
+            "velora_config": null
+          }
+        },
+        "layers": {
+          "base_model.model.model.layers.0.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.0.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.0.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.0.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.0.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.0.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.0.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.1.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.1.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.1.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.1.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.1.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.1.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.1.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.10.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.10.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.10.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.10.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.10.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.10.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.10.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.11.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.11.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.11.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.11.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.11.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.11.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.11.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.12.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.12.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.12.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.12.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.12.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.12.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.12.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.13.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.13.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.13.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.13.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.13.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.13.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.13.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.14.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.14.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.14.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.14.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.14.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.14.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.14.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.15.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.15.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.15.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.15.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.15.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.15.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.15.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.16.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.16.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.16.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.16.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.16.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.16.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.16.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.17.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.17.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.17.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.17.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.17.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.17.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.17.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.18.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.18.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.18.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.18.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.18.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.18.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.18.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.19.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.19.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.19.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.19.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.19.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.19.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.19.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.2.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.2.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.2.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.2.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.2.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.2.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.2.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.20.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.20.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.20.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.20.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.20.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.20.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.20.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.21.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.21.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.21.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.21.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.21.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.21.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.21.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.3.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.3.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.3.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.3.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.3.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.3.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.3.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.4.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.4.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.4.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.4.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.4.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.4.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.4.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.5.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.5.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.5.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.5.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.5.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.5.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.5.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.6.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.6.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.6.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.6.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.6.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.6.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.6.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.7.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.7.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.7.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.7.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.7.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.7.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.7.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.8.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.8.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.8.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.8.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.8.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.8.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.8.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.9.mlp.down_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.9.mlp.gate_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.9.mlp.up_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.9.self_attn.k_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.9.self_attn.o_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.9.self_attn.q_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          },
+          "base_model.model.model.layers.9.self_attn.v_proj": {
+            "active_adapters": [
+              "default"
+            ],
+            "alpha": {
+              "default": 32.0
+            },
+            "disabled": false,
+            "merged_adapters": [],
+            "rank": {
+              "default": 16
+            },
+            "scaling": {
+              "default": 2.0
+            }
+          }
+        }
+      },
+      "weights_content_hashed": false
+    },
+    "prompt": "[MATH_TASK] Problem:\n{question}\n\nSolution:",
+    "tokenizer_sha256": "422610068ad9cdea4ccf4fe587219721b4bf0d1238dd161ea6ece6c3562831b6",
+    "validation_dataset": {
+      "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/gsm8k",
+      "fingerprint": "576e2ee88ca003fd",
+      "rows": 373,
+      "examples_sha256": "209804cc2b194141cd89b813b03217d85808d0c18538e7aa1a7d1f7a5c4f2c2f"
+    },
+    "test_dataset": {
+      "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/gsm8k",
+      "fingerprint": "23d99c6f5f132d12",
+      "rows": 1319,
+      "examples_sha256": "2757a9cc87870fb8ac52150e08b6022471bc47614f4ab4da7b1a85e4b9e85d1e"
+    }
+  },
+  "checkpoint_source": {
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/interrupted",
+    "metadata_sha256": "f830ca910b498c1dc711edabb684221d7cfb8a4566816aad99e475431d996995"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "task": "gsm8k",
+  "output": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/evaluation/vllm-gsm8k-smoke",
+  "manifest": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/download_manifest.json",
+  "batch_size": 8,
+  "num_samples": 2,
+  "smoke": true,
+  "limit": 8,
+  "expected_gpu": "A40",
+  "seed": 42,
+  "engine": {
+    "max_model_len": 2048,
+    "dtype": "bfloat16",
+    "tensor_parallel_size": 1,
+    "gpu_memory_utilization": 0.8,
+    "max_num_seqs": 64,
+    "enforce_eager": true,
+    "generation_config": "vllm",
+    "attention_config": {
+      "backend": "FLASH_ATTN"
+    },
+    "trust_remote_code": false
+  },
+  "temperature": 0.35,
+  "top_p": 0.9,
+  "top_k": -1,
+  "max_tokens": 1024,
+  "prompt": "[MATH_TASK] Problem:\n{question}\n\nSolution:",
+  "stop": "\n\n\nProblem:",
+  "seed_policy": "base seed + zero-based test example index * num_samples; one seeded n-sample request per prompt",
+  "context_budget_policy": "min(1024, 2047 - prompt tokens including BOS); no truncation or batch-peer shrinking"
+}

@@ -1,0 +1,14 @@
+{
+  "complete": false,
+  "rounds_completed": 1,
+  "rounds": [
+    {
+      "round": 0,
+      "seed": 42,
+      "total_correct": 199,
+      "total_count": 373,
+      "accuracy": 0.5335120643431636,
+      "complete": true
+    }
+  ]
+}

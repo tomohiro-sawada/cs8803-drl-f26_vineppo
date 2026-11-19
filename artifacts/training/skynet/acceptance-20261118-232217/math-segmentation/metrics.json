@@ -1,0 +1,44 @@
+{
+  "expected_samples": 64,
+  "total_samples": 64,
+  "success": 0,
+  "failure": 64,
+  "by_category": {
+    "success": 0,
+    "roundtrip": 64,
+    "inside_token": 0,
+    "special": 0,
+    "empty": 0,
+    "upstream_or_span": 0
+  },
+  "by_finish_reason": {
+    "stop": {
+      "total": 61,
+      "success": 0,
+      "failure": 61,
+      "by_category": {
+        "success": 0,
+        "roundtrip": 61,
+        "inside_token": 0,
+        "special": 0,
+        "empty": 0,
+        "upstream_or_span": 0
+      }
+    },
+    "length": {
+      "total": 3,
+      "success": 0,
+      "failure": 3,
+      "by_category": {
+        "success": 0,
+        "roundtrip": 3,
+        "inside_token": 0,
+        "special": 0,
+        "empty": 0,
+        "upstream_or_span": 0
+      }
+    }
+  },
+  "complete": true,
+  "rejection_frequency": 1.0
+}

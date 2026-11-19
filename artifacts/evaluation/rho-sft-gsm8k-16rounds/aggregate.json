@@ -1,0 +1,144 @@
+{
+  "complete": true,
+  "smoke": false,
+  "rounds_completed": 16,
+  "rounds_requested": 16,
+  "num_examples": 1319,
+  "total_count": 21104,
+  "total_correct": 8529,
+  "accuracy": 0.40414139499620927,
+  "round_accuracy_std_population": 0.007994210103721424,
+  "paper_target_accuracy": 0.403,
+  "difference_percentage_points": 0.1141394996209244,
+  "paper_protocol_size": true,
+  "rounds": [
+    {
+      "round": 0,
+      "seed": 42,
+      "total_correct": 547,
+      "total_count": 1319,
+      "accuracy": 0.41470811220621684,
+      "complete": true
+    },
+    {
+      "round": 1,
+      "seed": 43,
+      "total_correct": 528,
+      "total_count": 1319,
+      "accuracy": 0.400303260045489,
+      "complete": true
+    },
+    {
+      "round": 2,
+      "seed": 44,
+      "total_correct": 531,
+      "total_count": 1319,
+      "accuracy": 0.4025777103866566,
+      "complete": true
+    },
+    {
+      "round": 3,
+      "seed": 45,
+      "total_correct": 530,
+      "total_count": 1319,
+      "accuracy": 0.40181956027293403,
+      "complete": true
+    },
+    {
+      "round": 4,
+      "seed": 46,
+      "total_correct": 542,
+      "total_count": 1319,
+      "accuracy": 0.41091736163760423,
+      "complete": true
+    },
+    {
+      "round": 5,
+      "seed": 47,
+      "total_correct": 523,
+      "total_count": 1319,
+      "accuracy": 0.39651250947687644,
+      "complete": true
+    },
+    {
+      "round": 6,
+      "seed": 48,
+      "total_correct": 533,
+      "total_count": 1319,
+      "accuracy": 0.4040940106141016,
+      "complete": true
+    },
+    {
+      "round": 7,
+      "seed": 49,
+      "total_correct": 543,
+      "total_count": 1319,
+      "accuracy": 0.4116755117513268,
+      "complete": true
+    },
+    {
+      "round": 8,
+      "seed": 50,
+      "total_correct": 539,
+      "total_count": 1319,
+      "accuracy": 0.4086429112964367,
+      "complete": true
+    },
+    {
+      "round": 9,
+      "seed": 51,
+      "total_correct": 534,
+      "total_count": 1319,
+      "accuracy": 0.4048521607278241,
+      "complete": true
+    },
+    {
+      "round": 10,
+      "seed": 52,
+      "total_correct": 541,
+      "total_count": 1319,
+      "accuracy": 0.41015921152388174,
+      "complete": true
+    },
+    {
+      "round": 11,
+      "seed": 53,
+      "total_correct": 510,
+      "total_count": 1319,
+      "accuracy": 0.3866565579984837,
+      "complete": true
+    },
+    {
+      "round": 12,
+      "seed": 54,
+      "total_correct": 546,
+      "total_count": 1319,
+      "accuracy": 0.4139499620924943,
+      "complete": true
+    },
+    {
+      "round": 13,
+      "seed": 55,
+      "total_correct": 520,
+      "total_count": 1319,
+      "accuracy": 0.39423805913570886,
+      "complete": true
+    },
+    {
+      "round": 14,
+      "seed": 56,
+      "total_correct": 543,
+      "total_count": 1319,
+      "accuracy": 0.4116755117513268,
+      "complete": true
+    },
+    {
+      "round": 15,
+      "seed": 57,
+      "total_correct": 519,
+      "total_count": 1319,
+      "accuracy": 0.3934799090219864,
+      "complete": true
+    }
+  ]
+}

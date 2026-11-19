@@ -1,0 +1,43 @@
+_wandb:
+    value:
+        cli_version: 0.31.0
+        m:
+            - "1": iteration
+              "6":
+                - 3
+              "7": []
+            - "2": '*'
+              "5": 1
+              "6":
+                - 1
+              "7": []
+        python_version: 3.13.1
+        t:
+            "3":
+                - 2
+                - 74
+                - 75
+                - 7
+                - 13
+                - 14
+                - 16
+                - 61
+                - 62
+            "4": 3.13.1
+            "5": 0.31.0
+            "12": 0.31.0
+            "13": linux-x86_64
+budget_scope:
+    value: invocation
+cli:
+    value:
+        mode: benchmark
+        wandb_mode: online
+git:
+    value:
+        commit: ea305f1
+        dirty: true
+precision:
+    value: Synthetic logging smoke test; no model or dataset loaded
+start_iteration:
+    value: 0

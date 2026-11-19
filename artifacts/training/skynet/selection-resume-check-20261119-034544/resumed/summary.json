@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "mode": "train",
+  "completed_iteration": 3,
+  "iterations_executed": 1,
+  "iterations_measured": 1,
+  "warmup_iterations_excluded": 0,
+  "iteration_seconds_total": 611.7369948737323,
+  "iteration_seconds_mean": 611.7369948737323,
+  "sampled_tokens": 634,
+  "sampled_tokens_per_second": 1.0363930991795958,
+  "phase_seconds_total": {
+    "primary_generation": 5.179728774353862,
+    "mc_estimation": 0.0,
+    "ppo_estimation": 0.0,
+    "score_cache": 0.5738349538296461,
+    "actor_update": 1.3330401964485645,
+    "critic_update": 0.0,
+    "checkpoint": 65.1778140552342,
+    "validation": 539.4699978455901
+  },
+  "sampling_totals": {
+    "primary_tokens": 634,
+    "mc_tokens": 0,
+    "primary_continuations": 8,
+    "mc_continuations": 0,
+    "mc_expansions": 0
+  },
+  "peak_allocated_bytes": 5324044288,
+  "peak_reserved_bytes": 5398069248,
+  "checkpoints": [
+    {
+      "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/resumed/checkpoints/iteration-3.pt",
+      "bytes": 4552415279
+    }
+  ]
+}

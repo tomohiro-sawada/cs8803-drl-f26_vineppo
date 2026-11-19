@@ -6,3 +6,4 @@ Instructions for coding agents are marked with `AGENT INSTRUCTIONS` in the doc s
 # Conventions 
 
 - When you add new entries to `prose` or update a log, include the timestamp (generated using `bash.timestamp` function) and the git commit hash (via `git rev-parse --short HEAD`) in your response. Crucial for traceability.
+- Be very mindful of how you name scripts/dirs and where you place them. Codebase hygiene and maintainability (without unnecessarily bloating complexity) is absolutely essential.

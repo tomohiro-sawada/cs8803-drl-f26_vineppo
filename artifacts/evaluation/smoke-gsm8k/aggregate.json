@@ -1,0 +1,24 @@
+{
+  "complete": true,
+  "smoke": true,
+  "rounds_completed": 1,
+  "rounds_requested": 1,
+  "num_examples": 8,
+  "total_count": 8,
+  "total_correct": 3,
+  "accuracy": 0.375,
+  "round_accuracy_std_population": 0.0,
+  "paper_target_accuracy": 0.403,
+  "difference_percentage_points": -2.8000000000000025,
+  "paper_protocol_size": false,
+  "rounds": [
+    {
+      "round": 0,
+      "seed": 42,
+      "total_correct": 3,
+      "total_count": 8,
+      "accuracy": 0.375,
+      "complete": true
+    }
+  ]
+}

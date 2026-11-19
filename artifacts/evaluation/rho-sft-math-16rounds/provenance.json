@@ -1,0 +1,83 @@
+{
+  "paper": "https://arxiv.org/html/2410.01679v2",
+  "upstream_commit": "9f716e68bb934e71da86c226c1699c36b5553faf",
+  "model": {
+    "kind": "model",
+    "task": "math",
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-MATH",
+    "repo_id": "realtreetune/rho-1b-sft-MATH",
+    "requested_revision": "main",
+    "revision": "f4d0f86bfce159f0042cca9116a52c0b972f34aa"
+  },
+  "dataset": {
+    "kind": "dataset",
+    "task": "math",
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/math",
+    "archive_member": "wandb_export_root/datasets/data-math-openai_split.zip",
+    "splits": {
+      "train": {
+        "rows": 11500,
+        "columns": [
+          "problem",
+          "solution",
+          "answer",
+          "subject",
+          "level",
+          "unique_id",
+          "gold_solution_steps"
+        ]
+      },
+      "validation": {
+        "rows": 500,
+        "columns": [
+          "problem",
+          "solution",
+          "answer",
+          "subject",
+          "level",
+          "unique_id",
+          "gold_solution_steps"
+        ]
+      },
+      "test": {
+        "rows": 500,
+        "columns": [
+          "problem",
+          "solution",
+          "answer",
+          "subject",
+          "level",
+          "unique_id",
+          "gold_solution_steps"
+        ]
+      }
+    },
+    "url": "https://github.com/McGill-NLP/VinePPO/releases/download/latest/wandb_export_root.zip",
+    "release_asset_id": 196429828,
+    "sha256": "c25d3977febe21260a1d6fe484ef368774e3d99ef10ef3f07a4531f4cd02a503",
+    "size_bytes": 8127691
+  },
+  "manifest_sha256": "726b62612ce0f4a14034deae8fbe269923cb3cd4e70fad9d92330fb3ed62477b",
+  "selection_sha256": "f68125708bc762015bc56148d45ad813aad0cbd00ff98d8b62823063e57750ea",
+  "verifier_policy": "vineppo-question-final-answer-safe-v2",
+  "verifier_provenance": "https://github.com/McGill-NLP/VinePPO/tree/9f716e68bb934e71da86c226c1699c36b5553faf/src/treetune/tasks",
+  "reference_is_solution": true,
+  "git_commit": "752940141eb748ca9c8561ac740be5ba0de434da",
+  "runner_sha256": "f9ffd4df5343a67cefd93a265250831d983b39f0ef0c3e647c4e3771f87a35e4",
+  "versions": {
+    "torch": "2.15.0",
+    "transformers": "5.22.1",
+    "datasets": "5.1.0",
+    "tokenizers": "0.23.3"
+  },
+  "gpu": "NVIDIA A40",
+  "cuda": "13.2",
+  "deviations": [
+    "HF SDPA rather than upstream vLLM; no bitwise parity claim",
+    "Stop string removed after generation; extra draws affect subsequent RNG state",
+    "Sequential seeded rounds rather than upstream batched n=16 completions",
+    "Long-prompt budget counts BOS; upstream tokenize() does not",
+    "Manifest attests downloads, not post-download local file integrity",
+    "Shared safe verifier errors abort instead of counting infrastructure failures as wrong"
+  ]
+}

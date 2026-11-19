@@ -1,0 +1,91 @@
+{
+  "paper": "https://arxiv.org/html/2410.01679v2",
+  "upstream_commit": "9f716e68bb934e71da86c226c1699c36b5553faf",
+  "model": {
+    "kind": "model",
+    "task": "math",
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-MATH",
+    "repo_id": "realtreetune/rho-1b-sft-MATH",
+    "requested_revision": "main",
+    "revision": "f4d0f86bfce159f0042cca9116a52c0b972f34aa"
+  },
+  "dataset": {
+    "kind": "dataset",
+    "task": "math",
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/math",
+    "archive_member": "wandb_export_root/datasets/data-math-openai_split.zip",
+    "splits": {
+      "train": {
+        "rows": 11500,
+        "columns": [
+          "problem",
+          "solution",
+          "answer",
+          "subject",
+          "level",
+          "unique_id",
+          "gold_solution_steps"
+        ]
+      },
+      "validation": {
+        "rows": 500,
+        "columns": [
+          "problem",
+          "solution",
+          "answer",
+          "subject",
+          "level",
+          "unique_id",
+          "gold_solution_steps"
+        ]
+      },
+      "test": {
+        "rows": 500,
+        "columns": [
+          "problem",
+          "solution",
+          "answer",
+          "subject",
+          "level",
+          "unique_id",
+          "gold_solution_steps"
+        ]
+      }
+    },
+    "url": "https://github.com/McGill-NLP/VinePPO/releases/download/latest/wandb_export_root.zip",
+    "release_asset_id": 196429828,
+    "sha256": "c25d3977febe21260a1d6fe484ef368774e3d99ef10ef3f07a4531f4cd02a503",
+    "size_bytes": 8127691
+  },
+  "manifest_sha256": "726b62612ce0f4a14034deae8fbe269923cb3cd4e70fad9d92330fb3ed62477b",
+  "selection_sha256": "f68125708bc762015bc56148d45ad813aad0cbd00ff98d8b62823063e57750ea",
+  "source_sha256": {
+    "runner": "123051ca368f8165eaa6b56d89cc3d6472c524769e43994af692d76df52505fb",
+    "shared_runner": "f9ffd4df5343a67cefd93a265250831d983b39f0ef0c3e647c4e3771f87a35e4",
+    "evaluator": "172529687bac012ff7fcbcc43c937c1f46aee6ff2e0a134abb259a09007f5cca",
+    "verifier": "7107cf240f6afe17f103f02c0495c6ca2cfd6c87074be5969e82c6a32645f71a"
+  },
+  "git_commit": "430870e056c6a6401209ca37c3746fcf7189d934",
+  "versions": {
+    "vllm": "0.34.0",
+    "torch": "2.14.0",
+    "transformers": "5.22.1",
+    "datasets": "5.1.0",
+    "tokenizers": "0.23.3"
+  },
+  "gpu": "NVIDIA A40",
+  "cuda": "13.0",
+  "attention_backend": "FLASH_ATTN",
+  "verifier_policy": "vineppo-question-final-answer-safe-v2",
+  "verifier_provenance": "https://github.com/McGill-NLP/VinePPO/tree/9f716e68bb934e71da86c226c1699c36b5553faf/src/treetune/tasks",
+  "reference_is_solution": true,
+  "seed_policy": "base seed + zero-based test example index * num_samples; one seeded n-sample request per prompt",
+  "deviations": [
+    "Modern vLLM/torch rather than upstream versions; no bitwise parity claim",
+    "Explicit per-prompt base+index*num_samples seeds rather than upstream global RNG; stable assignment across batches, not guaranteed bitwise batch invariance",
+    "vLLM 0.34 derives child seeds as prompt seed + sample index; num_samples stride gives disjoint child seed ranges across prompts",
+    "Long-prompt budget includes BOS; upstream tokenize() does not",
+    "Manifest attests downloads, not post-download local file integrity",
+    "Shared safe verifier errors abort instead of counting infrastructure failures as wrong"
+  ]
+}

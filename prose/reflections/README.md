@@ -27,3 +27,8 @@ Where this sits in the pipeline: [`agent-reports/`](../agent-reports/) (agent
 deliverable) → `experiments/*/findings.md` (filed per-run record) → here (human
 synthesis, cross-run, provisional) → the knowledge base (established). See
 [`prose/README.md`](../README.md) for the full routing table.
+
+
+## Organization. 
+
+- `messages`: messages I send to colleagues reporting on the latest findings.

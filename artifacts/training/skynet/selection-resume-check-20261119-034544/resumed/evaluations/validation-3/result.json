@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "task": "gsm8k",
+  "split": "validation",
+  "checkpoint": {
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/resumed/checkpoints/iteration-3.pt",
+    "sha256": "2b8c36120cf304145534bbb7a998f517a872f158c6cf5fb545ff69d78d31e78c",
+    "iteration": 3
+  },
+  "protocol": {
+    "temperature": 0.35,
+    "top_p": 0.9,
+    "top_k": 0,
+    "max_new_tokens": 1024,
+    "context_size": 2047,
+    "num_samples": 1,
+    "prompt": "[MATH_TASK] Problem:\n{question}\n\nSolution:",
+    "stop": "\n\n\nProblem:",
+    "stop_policy": "trim after generation",
+    "seed_policy": "seed + zero-based round index",
+    "accuracy_policy": "mean Pass@1; no truncation penalty",
+    "rounds": 1,
+    "seed": 42,
+    "batch_size": 32
+  },
+  "dataset": {
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/gsm8k",
+    "fingerprint": "576e2ee88ca003fd",
+    "rows": 373,
+    "examples_sha256": "209804cc2b194141cd89b813b03217d85808d0c18538e7aa1a7d1f7a5c4f2c2f"
+  },
+  "training_run": {
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/resumed",
+    "wandb": null
+  },
+  "checkpoint_source": {
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/resumed",
+    "metadata_sha256": "2af051df734dc45dffc9d8a2731877d4fe96b5b1c44cfab18e6eff9aeea456a8"
+  },
+  "evaluation_run": {
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/resumed",
+    "wandb": null
+  },
+  "complete": true,
+  "accuracy": 0.5388739946380697,
+  "total_count": 373,
+  "total_correct": 201,
+  "num_examples": 373,
+  "rounds_completed": 1,
+  "round_accuracy_std_population": 0.0,
+  "rounds": [
+    {
+      "round": 0,
+      "seed": 42,
+      "total_correct": 201,
+      "total_count": 373,
+      "accuracy": 0.5388739946380697,
+      "complete": true
+    }
+  ]
+}
