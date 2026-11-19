@@ -6,6 +6,7 @@ import json
 import os
 import socket
 import sys
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, call
@@ -108,6 +109,9 @@ def test_disabled_is_noop_without_import_env_or_files(args, monkeypatch, sdk):
         with tracking.WandBTracker(args, {}) as tracker:
             tracker.log_iteration({})
             tracker.finish_summary({})
+            tracker.log_evaluation({}, selection={})
+            tracker.log_selection({})
+            tracker.log_final_test({})
     sdk.init.assert_not_called()
     assert not args.output.exists()
 
@@ -122,6 +126,11 @@ def test_offline_safe_config_settings_and_identity(args, sdk, isolated, mode):
             "api_key": "SECRET",
             "future_credential": "SECRET",
             "env_file": ".env",
+            "evaluation": True,
+            "validation_rounds": 2,
+            "eval_batch_size": 4,
+            "eval_seed": 42,
+            "eval_timeout_seconds": 600,
         },
         "trainer_config": {"checkpoint_dir": Path("checkpoints")},
         "dataset": {"rows": 8},
@@ -131,6 +140,10 @@ def test_offline_safe_config_settings_and_identity(args, sdk, isolated, mode):
         "model": {"path": Path("model")},
         "precision": "FP32",
         "start_iteration": 9,
+        "evaluation": {"split": "validation", "rounds": 2},
+        "training_run": {"path": "training"},
+        "checkpoint": {"iteration": 9},
+        "selection": {"frozen": True},
         "environment": {"API_KEY": "SECRET"},
         "dotenv": "SECRET",
         "unknown": "SECRET",
@@ -165,6 +178,14 @@ def test_offline_safe_config_settings_and_identity(args, sdk, isolated, mode):
     assert set(config) == set(tracking.CONFIG_FIELDS) | {"budget_scope"}
     assert config["cli"]["resume"] == "checkpoint.pt"
     assert config["cli"]["mode"] == mode
+    for key in (
+        "evaluation",
+        "validation_rounds",
+        "eval_batch_size",
+        "eval_seed",
+        "eval_timeout_seconds",
+    ):
+        assert config["cli"][key] == metadata["cli"][key]
     assert config["trainer_config"]["checkpoint_dir"] == "checkpoints"
     assert config["model"]["path"] == "model"
     assert "SECRET" not in json.dumps(kw)
@@ -344,6 +365,233 @@ def test_invalid_metrics_fail_loudly(args, sdk, update):
     sdk.init.return_value.log.assert_not_called()
 
 
+def evaluation_result(split="validation"):
+    return {
+        "schema_version": 1,
+        "complete": True,
+        "task": "gsm8k",
+        "split": split,
+        "accuracy": 0.75,
+        "round_accuracy_std_population": 0.25,
+        "num_examples": 2,
+        "total_count": 4,
+        "total_correct": 3,
+        "rounds_completed": 2,
+        "dataset": {"rows": 2},
+        "protocol": {"rounds": 2, "seed": 42},
+        "checkpoint": {
+            "path": "/training/checkpoint.pt",
+            "sha256": "a" * 64,
+            "iteration": 3,
+        },
+        "training_run": {
+            "path": "/training",
+            "wandb": {
+                "id": "parent",
+                "url": "https://wandb.invalid/parent",
+                "mode": "online",
+            },
+        },
+        "rounds": [
+            {
+                "round": i,
+                "seed": 42 + i,
+                "complete": True,
+                "accuracy": correct / 2,
+                "total_count": 2,
+                "total_correct": correct,
+                "samples": "SECRET",
+            }
+            for i, correct in enumerate((1, 2))
+        ],
+        "samples": "SECRET",
+        "code": "SECRET",
+        "text": "SECRET",
+    }
+
+
+def frozen_selection():
+    best = evaluation_result()
+    return {
+        "schema_version": 1,
+        "frozen": True,
+        "task": "gsm8k",
+        "training_output": "/training",
+        "best": best,
+        "candidates": [best],
+        "tie_rule": "highest_validation_accuracy_then_earliest_iteration",
+        "test_protocol": {"rounds": 2, "seed": 42},
+    }
+
+
+def evaluation_metrics(split):
+    return {
+        f"eval/{split}/pass_at_1": 0.75,
+        f"eval/{split}/round_std_population": 0.25,
+        f"eval/{split}/num_examples": 2,
+        f"eval/{split}/total_count": 4,
+        f"eval/{split}/rounds_completed": 2,
+    }
+
+
+@pytest.mark.parametrize("split", ["validation", "test"])
+def test_child_evaluation_scalars_summary_and_privacy(args, sdk, isolated, split):
+    result = evaluation_result(split)
+    metadata = {key: result[key] for key in ("checkpoint", "training_run")}
+    metadata["evaluation"] = {"split": split, **result["protocol"]}
+    original = deepcopy(result)
+    with tracking.WandBTracker(args, metadata) as tracker:
+        tracker.log_evaluation(result)
+        assert tracker._budget == dict.fromkeys(tracking.BUDGET_FIELDS, 0)
+    run = sdk.init.return_value
+    run.log.assert_called_once_with(
+        evaluation_metrics(split) | {"iteration": 3}, step=3
+    )
+    assert run.summary == evaluation_metrics(split) | {
+        "iteration": 3,
+        "checkpoint": result["checkpoint"],
+        "training_run": result["training_run"],
+    }
+    for key, value in metadata.items():
+        assert sdk.init.call_args.kwargs["config"][key] == value
+    assert "SECRET" not in json.dumps(run.summary)
+    assert "SECRET" not in str(run.log.call_args_list)
+    assert result == original
+    isolated.dotenv_values.assert_not_called()
+
+
+def test_test_child_includes_frozen_selection(args, sdk):
+    selection = frozen_selection()
+    with tracking.WandBTracker(args, {}) as tracker:
+        tracker.log_evaluation(evaluation_result("test"), selection=selection)
+    assert sdk.init.return_value.summary["eval/validation/best_pass_at_1"] == 0.75
+    assert (
+        sdk.init.return_value.summary["selected_checkpoint"]
+        == selection["best"]["checkpoint"]
+    )
+    assert "SECRET" not in json.dumps(sdk.init.return_value.summary)
+
+
+def test_parent_summaries_never_advance_history_or_budget(args, sdk):
+    with tracking.WandBTracker(args, {}) as tracker:
+        tracker.log_iteration(row(10) | evaluation_metrics("validation"))
+        history = list(sdk.init.return_value.log.call_args_list)
+        budget = dict(tracker._budget)
+        tracker.log_selection(frozen_selection())
+        tracker.log_final_test(evaluation_result("test"))
+        assert sdk.init.return_value.log.call_args_list == history
+        assert tracker._last_iteration == 10 and tracker._budget == budget
+        assert sdk.init.return_value.summary == evaluation_metrics("test") | {
+            "eval/validation/best_pass_at_1": 0.75,
+            "selected_checkpoint": evaluation_result()["checkpoint"],
+        }
+        tracker.log_iteration(row(11))
+    assert [c.kwargs["step"] for c in sdk.init.return_value.log.call_args_list] == [
+        10,
+        11,
+    ]
+
+
+@pytest.mark.parametrize("split", ["validation", "test"])
+@pytest.mark.parametrize(
+    "update",
+    [
+        {"complete": False},
+        {"split": "train"},
+        {"accuracy": float("nan")},
+        {"accuracy": float("inf")},
+        {"accuracy": -0.1},
+        {"accuracy": 1.1},
+        {"accuracy": True},
+        {"accuracy": 0.5},
+        {"round_accuracy_std_population": float("nan")},
+        {"round_accuracy_std_population": 0.5},
+        {"num_examples": 0},
+        {"total_count": 3},
+        {"total_correct": 2},
+        {"rounds_completed": 1},
+        {"rounds_completed": True},
+    ],
+)
+def test_invalid_evaluation_is_atomic(args, sdk, split, update):
+    with tracking.WandBTracker(args, {}) as tracker:
+        with pytest.raises(AssertionError):
+            tracker.log_evaluation(evaluation_result(split) | update)
+        assert sdk.init.return_value.summary == {}
+        sdk.init.return_value.log.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("complete", False),
+        ("total_count", 1),
+        ("total_correct", 3),
+        ("accuracy", float("nan")),
+        ("seed", 0),
+        ("round", 2),
+    ],
+)
+def test_invalid_round_evidence(args, sdk, field, value):
+    result = evaluation_result()
+    result["rounds"][0][field] = value
+    with tracking.WandBTracker(args, {}) as tracker:
+        with pytest.raises(AssertionError):
+            tracker.log_evaluation(result)
+        sdk.init.return_value.log.assert_not_called()
+        assert sdk.init.return_value.summary == {}
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    ["unfrozen", "test_best", "incomplete", "checkpoint", "protocol", "wrong_best"],
+)
+def test_invalid_selection_is_atomic(args, sdk, invalid):
+    selection, result = frozen_selection(), evaluation_result("test")
+    if invalid == "unfrozen":
+        selection["frozen"] = False
+    elif invalid == "test_best":
+        selection["best"]["split"] = "test"
+    elif invalid == "incomplete":
+        selection["best"]["complete"] = False
+    elif invalid == "checkpoint":
+        result["checkpoint"]["iteration"] += 1
+    elif invalid == "protocol":
+        selection["test_protocol"]["seed"] += 1
+    else:
+        earlier = deepcopy(selection["best"])
+        earlier["checkpoint"].update(iteration=1, path="/training/earlier.pt")
+        selection["candidates"].append(earlier)
+    with tracking.WandBTracker(args, {}) as tracker:
+        with pytest.raises(AssertionError):
+            tracker.log_evaluation(result, selection=selection)
+        if invalid not in ("checkpoint", "protocol"):
+            with pytest.raises(AssertionError):
+                tracker.log_selection(selection)
+        sdk.init.return_value.log.assert_not_called()
+        assert sdk.init.return_value.summary == {}
+
+
+def test_final_test_rejects_validation_and_incomplete(args, sdk):
+    with tracking.WandBTracker(args, {}) as tracker:
+        for result in (
+            evaluation_result(),
+            evaluation_result("test") | {"complete": False},
+        ):
+            with pytest.raises(AssertionError):
+                tracker.log_final_test(result)
+        sdk.init.return_value.log.assert_not_called()
+        assert sdk.init.return_value.summary == {}
+
+
+@pytest.mark.parametrize(
+    "method", ["log_evaluation", "log_selection", "log_final_test"]
+)
+def test_evaluation_apis_require_context(args, method):
+    with pytest.raises(AssertionError, match="Enter the tracker"):
+        getattr(tracking.WandBTracker(args, {}), method)({})
+
+
 def test_offline_never_reads_environment(args, sdk, monkeypatch):
     class NoEnvironment:
         def __getattribute__(self, name):
@@ -353,4 +601,9 @@ def test_offline_never_reads_environment(args, sdk, monkeypatch):
         patch.setattr(tracking.os, "environ", NoEnvironment())
         with tracking.WandBTracker(args, {}) as tracker:
             tracker.log_iteration(row(1))
+            tracker.log_evaluation(
+                evaluation_result("test"), selection=frozen_selection()
+            )
+            tracker.log_selection(frozen_selection())
+            tracker.log_final_test(evaluation_result("test"))
     sdk.init.return_value.finish.assert_called_once_with(exit_code=0)

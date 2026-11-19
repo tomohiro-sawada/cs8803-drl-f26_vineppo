@@ -379,6 +379,7 @@ def measured_trainer():
     trainer.rows, trainer.saved = [], []
     trainer.pending = None
     trainer.tracker = None
+    trainer.selection = None
     return trainer
 
 
@@ -468,7 +469,11 @@ def test_main_local_model_assembly_and_real_warmup_summary(
     monkeypatch.setattr(torch, "manual_seed", Mock())
     monkeypatch.setattr(runner, "git", lambda *args: "test-commit")
     tokenizer = SimpleNamespace(
-        is_fast=True, eos_token_id=2, eos_token="eos", pad_token_id=None
+        is_fast=True,
+        eos_token_id=2,
+        eos_token="eos",
+        pad_token_id=None,
+        backend_tokenizer=SimpleNamespace(to_str=lambda: "{}"),
     )
     load_tokenizer = Mock(return_value=tokenizer)
     monkeypatch.setattr(runner.AutoTokenizer, "from_pretrained", load_tokenizer)
@@ -727,3 +732,185 @@ def test_tracking_failure_propagates_after_preserving_local_row(clock):
     with pytest.raises(RuntimeError, match="logging failed"):
         trainer.finish_iteration()
     assert json.loads(trainer.stream.getvalue())["iteration"] == 1
+
+
+def test_selection_precedes_pruning_and_protects_old_best(monkeypatch, tmp_path, clock):
+    trainer = measured_trainer()
+    selection = SimpleNamespace(best_path=None)
+    trainer.selection = selection
+    created = []
+
+    def save(self, path=None):
+        saved = tmp_path / f"iteration-{self.iteration}.pt"
+        saved.write_bytes(b"checkpoint")
+        created.append(saved)
+        return saved
+
+    def validate(saved, iteration):
+        assert saved.exists()
+        if iteration == 3:
+            assert created[0].exists(), "Best was pruned before validation"
+        if iteration in (1, 4):
+            selection.best_path = saved
+        return {"eval/validation/pass_at_1": iteration / 10}
+
+    selection.validate = validate
+    monkeypatch.setattr(runner.PPOTrainer, "save_checkpoint", save)
+    trainer.meter.start()
+    for iteration in range(1, 5):
+        trainer.iteration = iteration
+        trainer.pending = {"iteration": iteration, "loss": 0.25}
+        clock.now += 1
+        trainer.save_checkpoint()
+        if iteration == 3:
+            assert trainer.saved == created and len(trainer.saved) == 3
+    assert trainer.saved == created[-2:]
+    assert not created[0].exists() and not created[1].exists()
+    assert trainer.rows[-1]["eval/validation/pass_at_1"] == 0.4
+    assert "validation_seconds" in trainer.rows[-1]
+    selection.validate = Mock(side_effect=RuntimeError("validation failed"))
+    trainer.iteration = 5
+    trainer.pending = {"iteration": 5}
+    with pytest.raises(RuntimeError, match="validation failed"):
+        trainer.save_checkpoint()
+    assert all(path.exists() for path in created[-3:])
+    assert len(trainer.rows) == 4
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--evaluation", "validation"],
+        [
+            "--mode",
+            "train",
+            "--evaluation",
+            "validation-test",
+            "--resume",
+            "CHECKPOINT",
+        ],
+        ["--eval-seed", "-1"],
+        ["--validation-rounds", "0"],
+        ["--eval-timeout-seconds", "0"],
+        ["--eval-batch-size", "0"],
+    ],
+)
+def test_invalid_automatic_selection_cli(cli, extra):
+    with pytest.raises(SystemExit):
+        runner.parse_args(cli + extra)
+
+
+def test_selection_resume_cli(cli, tmp_path):
+    checkpoint, manifest = tmp_path / "iteration-3.pt", tmp_path / "selection.json"
+    checkpoint.touch()
+    manifest.write_text("{}")
+    args = runner.parse_args(
+        cli
+        + [
+            "--mode",
+            "train",
+            "--evaluation",
+            "validation",
+            "--resume",
+            str(checkpoint),
+            "--resume-selection",
+            str(manifest),
+        ]
+    )
+    assert args.resume_selection == manifest and args.resume == checkpoint
+    with pytest.raises(SystemExit):
+        runner.parse_args(cli + ["--resume-selection", str(manifest)])
+
+
+@pytest.mark.parametrize("start", [2, 3])
+def test_main_recovers_validation_before_updates_or_finalization(
+    cli, tmp_path, monkeypatch, clock, start
+):
+    checkpoint, manifest = tmp_path / "iteration.pt", tmp_path / "selection.json"
+    checkpoint.touch()
+    manifest.write_text("{}")
+    (tmp_path / "model/config.json").write_text("{}")
+    monkeypatch.setattr(
+        runner, "load_examples", lambda *a: ([runner.Example("a", "Q", "1")] * 2, {})
+    )
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(
+        torch.cuda,
+        "get_device_properties",
+        lambda _: SimpleNamespace(name="fake", total_memory=1, major=8, minor=6),
+    )
+    monkeypatch.setattr(torch.cuda, "set_device", Mock())
+    monkeypatch.setattr(torch, "manual_seed", Mock())
+    monkeypatch.setattr(runner, "git", lambda *a: "test")
+    tokenizer = SimpleNamespace(
+        is_fast=True,
+        eos_token_id=2,
+        pad_token_id=2,
+        backend_tokenizer=SimpleNamespace(to_str=lambda: "{}"),
+    )
+    monkeypatch.setattr(
+        runner.AutoTokenizer, "from_pretrained", Mock(return_value=tokenizer)
+    )
+    actor = Mock()
+    actor.to.return_value = actor
+    actor.parameters.return_value = [torch.nn.Parameter(torch.ones(1))]
+    actor.config.to_dict.return_value = {}
+    monkeypatch.setattr(
+        runner.AutoModelForCausalLM, "from_pretrained", Mock(return_value=actor)
+    )
+    inference = Mock(__enter__=Mock(), __exit__=Mock(return_value=False))
+    monkeypatch.setattr(runner, "MeasuredInference", Mock(return_value=inference))
+    trainer = measured_trainer()
+    events = []
+
+    def assemble(*a, **kw):
+        trainer.stream, trainer.meter = kw["stream"], kw["meter"]
+        trainer.warmup_iterations = kw["warmup_iterations"]
+        trainer.optimizer = kw["optimizer"]
+        return trainer
+
+    def load(*a, **kw):
+        trainer.iteration = start
+
+    def train(**kw):
+        assert events == ["recover"]
+        events.append("train")
+        trainer.iteration = 3
+        trainer.pending = {"iteration": 3}
+        trainer.meter.start()
+        clock.now += 1
+        trainer.finish_iteration()
+
+    trainer.load_checkpoint = load
+    trainer.train = train
+    monkeypatch.setattr(runner, "MeasuredTrainer", assemble)
+    controller = Mock()
+    controller.recover.side_effect = lambda i: events.append("recover")
+    controller.freeze.side_effect = lambda: events.append("freeze") or {}
+    monkeypatch.setattr(runner, "CheckpointSelection", Mock(return_value=controller))
+    tracker = Mock()
+    tracker.__enter__ = Mock(return_value=tracker)
+    tracker.__exit__ = Mock(return_value=False)
+    monkeypatch.setattr(runner, "WandBTracker", Mock(return_value=tracker))
+    runner.main(
+        cli
+        + [
+            "--mode",
+            "train",
+            "--evaluation",
+            "validation",
+            "--resume",
+            str(checkpoint),
+            "--resume-selection",
+            str(manifest),
+        ]
+    )
+    assert events == (
+        ["recover", "train", "freeze"] if start == 2 else ["recover", "freeze"]
+    )
+    tracker.log_iteration.assert_not_called()
+    tracker.log_selection.assert_called_once()
+    summary = json.loads((tmp_path / "output/summary.json").read_text())
+    assert summary["iterations_executed"] == (1 if start == 2 else 0)
+    assert (summary["iteration_seconds_mean"] is None) == (start == 3)

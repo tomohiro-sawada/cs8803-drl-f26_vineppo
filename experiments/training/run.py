@@ -24,6 +24,7 @@ sampled EOS, exclude padding/prompt tokens, and count all MC continuations.
 """
 
 import argparse
+import gc
 import hashlib
 import json
 import math
@@ -59,6 +60,7 @@ from algorithms.vineppo import VinePPOConfig
 from core.data import Example
 from core.inference import HFInference
 from core.lora import apply_lora, lora_identity
+from experiments.training.selection import CheckpointSelection
 from experiments.training.tracking import WandBTracker
 from runtime.config import PPOTrainerConfig
 from runtime.train import PPOTrainer
@@ -73,6 +75,7 @@ PHASES = (
     "actor_update",
     "critic_update",
     "checkpoint",
+    "validation",
 )
 
 
@@ -142,6 +145,11 @@ def parse_args(argv=None):
     parser.add_argument(
         "--resume", type=Path, help="Core iteration-N.pt; output must still be new"
     )
+    parser.add_argument(
+        "--resume-selection",
+        type=Path,
+        help="Source selection.json; requires --resume and automatic evaluation",
+    )
     parser.add_argument("--dtype", choices=("float32", "bfloat16"), default="float32")
     parser.add_argument("--finetuning", choices=("full", "lora"), default="full")
     parser.add_argument("--lora-rank", type=positive_int)
@@ -153,7 +161,27 @@ def parse_args(argv=None):
     parser.add_argument("--wandb-entity")
     parser.add_argument("--wandb-group")
     parser.add_argument("--wandb-name")
+    parser.add_argument(
+        "--evaluation",
+        choices=("disabled", "validation", "validation-test"),
+        default="disabled",
+    )
+    parser.add_argument("--validation-rounds", type=positive_int, default=16)
+    parser.add_argument("--eval-batch-size", type=positive_int, default=4)
+    parser.add_argument("--eval-seed", type=int, default=42)
+    parser.add_argument("--eval-timeout-seconds", type=positive_int, default=7200)
     args = parser.parse_args(argv)
+    if not 0 <= args.eval_seed <= 2**32 - max(16, args.validation_rounds):
+        parser.error("Evaluation seed range exceeds NumPy bounds")
+    if args.evaluation != "disabled":
+        if args.mode != "train":
+            parser.error("Automatic checkpoint selection requires train mode")
+        if (args.resume is None) != (args.resume_selection is None):
+            parser.error(
+                "Automatic selection resume requires --resume and --resume-selection together"
+            )
+    elif args.resume_selection is not None:
+        parser.error("--resume-selection requires automatic evaluation")
     if args.finetuning == "full" and (
         args.lora_rank is not None or args.lora_alpha is not None
     ):
@@ -180,6 +208,9 @@ def parse_args(argv=None):
     if args.resume is not None:
         args.resume = args.resume.expanduser().resolve(strict=True)
         assert args.resume.is_file(), "Resume must be a checkpoint file"
+    if args.resume_selection is not None:
+        args.resume_selection = args.resume_selection.expanduser().resolve(strict=True)
+        assert args.resume_selection.is_file()
     return args
 
 
@@ -293,6 +324,7 @@ class MeasuredTrainer(PPOTrainer):
         self.pending = None
         self.saved = []
         self.tracker = None
+        self.selection = None
 
     def _prepare_inputs(self, *args, **kwargs):
         result = super()._prepare_inputs(*args, **kwargs)
@@ -341,10 +373,20 @@ class MeasuredTrainer(PPOTrainer):
             saved = super().save_checkpoint()
             self.meter.counts["checkpoint_bytes"] = saved.stat().st_size
             self.saved.append(saved)
-            # Track only files actually created by this instance, never glob a resume directory.
-            while len(self.saved) > self.keep_checkpoints:
-                self.saved.pop(0).unlink()
         assert self.pending is not None
+        if self.selection is not None:
+            with self.meter.phase("validation"):
+                torch.cuda.empty_cache()
+                self.pending.update(self.selection.validate(saved, self.iteration))
+        with self.meter.phase("checkpoint"):
+            retained = set(self.saved[-self.keep_checkpoints :])
+            if self.selection is not None:
+                retained.add(self.selection.best_path)
+            # Only prune this invocation's files, after validation has succeeded.
+            for old in self.saved:
+                if old not in retained:
+                    old.unlink()
+            self.saved = [path for path in self.saved if path in retained]
         self.finish_iteration()
         return saved
 
@@ -461,6 +503,9 @@ def main(argv=None):
         use_fast=True,
     )
     assert tokenizer.is_fast and tokenizer.eos_token_id is not None
+    tokenizer_sha256 = hashlib.sha256(
+        tokenizer.backend_tokenizer.to_str().encode("utf-8")
+    ).hexdigest()
     pad_was_missing = tokenizer.pad_token_id is None
     if pad_was_missing:
         tokenizer.pad_token = tokenizer.eos_token
@@ -534,9 +579,10 @@ def main(argv=None):
                     g["lr"] == args.critic_learning_rate
                     for g in critic_optimizer.param_groups
                 ), "--critic-learning-rate must match the resumed optimizer"
-        assert args.num_iterations - trainer.iteration > warmup, (
-            "Need non-warmup new iterations after resume"
-        )
+        assert args.num_iterations - trainer.iteration > warmup or (
+            args.resume_selection is not None
+            and trainer.iteration == args.num_iterations
+        ), "Need non-warmup new iterations after resume"
         metadata = {
             "schema_version": 1,
             "created_at": datetime.now(UTC).isoformat(),
@@ -560,6 +606,7 @@ def main(argv=None):
             },
             "dataset": {"path": str(args.dataset_path), **dataset_info},
             "prompt": PROMPT,
+            "tokenizer_sha256": tokenizer_sha256,
             "pad_uses_eos_because_missing": pad_was_missing,
             "software": {
                 "python": sys.version,
@@ -590,11 +637,38 @@ def main(argv=None):
             ),
             "measurement_contract": __doc__,
         }
+        if args.resume_selection is not None:
+            parent_wandb = args.resume_selection.parent / "wandb.json"
+            metadata["selection"] = {
+                "resume_selection": str(args.resume_selection),
+                "manifest_sha256": hashlib.sha256(
+                    args.resume_selection.read_bytes()
+                ).hexdigest(),
+                "training_run": {
+                    "path": str(args.resume_selection.parent),
+                    "wandb": json.loads(parent_wandb.read_text())
+                    if parent_wandb.exists()
+                    else None,
+                },
+            }
+        trainer.evaluation_provenance = {
+            "schema_version": 1,
+            "task": args.task,
+            "prompt": PROMPT,
+            "tokenizer_sha256": tokenizer_sha256,
+            "dataset": metadata["dataset"],
+        }
         write_json(args.output / "metadata.json", metadata)
         tracker = tracking_context.enter_context(WandBTracker(args, metadata))
         if args.wandb_mode != "disabled":
             trainer.tracker = tracker
-        trainer.train(**inputs, record_metrics=trainer.record_metrics)
+        if args.evaluation != "disabled":
+            trainer.selection = CheckpointSelection(
+                args, checkpoint_every, trainer.iteration
+            )
+            trainer.selection.recover(trainer.iteration)
+        if trainer.iteration < args.num_iterations:
+            trainer.train(**inputs, record_metrics=trainer.record_metrics)
         assert trainer.pending is None
         measured = [row for row in trainer.rows if not row["warmup"]]
         seconds = sum(row["iteration_seconds"] for row in measured)
@@ -609,9 +683,9 @@ def main(argv=None):
                 "iterations_measured": len(measured),
                 "warmup_iterations_excluded": warmup,
                 "iteration_seconds_total": seconds,
-                "iteration_seconds_mean": seconds / len(measured),
+                "iteration_seconds_mean": seconds / len(measured) if measured else None,
                 "sampled_tokens": tokens,
-                "sampled_tokens_per_second": tokens / seconds,
+                "sampled_tokens_per_second": tokens / seconds if measured else None,
                 "phase_seconds_total": {
                     name: sum(row[f"{name}_seconds"] for row in measured)
                     for name in PHASES
@@ -627,10 +701,10 @@ def main(argv=None):
                     )
                 },
                 "peak_allocated_bytes": max(
-                    row["peak_allocated_bytes"] for row in measured
+                    (row["peak_allocated_bytes"] for row in measured), default=0
                 ),
                 "peak_reserved_bytes": max(
-                    row["peak_reserved_bytes"] for row in measured
+                    (row["peak_reserved_bytes"] for row in measured), default=0
                 ),
                 "checkpoints": [
                     {"path": str(path), "bytes": path.stat().st_size}
@@ -639,6 +713,29 @@ def main(argv=None):
             },
         )
         tracker.finish_summary(json.loads((args.output / "summary.json").read_text()))
+        if trainer.selection is not None and trainer.iteration == args.num_iterations:
+            frozen = trainer.selection.freeze()
+            tracker.log_selection(frozen)
+            if args.evaluation == "validation-test":
+                # No more updates: release all training GPU owners before final test.
+                inference.close()
+                trainer.policy = trainer.reference_policy = trainer.critic = None
+                trainer.optimizer = trainer.critic_optimizer = None
+                del actor, reference, critic, optimizer, critic_optimizer
+                gc.collect()
+                torch.cuda.empty_cache()
+                result, seconds = trainer.selection.test()
+                tracker.log_final_test(result)
+                write_json(
+                    args.output / "final-evaluation.json",
+                    {
+                        "selection": str(trainer.selection.frozen_path),
+                        "result": str(
+                            args.output / "evaluations/test-selected/result.json"
+                        ),
+                        "seconds": seconds,
+                    },
+                )
     print(
         f"Completed iteration {trainer.iteration}; metrics and summary: {args.output}"
     )

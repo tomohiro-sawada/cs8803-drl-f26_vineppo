@@ -4,6 +4,7 @@ import json
 import math
 import os
 from pathlib import Path
+from statistics import mean, pstdev
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,6 +18,10 @@ CONFIG_FIELDS = (
     "model",
     "precision",
     "start_iteration",
+    "evaluation",
+    "training_run",
+    "checkpoint",
+    "selection",
 )
 CLI_FIELDS = frozenset(
     [
@@ -42,7 +47,13 @@ CLI_FIELDS = frozenset(
         "critic_learning_rate",
         "seed",
         "checkpoint_every",
+        "evaluation",
+        "validation_rounds",
+        "eval_batch_size",
+        "eval_seed",
+        "eval_timeout_seconds",
         "resume",
+        "resume_selection",
         "dtype",
         "finetuning",
         "lora_rank",
@@ -86,6 +97,86 @@ SUMMARY_FIELDS = frozenset(
 
 def _json_value(value):
     return json.loads(json.dumps(value, default=str, allow_nan=False))
+
+
+def _evaluation_scalars(result):
+    """Validate evaluator evidence without importing the GPU evaluator or reading files."""
+    assert result["schema_version"] == 1 and result["complete"] is True
+    split = result["split"]
+    assert split in ("validation", "test")
+    for key in ("accuracy", "round_accuracy_std_population"):
+        value = result[key]
+        assert type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 1
+    for key in ("num_examples", "total_count", "rounds_completed"):
+        assert type(result[key]) is int and result[key] > 0
+    rows, rounds = result["num_examples"], result["rounds_completed"]
+    assert result["dataset"]["rows"] == rows
+    assert type(result["protocol"]["rounds"]) is int
+    assert result["protocol"]["rounds"] == rounds == len(result["rounds"])
+    for index, row in enumerate(result["rounds"]):
+        assert row["complete"] is True and row["round"] == index
+        assert row["seed"] == result["protocol"]["seed"] + index
+        assert type(row["total_count"]) is int and row["total_count"] == rows
+        assert type(row["total_correct"]) is int and 0 <= row["total_correct"] <= rows
+        assert type(row["accuracy"]) in (int, float)
+        assert row["accuracy"] == row["total_correct"] / rows
+    accuracies = [row["accuracy"] for row in result["rounds"]]
+    assert result["total_count"] == rows * rounds
+    assert type(result["total_correct"]) is int
+    assert result["total_correct"] == sum(
+        row["total_correct"] for row in result["rounds"]
+    )
+    assert result["accuracy"] == mean(accuracies)
+    assert result["round_accuracy_std_population"] == pstdev(accuracies)
+    checkpoint = result["checkpoint"]
+    assert type(checkpoint["iteration"]) is int and checkpoint["iteration"] >= 0
+    assert Path(checkpoint["path"]).is_absolute()
+    assert len(checkpoint["sha256"]) == 64 and all(
+        c in "0123456789abcdef" for c in checkpoint["sha256"]
+    )
+    return {
+        f"eval/{split}/{name}": result[source]
+        for name, source in (
+            ("pass_at_1", "accuracy"),
+            ("round_std_population", "round_accuracy_std_population"),
+            ("num_examples", "num_examples"),
+            ("total_count", "total_count"),
+            ("rounds_completed", "rounds_completed"),
+        )
+    }
+
+
+def _checkpoint_summary(checkpoint):
+    return {key: checkpoint[key] for key in ("path", "sha256", "iteration")}
+
+
+def _selection_summary(selection):
+    assert selection["schema_version"] == 1 and selection["frozen"] is True
+    best = selection["best"]
+    _evaluation_scalars(best)
+    assert best["split"] == "validation"
+    assert best["task"] == selection["task"]
+    assert best["training_run"]["path"] == selection["training_output"]
+    assert (
+        selection["tie_rule"] == "highest_validation_accuracy_then_earliest_iteration"
+    )
+    candidates = selection["candidates"]
+    assert sum(candidate == best for candidate in candidates) == 1
+    for candidate in candidates:
+        _evaluation_scalars(candidate)
+        assert candidate["split"] == "validation" and candidate["task"] == best["task"]
+        assert candidate["training_run"]["path"] == selection["training_output"]
+        assert candidate["dataset"] == best["dataset"]
+        assert candidate["protocol"] == best["protocol"]
+    for key in ("path", "iteration"):
+        assert len({c["checkpoint"][key] for c in candidates}) == len(candidates)
+    assert best == min(
+        candidates, key=lambda c: (-c["accuracy"], c["checkpoint"]["iteration"])
+    )
+    return {
+        "eval/validation/best_pass_at_1": best["accuracy"],
+        "selected_checkpoint": _checkpoint_summary(best["checkpoint"]),
+    }
 
 
 class WandBTracker:
@@ -203,6 +294,53 @@ class WandBTracker:
             step=iteration,
         )
         self._last_iteration = iteration
+
+    def log_evaluation(self, result, *, selection=None):
+        """Log one standalone child evaluation, without training budget counters."""
+        if self.args.wandb_mode == "disabled":
+            return
+        assert self.run is not None, "Enter the tracker before logging"
+        metrics = _evaluation_scalars(result)
+        summary = metrics | {
+            "iteration": result["checkpoint"]["iteration"],
+            "checkpoint": _checkpoint_summary(result["checkpoint"]),
+            "training_run": {
+                "path": result["training_run"]["path"],
+                "wandb": None
+                if result["training_run"]["wandb"] is None
+                else {
+                    key: result["training_run"]["wandb"][key]
+                    for key in ("id", "url", "mode")
+                },
+            },
+        }
+        if selection is not None:
+            assert result["split"] == "test", "Selection is only valid for test"
+            summary.update(_selection_summary(selection))
+            assert result["checkpoint"] == selection["best"]["checkpoint"]
+            assert result["task"] == selection["task"]
+            assert result["training_run"]["path"] == selection["training_output"]
+            assert result["protocol"] == selection["test_protocol"]
+        summary = _json_value(summary)
+        self.run.log(
+            metrics | {"iteration": summary["iteration"]}, step=summary["iteration"]
+        )
+        self.run.summary.update(summary)
+
+    def log_selection(self, selection):
+        """Publish frozen validation selection on the parent without advancing history."""
+        if self.args.wandb_mode == "disabled":
+            return
+        assert self.run is not None, "Enter the tracker before logging"
+        self.run.summary.update(_json_value(_selection_summary(selection)))
+
+    def log_final_test(self, result):
+        """Publish final child test metrics on the parent; never log an older step."""
+        if self.args.wandb_mode == "disabled":
+            return
+        assert self.run is not None, "Enter the tracker before logging"
+        assert result["split"] == "test"
+        self.run.summary.update(_evaluation_scalars(result))
 
     def finish_summary(self, summary):
         """Copy the runner's known summary schema without renaming or flattening."""

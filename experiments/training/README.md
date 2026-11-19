@@ -166,6 +166,7 @@ arguments are:
 --checkpoint-every --keep-checkpoints --resume --dtype
 --finetuning --lora-rank --lora-alpha
 --wandb-mode --wandb-project --wandb-entity --wandb-group --wandb-name
+--evaluation --validation-rounds --eval-batch-size --eval-seed --eval-timeout-seconds
 ```
 
 `--dtype` accepts `float32` or `bfloat16`. FP32 is the conservative numerical
@@ -241,8 +242,8 @@ Benchmarking really changes model weights. Three iterations are a short pilot,
 not a stable estimate across problem lengths: repeat with more iterations and
 representative sample counts before estimating a full run's duration. Final
 checkpoint I/O is included, so inspect its phase time separately when comparing
-different checkpoint schedules. There is no automatic held-out evaluation or
-model export in this runner; checkpoints are resumable trainer state.
+different checkpoint schedules. Held-out checkpoint evaluation is opt-in; see [evaluation and selection](EVALUATION.md).
+There is no model export; checkpoints are resumable trainer state.
 Use identical model/task, sample counts, token limits, dtype, and update shapes
 for meaningful comparisons, and record the GPU type. No throughput, completion
 time, or actual cluster execution is claimed here.
@@ -405,10 +406,14 @@ not an exact current-policy/reference KL after updates.
 
 The original paper (https://arxiv.org/html/2410.01679) motivates accuracy versus
 primary episodes, total sampling cost, wall time and reference-policy drift;
-its value-network analysis motivates MC-value diagnostics. **Not implemented by
-this logger:** periodic held-out evaluation, validation-best checkpoint
-selection, MC return standard errors, or independent high-K critic probes.
+its value-network analysis motivates MC-value diagnostics. **Implemented separately:** [held-out evaluation and validation-best checkpoint
+selection](EVALUATION.md), including parent/child W&B metrics. MC return standard
+errors and independent high-K critic probes are not implemented.
 Figure 4 requires validation-selected test Pass@1, averaged over 16 evaluation
 sampling rounds (not pass@16). The paper's 256-continuation value probes are
 separate expensive evaluations; critic training loss is not a substitute.
 Do not infer replication readiness or learning success from these logging checks.
+
+With validation selection enabled, retention protects the best in addition to
+the latest N; allow N+2 transient full checkpoints. See [EVALUATION.md](EVALUATION.md)
+for GPU coexistence, evaluation cost, provenance, and final-test gating.

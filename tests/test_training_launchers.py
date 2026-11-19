@@ -352,3 +352,57 @@ def test_tracking_flags_reach_runner(launch, mode):
         args.wandb_group,
         args.wandb_name,
     ) == (mode, "project", "team", "group", "named-run")
+
+
+def test_selection_options_reach_train_runner(launch):
+    result = launch.run(
+        mode="train",
+        extra=[
+            "--evaluation",
+            "validation-test",
+            "--validation-rounds",
+            "4",
+            "--eval-seed",
+            "123",
+            "--eval-batch-size",
+            "2",
+            "--eval-timeout-seconds",
+            "3600",
+        ],
+    )
+    assert result.returncode == 0, result.stderr
+    captured = json.loads(Path(launch.env["PYTHON_CAPTURE"]).read_text())
+    args = runner.parse_args(captured["argv"][1:])
+    assert (
+        args.evaluation,
+        args.validation_rounds,
+        args.eval_seed,
+        args.eval_batch_size,
+        args.eval_timeout_seconds,
+    ) == ("validation-test", 4, 123, 2, 3600)
+
+
+def test_resume_selection_reaches_runner_and_missing_file_is_rejected(launch, tmp_path):
+    checkpoint, manifest = tmp_path / "iteration-2.pt", tmp_path / "selection.json"
+    extra = [
+        "--evaluation",
+        "validation-test",
+        "--resume",
+        str(checkpoint),
+        "--resume-selection",
+        str(manifest),
+    ]
+    checkpoint.write_bytes(b"checkpoint")
+    missing = launch.run(mode="train", extra=extra)
+    assert (
+        missing.returncode == 2 and "Resume selection does not exist" in missing.stderr
+    )
+    manifest.write_text("{}")
+    result = launch.run(mode="train", extra=extra)
+    assert result.returncode == 0, result.stderr
+    captured = json.loads(Path(launch.env["PYTHON_CAPTURE"]).read_text())
+    args = runner.parse_args(captured["argv"][1:])
+    assert (args.resume, args.resume_selection) == (
+        checkpoint.resolve(),
+        manifest.resolve(),
+    )

@@ -148,6 +148,8 @@ class PPOTrainer:
         self.iteration = 0  # Number of fully completed iterations.
         self._generator: torch.Generator | None = None
         self._identity: str | None = None
+        # Runner-owned identity for held-out evaluation; legacy checkpoints lack it.
+        self.evaluation_provenance: dict | None = None
         self._at_boundary = True
 
     def _generation_cap(self, requested: int | None) -> int:
@@ -791,6 +793,7 @@ class PPOTrainer:
             "config": self._config_state(),
             "iteration": self.iteration,
             "identity": self._identity,
+            "evaluation_provenance": self.evaluation_provenance,
             "generator": self._generator.get_state(),
             "cpu_rng": torch.get_rng_state(),
             "cuda_rng": torch.cuda.get_rng_state_all()
