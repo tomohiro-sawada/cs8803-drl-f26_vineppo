@@ -22,8 +22,51 @@ The two failures demonstrate character boundaries inside the RhoMath tokens
 `=\` and `$,`. They deliberately assert rejection rather than adding snapping,
 step merging, or another implicit recovery policy.
 
-Full local corpus/provenance: `artifacts/segmentation/openrouter-llama32-1b-proxy/`.
-Generator: `scripts/diagnostics/sample_openrouter_segmentation.py`.
+Corpus metadata/provenance: `artifacts/segmentation/openrouter-llama32-1b-proxy/`.
+The pulled directory contains aggregate metrics and provenance, not the full
+`gsm8k.jsonl` / `math.jsonl` outputs. Only these six selected completions can be
+replayed from the committed fixture. Generator:
+`scripts/diagnostics/sample_openrouter_segmentation.py`.
+
+## Offline replay checks
+
+From the repository root:
+
+```sh
+.venv/bin/python -m scripts.diagnostics.check_segmentation \
+  --input tests/fixtures/segmentation/openrouter_proxy.json
+```
+
+This prints JSON with per-record observed/expected outcomes, per-task totals,
+input SHA256s, and offending token spans and surrounding text for inside-token
+cuts. It exits **1** for any rejection, changed expectation, or result that cannot
+be compared. The two known MATH rejections therefore make this strict check fail.
+For a regression gate that accepts only unchanged recorded outcomes:
+
+```sh
+.venv/bin/python -m scripts.diagnostics.check_segmentation \
+  --input tests/fixtures/segmentation/openrouter_proxy.json \
+  --allow-known-rejections
+```
+
+This does not repair or suppress failures in the report. Any drift or
+non-comparable result still exits nonzero. `--output report.json` exclusively
+creates a report file instead of printing it; existing files are never overwritten.
+
+When the full producer JSONL files are copied locally, pass them explicitly:
+
+```sh
+.venv/bin/python -m scripts.diagnostics.check_segmentation \
+  --input artifacts/segmentation/openrouter-llama32-1b-proxy/gsm8k.jsonl \
+          artifacts/segmentation/openrouter-llama32-1b-proxy/math.jsonl
+```
+
+Missing files, duplicate task/IDs, malformed records, and invalid span layouts
+fail loudly. No aggregate-metrics or fixture fallback is used. Saved spans cannot
+validate tokenizer correspondence, roundtrip failures, or special-token checks;
+those expected outcomes are marked non-comparable. A recorded decoded/original
+text mismatch is not replayed against the wrong text. This checker performs no
+network/API requests and requires no tokenizer, model weights, or GPU.
 
 Keep the live API generator outside normal tests. Review applicable dataset/model
 and provider redistribution terms before publishing fixtures. No API credentials

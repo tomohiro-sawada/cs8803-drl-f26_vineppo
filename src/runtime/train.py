@@ -1,8 +1,11 @@
-"""Single-device VinePPO orchestration with iteration-boundary checkpoints.
+"""Single-device policy-gradient orchestration with iteration-boundary checkpoints.
 
-Borrow the actor, optimizer, reference and inference wrapper; never close them.
-Collection helpers also work without an optimizer/reference or VinePPO config.
+Borrow models, optimizers and inference wrapper; never close them.
+Collection helpers also work without optimizers/reference or an algorithm config.
 Training completes all rollouts, estimates and CPU score caches before updating.
+PPO uses independent actor/critic models and fixed GAE targets, updating the actor
+then the critic. VinePPO has no critic. GRPO/RLOO use fixed per-prompt group
+advantages without segmentation, MC estimation, or a critic.
 Callers must recreate consistent models, tokenizer, formatter and ordered data
 for resume. Formatters and diagnostic callbacks must be deterministic and must
 not mutate models, data or RNGs. Failed iterations are not resumable in memory:
@@ -21,6 +24,15 @@ from torch import Tensor
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from algorithms.actor import update_actor
+from algorithms.grpo import GRPOConfig, group_advantages
+from algorithms.ppo import (
+    PPOConfig,
+    TokenCritic,
+    masked_gae,
+    token_values,
+    update_critic,
+)
+from algorithms.rloo import RLOOConfig, rloo_advantages
 from algorithms.vineppo import (
     VinePPOConfig,
     continuation_budget,
@@ -28,16 +40,20 @@ from algorithms.vineppo import (
     vineppo_advantage_method,
 )
 from core.data import (
+    CriticBatch,
     Episode,
     EpisodeWithAdvantages,
     Example,
     PolicyGradientBatch,
+    PPOValueEstimate,
     PrefixSamples,
     VinePPOValueEstimate,
     _collate_token_layout,
     collate,
+    collate_critic,
 )
 from core.inference import Completion, HFInference, token_logprobs
+from core.lora import lora_identity
 from core.segmentation import step_boundaries_from_tokens
 from core.verifier import verify_response
 from runtime.config import PPOTrainerConfig
@@ -52,6 +68,8 @@ class PPOTrainer:
         *,
         optimizer: torch.optim.Optimizer | None = None,
         reference_policy: PreTrainedModel | None = None,
+        critic: TokenCritic | None = None,
+        critic_optimizer: torch.optim.Optimizer | None = None,
     ):
         # validate the inputs
         assert inference.model is policy, "Inference must share the training actor"
@@ -67,6 +85,8 @@ class PPOTrainer:
         self.inference = inference
         self.optimizer = optimizer
         self.reference_policy = reference_policy
+        self.critic = critic
+        self.critic_optimizer = critic_optimizer
         self.iteration = 0  # Number of fully completed iterations.
         self._generator: torch.Generator | None = None
         self._identity: str | None = None
@@ -165,9 +185,11 @@ class PPOTrainer:
         return token_logprobs(self.policy, input_ids, attention_mask).detach()
 
     def _validate_training(self) -> None:
-        assert isinstance(self.config.algorithm_config, VinePPOConfig), (
-            "Training supports only VinePPOConfig"
-        )
+        assert isinstance(
+            self.config.algorithm_config, (VinePPOConfig, PPOConfig, GRPOConfig, RLOOConfig)
+        ), "Unsupported training algorithm"
+        if isinstance(self.config.algorithm_config, (GRPOConfig, RLOOConfig)):
+            assert self.config.num_samples >= 2, "Grouped training requires num_samples >= 2"
         assert self.optimizer is not None, "Training requires an explicit optimizer"
         assert self.reference_policy is not None, "Training requires a reference policy"
         assert self.inference.model is self.policy, (
@@ -203,6 +225,45 @@ class PPOTrainer:
             self.reference_policy.config.max_position_embeddings
             >= self.config.max_sequence_length
         )
+
+        if isinstance(self.config.algorithm_config, PPOConfig):
+            self.config.algorithm_config.__post_init__()
+            assert isinstance(self.critic, TokenCritic), "PPO requires a TokenCritic"
+            assert self.critic_optimizer is not None, "PPO requires a critic optimizer"
+            critic_tensors = list(self.critic.parameters()) + list(
+                self.critic.buffers()
+            )
+            assert all(t.device.type != "meta" for t in critic_tensors)
+            assert len({p.device for p in self.critic.parameters()}) == 1
+            other_storage = storage | {
+                (t.device, t.untyped_storage().data_ptr())
+                for t in ref_tensors
+                if t.numel()
+            }
+            assert not other_storage.intersection(
+                (t.device, t.untyped_storage().data_ptr())
+                for t in critic_tensors
+                if t.numel()
+            ), "Critic must not share actor/reference storage"
+            owned = [
+                p
+                for group in self.critic_optimizer.param_groups
+                for p in group["params"]
+            ]
+            trainable = [p for p in self.critic.parameters() if p.requires_grad]
+            assert trainable and len(owned) == len({id(p) for p in owned})
+            assert {id(p) for p in owned} == {id(p) for p in trainable}, (
+                "Critic optimizer must own exactly the trainable critic parameters"
+            )
+            assert self.critic.config.vocab_size == self.policy.config.vocab_size
+            assert (
+                self.critic.config.max_position_embeddings
+                >= self.config.max_sequence_length
+            )
+        else:
+            assert self.critic is None and self.critic_optimizer is None, (
+                "VinePPO/grouped training must not receive a critic or critic optimizer"
+            )
 
         self.reference_policy.requires_grad_(False)
         self.reference_policy.zero_grad(set_to_none=True)
@@ -273,21 +334,29 @@ class PPOTrainer:
         formatter: Callable[[str], str],
         reference_is_solution: bool = False,
         record_prefix_samples: Callable[[PrefixSamples], None] | None = None,
-        record_value_estimate: Callable[[VinePPOValueEstimate], None] | None = None,
+        record_value_estimate: Callable[[VinePPOValueEstimate | PPOValueEstimate], None]
+        | None = None,
         record_metrics: Callable[[dict[str, float]], None] | None = None,
     ) -> list[dict[str, float]]:
         """Run to num_iterations total; return only this call's iteration metrics.
 
-        Actor diagnostics are arithmetic means over optimizer steps (not a global
-        token-weighted mean). Raw MC/estimate callbacks are synchronous and their
+        Actor/critic diagnostics are arithmetic means over their optimizer steps
+        (not a global token-weighted mean). Estimate callbacks are synchronous and their
         payloads are not retained. Iteration metrics use one-based completed counts.
         Prompt sampling and update shuffles share a dedicated seeded CPU generator;
         generation uses the caller's global torch RNG, restored on checkpoint load.
+        GRPO/RLOO reject value/prefix callbacks: they do not estimate values.
         """
         assert self._at_boundary, (
             "An incomplete iteration requires a fresh trainer/load"
         )
         self._validate_training()
+        algorithm = self.config.algorithm_config
+        grouped = isinstance(algorithm, (GRPOConfig, RLOOConfig))
+        if grouped:
+            assert record_value_estimate is None and record_prefix_samples is None, (
+                "Grouped training does not support value/prefix callbacks"
+            )
         prompts, identity = self._prepare_inputs(
             examples,
             tokenizer,
@@ -318,6 +387,7 @@ class PPOTrainer:
                 selected, num_samples=self.config.num_samples
             )
             episodes = []
+            raw_episodes, episode_ids = [], []
             for index, groups in zip(indices, completions, strict=True):
                 example = examples[index]
 
@@ -351,8 +421,13 @@ class PPOTrainer:
                         score_response(completion.token_ids, completion.finish_reason),
                         completion.finish_reason,
                     )
+                    episode_id = f"{self.iteration}:{example.id}:{sample_index}"
+                    if grouped or isinstance(algorithm, PPOConfig):
+                        raw_episodes.append(episode)
+                        episode_ids.append(episode_id)
+                        continue
                     estimate = self.estimate_vineppo(
-                        f"{self.iteration}:{example.id}:{sample_index}",
+                        episode_id,
                         episode,
                         step_boundaries=step_boundaries_from_tokens(
                             episode.response_ids,
@@ -375,6 +450,33 @@ class PPOTrainer:
                             vineppo_advantage_method(estimate),
                         )
                     )
+            critic_batch = None
+            if grouped:
+                rewards = torch.tensor([e.reward for e in raw_episodes]).reshape(
+                    len(indices), self.config.num_samples
+                )
+                advantages = (
+                    group_advantages(rewards, eps=algorithm.eps)
+                    if isinstance(algorithm, GRPOConfig)
+                    else rloo_advantages(rewards)
+                )
+                episodes = [
+                    EpisodeWithAdvantages(
+                        **asdict(episode),
+                        advantages=[advantage] * len(episode.response_ids),
+                    )
+                    for episode, advantage in zip(
+                        raw_episodes, advantages.flatten().tolist(), strict=True
+                    )
+                ]
+            if isinstance(self.config.algorithm_config, PPOConfig):
+                episodes, estimates = self._estimate_ppo(raw_episodes, episode_ids)
+                critic_batch = collate_critic(
+                    estimates, pad_token_id=self.inference.pad_token_id
+                )
+                if record_value_estimate is not None:
+                    for estimate in estimates:
+                        record_value_estimate(estimate)
             old, ref = self._cache_scores(episodes)
             batch = collate(
                 episodes,
@@ -387,6 +489,16 @@ class PPOTrainer:
                 key: sum(row[key] for row in updates) / len(updates)
                 for key in updates[0]
             }
+            if critic_batch is not None:
+                critic_updates = self.update_value(critic_batch)
+                metrics.update(
+                    {
+                        f"critic/{key}": sum(row[key] for row in critic_updates)
+                        / len(critic_updates)
+                        for key in critic_updates[0]
+                    }
+                )
+                metrics["critic/optimizer_steps"] = len(critic_updates)
             metrics.update(
                 iteration=self.iteration + 1,
                 optimizer_steps=len(updates),
@@ -406,6 +518,63 @@ class PPOTrainer:
             ):
                 self.save_checkpoint()
         return history
+
+    @torch.no_grad()
+    def _estimate_ppo(
+        self, episodes: Sequence[Episode], episode_ids: Sequence[str]
+    ) -> tuple[list[EpisodeWithAdvantages], list[PPOValueEstimate]]:
+        """Cache pre-update values and GAE targets; terminal rewards, no KL shaping.
+
+        Stops and length limits are both terminal under the training reward policy.
+        Actor KL is handled separately by update_actor, just as in VinePPO.
+        """
+        config = self.config.algorithm_config
+        assert isinstance(config, PPOConfig) and self.critic is not None
+        assert len(episodes) == len(episode_ids) > 0
+        device = next(self.critic.parameters()).device
+        prepared, estimates = [], []
+        for start in range(0, len(episodes), self.config.microbatch_size):
+            chunk = episodes[start : start + self.config.microbatch_size]
+            layout = _collate_token_layout(
+                chunk, pad_token_id=self.inference.pad_token_id
+            )
+            values = (
+                token_values(
+                    self.critic,
+                    layout.input_ids.to(device),
+                    layout.attention_mask.to(device),
+                )
+                .detach()
+                .cpu()
+            )
+            rewards = torch.zeros_like(values)
+            for row, episode in enumerate(chunk):
+                assert episode.finish_reason in ("stop", "length")
+                last = len(episode.prompt_ids) + len(episode.response_ids) - 2
+                rewards[row, last] = episode.reward
+            advantages, returns = masked_gae(
+                rewards,
+                values,
+                layout.response_mask,
+                gamma=config.gamma,
+                lam=config.lam,
+            )
+            for row, episode in enumerate(chunk):
+                mask = layout.response_mask[row]
+                prepared.append(
+                    EpisodeWithAdvantages(
+                        **asdict(episode), advantages=advantages[row, mask].tolist()
+                    )
+                )
+                estimates.append(
+                    PPOValueEstimate(
+                        episode_id=episode_ids[start + row],
+                        episode=episode,
+                        critic_value_estimates=values[row, mask].tolist(),
+                        return_estimates=returns[row, mask].tolist(),
+                    )
+                )
+        return prepared, estimates
 
     @torch.no_grad()
     def _cache_scores(
@@ -440,7 +609,16 @@ class PPOTrainer:
         """Delegate all epochs/minibatches/microbatches; standalone calls invalidate checkpoints."""
         self._validate_training()
         size = len(batch.input_ids)
-        if self.config.minibatch_size == 1 or size % self.config.minibatch_size == 1:
+        objective = (
+            "grpo"
+            if isinstance(self.config.algorithm_config, GRPOConfig)
+            else "rloo"
+            if isinstance(self.config.algorithm_config, RLOOConfig)
+            else "ppo"
+        )
+        if objective == "ppo" and (
+            self.config.minibatch_size == 1 or size % self.config.minibatch_size == 1
+        ):
             assert (batch.response_mask.sum(dim=1) > 1).all(), (
                 "Singleton minibatches require at least two response tokens per episode"
             )
@@ -456,20 +634,40 @@ class PPOTrainer:
             kl_coef=self.config.kl_coef,
             max_grad_norm=self.config.max_grad_norm,
             generator=self._generator,
+            objective=objective,
+        )
+
+    def update_value(self, batch: CriticBatch) -> list[dict[str, float]]:
+        """Optimize fixed critic returns after actor epochs; never regenerate GAE."""
+        self._validate_training()
+        assert isinstance(self.config.algorithm_config, PPOConfig)
+        self._at_boundary = False
+        return update_critic(
+            self.critic,
+            self.critic_optimizer,
+            batch,
+            epochs=self.config.update_epochs,
+            minibatch_size=self.config.minibatch_size,
+            microbatch_size=self.config.microbatch_size,
+            max_grad_norm=self.config.max_grad_norm,
+            generator=self._generator,
         )
 
     def _config_state(self) -> dict:
         state = asdict(self.config)
         state["checkpoint_dir"] = str(self.config.checkpoint_dir)
+        algorithm = type(self.config.algorithm_config)
+        state["algorithm_type"] = f"{algorithm.__module__}.{algorithm.__qualname__}"
         return state
 
-    def _optimizer_identity(self) -> dict:
-        names = {id(p): name for name, p in self.policy.named_parameters()}
+    @staticmethod
+    def _optimizer_identity(model, optimizer) -> dict:
+        names = {id(p): name for name, p in model.named_parameters()}
         return {
-            "class": f"{type(self.optimizer).__module__}.{type(self.optimizer).__qualname__}",
+            "class": f"{type(optimizer).__module__}.{type(optimizer).__qualname__}",
             "parameters": [
                 [names[id(p)] for p in group["params"]]
-                for group in self.optimizer.param_groups
+                for group in optimizer.param_groups
             ],
         }
 
@@ -478,11 +676,19 @@ class PPOTrainer:
             {
                 "class": f"{type(model).__module__}.{type(model).__qualname__}",
                 "config": model.config.to_dict(),
+                **(
+                    {"lora": identity}
+                    if (identity := lora_identity(model)) is not None
+                    else {}
+                ),
                 "dtypes": {
                     name: str(value.dtype) for name, value in model.state_dict().items()
                 },
             }
-            for model in (self.policy, self.reference_policy)
+            for model in (
+                [self.policy, self.reference_policy]
+                + ([self.critic] if self.critic is not None else [])
+            )
         ]
 
     def save_checkpoint(self, path: str | Path | None = None) -> Path:
@@ -490,6 +696,8 @@ class PPOTrainer:
 
         Tensor/state-dict payloads plus primitive metadata only; no model objects,
         tokenizer, formatter, examples, diagnostics or global Python/NumPy RNGs.
+        LoRA saves full actor/reference weights, including frozen base weights;
+        adapter configuration and effective scaling are validated before restore.
         """
         assert self._at_boundary and self._identity is not None, (
             "Checkpoint requires a completed training boundary"
@@ -505,7 +713,7 @@ class PPOTrainer:
             "policy": self.policy.state_dict(),
             "reference": self.reference_policy.state_dict(),
             "optimizer": self.optimizer.state_dict(),
-            "optimizer_identity": self._optimizer_identity(),
+            "optimizer_identity": self._optimizer_identity(self.policy, self.optimizer),
             "model_identity": self._model_identity(),
             "config": self._config_state(),
             "iteration": self.iteration,
@@ -519,6 +727,15 @@ class PPOTrainer:
             if torch.backends.mps.is_available()
             else None,
         }
+        if self.critic is not None:
+            state["critic"] = self.critic.state_dict()
+            state["critic_optimizer"] = self.critic_optimizer.state_dict()
+            state["critic_optimizer_identity"] = self._optimizer_identity(
+                self.critic, self.critic_optimizer
+            )
+            state["critic_backbone_class"] = (
+                f"{type(self.critic.backbone).__module__}.{type(self.critic.backbone).__qualname__}"
+            )
         # Replace only after a complete write, preserving any previous checkpoint.
         temporary = path.with_name(path.name + ".tmp")
         torch.save(state, temporary)
@@ -562,9 +779,18 @@ class PPOTrainer:
         assert self._model_identity() == state["model_identity"], (
             "Model execution identity mismatch"
         )
-        assert self._optimizer_identity() == state["optimizer_identity"], (
-            "Optimizer identity mismatch"
-        )
+        assert (
+            self._optimizer_identity(self.policy, self.optimizer)
+            == state["optimizer_identity"]
+        ), "Optimizer identity mismatch"
+        if self.critic is not None:
+            assert (
+                self._optimizer_identity(self.critic, self.critic_optimizer)
+                == state["critic_optimizer_identity"]
+            ), "Critic optimizer identity mismatch"
+            assert state["critic_backbone_class"] == (
+                f"{type(self.critic.backbone).__module__}.{type(self.critic.backbone).__qualname__}"
+            ), "Critic backbone identity mismatch"
         assert len(state["cuda_rng"]) == torch.cuda.device_count(), (
             "CUDA RNG topology mismatch"
         )
@@ -576,6 +802,10 @@ class PPOTrainer:
         self.reference_policy.load_state_dict(state["reference"], strict=True)
         self.optimizer.load_state_dict(state["optimizer"])
         self.optimizer.zero_grad(set_to_none=True)
+        if self.critic is not None:
+            self.critic.load_state_dict(state["critic"], strict=True)
+            self.critic_optimizer.load_state_dict(state["critic_optimizer"])
+            self.critic_optimizer.zero_grad(set_to_none=True)
         self._generator.set_state(state["generator"])
         torch.set_rng_state(state["cpu_rng"])
         if state["cuda_rng"]:

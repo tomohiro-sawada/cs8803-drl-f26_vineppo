@@ -5,6 +5,8 @@ from math import isfinite
 from pathlib import Path
 
 from algorithms.base import AlgorithmConfig
+from algorithms.grpo import GRPOConfig
+from algorithms.rloo import RLOOConfig
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -26,6 +28,13 @@ class PPOTrainerConfig:
     Length-truncated primary and MC responses both receive truncation_reward.
     seed controls prompt/update shuffling; callers seed torch for generation.
     Checkpoints are saved every checkpoint_every iterations and at completion.
+    PPOConfig selects a separate learned critic instead of VinePPO MC estimates.
+    Critic updates use the same epoch/batch/gradient-clip settings as actor updates;
+    the caller supplies its independent optimizer and learning rate.
+    GRPOConfig/RLOOConfig require num_samples >= 2 completions per prompt and
+    use fixed group advantages, without a critic, segmentation, or MC sampling.
+    mc_num_samples is unused for these algorithms; value/prefix callbacks are
+    rejected. Grouped actor updates never whiten minibatch advantages.
     """
 
     checkpoint_dir: Path
@@ -63,6 +72,11 @@ class PPOTrainerConfig:
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
+        if (
+            isinstance(self.algorithm_config, (GRPOConfig, RLOOConfig))
+            and self.num_samples < 2
+        ):
+            raise ValueError("Grouped training requires num_samples >= 2")
         if type(self.temperature) not in (int, float) or self.temperature != 1.0:
             raise ValueError(
                 "PPO training requires temperature=1 for rollouts and MC estimation"

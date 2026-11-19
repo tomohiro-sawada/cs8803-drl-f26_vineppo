@@ -14,11 +14,14 @@ trajectory-summed surrogate is not the upstream token-mean policy reduction.
 
 from dataclasses import fields
 from math import isfinite
+from typing import Literal
 
 import torch
 from torch import Tensor
 from transformers import PreTrainedModel
 
+from algorithms.grpo import grpo_loss
+from algorithms.rloo import rloo_loss
 from core.data import PolicyGradientBatch
 from core.inference import token_logprobs
 
@@ -116,11 +119,15 @@ def update_actor(
     kl_coef: float = 1e-4,
     max_grad_norm: float = 1.0,
     generator: torch.Generator | None = None,
+    objective: Literal["ppo", "grpo", "rloo"] = "ppo",
 ) -> list[dict[str, float]]:
     """Shuffle fixed data each epoch; return pre-step diagnostics per optimizer step.
 
     Caller supplies RAW token advantages and cached T=1 old/reference scores;
-    do not pre-normalize. Scores/targets are detached, never regenerated or changed.
+    PPO whitens these once per minibatch; grouped objectives use fixed expanded
+    response advantages without further whitening. The caller must construct
+    grouped advantages with G >= 2 before flattening responses into this batch.
+    Scores/targets are detached, never regenerated or changed.
     CPU or actor-device batches are accepted; only each microbatch moves to actor.
     The caller owns optimizer creation/state, scheduling, and collection ordering.
     All trainable actor parameters must belong to this optimizer, with no foreign
@@ -129,6 +136,8 @@ def update_actor(
     Scoring leaves the actor in eval mode (dropout off, autograd on).
     No DDP, AMP scaler, scheduler, reference model, or reward shaping lives here.
     """
+    assert objective in ("ppo", "grpo", "rloo"), "Unknown actor objective"
+    loss_fn = {"ppo": actor_loss, "grpo": grpo_loss, "rloo": rloo_loss}[objective]
     assert all(
         type(n) is int and n > 0 for n in (epochs, minibatch_size, microbatch_size)
     )
@@ -168,7 +177,11 @@ def update_actor(
             order = torch.randperm(size, generator=generator).to(batch.input_ids.device)
             for indices in order.split(minibatch_size):
                 mask = batch.response_mask[indices]
-                advantages = normalize_advantages(batch.advantages[indices], mask)
+                advantages = (
+                    normalize_advantages(batch.advantages[indices], mask)
+                    if objective == "ppo"
+                    else batch.advantages[indices].detach()
+                )
                 tokens = int(mask.sum())
                 sequences = len(indices)
                 metrics: dict[str, float] = {}
@@ -179,7 +192,7 @@ def update_actor(
                         batch.input_ids[rows].to(device),
                         batch.attention_mask[rows].to(device),
                     )
-                    loss, info = actor_loss(
+                    loss, info = loss_fn(
                         current,
                         batch.old_logprobs[rows].to(device),
                         batch.ref_logprobs[rows].to(device),

@@ -9,6 +9,8 @@ import torch
 from transformers import GPT2Config, GPT2LMHeadModel
 
 from algorithms.actor import actor_loss, normalize_advantages, update_actor
+from algorithms.grpo import grpo_loss
+from algorithms.rloo import rloo_loss
 from core.data import EpisodeWithAdvantages, collate
 from core.inference import token_logprobs
 
@@ -269,11 +271,26 @@ def record_step_gradients(optimizer):
     return gradients
 
 
+@pytest.mark.parametrize("objective", ["ppo", "grpo", "rloo"])
 @pytest.mark.parametrize("microbatch_size", [1, 2])
 def test_update_matches_full_minibatches_with_epochs_partial_batches_and_clipping(
-    local_batch, microbatch_size
+    local_batch, microbatch_size, objective, monkeypatch
 ):
     actor, reference, batch = local_batch
+    loss_fn = {"ppo": actor_loss, "grpo": grpo_loss, "rloo": rloo_loss}[objective]
+    if objective != "ppo":
+        batch.advantages.copy_(
+            torch.tensor([[2.0], [-1.0], [3.0], [-2.0], [1.0]]).expand_as(
+                batch.advantages
+            )
+        )
+
+        def forbidden_whitening(*args, **kwargs):
+            pytest.fail("Grouped objectives must not whiten advantages")
+
+        monkeypatch.setattr(
+            "algorithms.actor.normalize_advantages", forbidden_whitening
+        )
     manual = deepcopy(actor)
     before = {f.name: getattr(batch, f.name).clone() for f in fields(batch)}
     reference_before = deepcopy(reference.state_dict())
@@ -303,6 +320,7 @@ def test_update_matches_full_minibatches_with_epochs_partial_batches_and_clippin
         kl_coef=0.3,
         max_grad_norm=max_norm,
         generator=torch.Generator().manual_seed(19),
+        objective=objective,
     )
     expected_history = []
     generator = torch.Generator().manual_seed(19)
@@ -318,11 +336,11 @@ def test_update_matches_full_minibatches_with_epochs_partial_batches_and_clippin
             scores = token_logprobs(
                 manual, batch.input_ids[rows], batch.attention_mask[rows]
             )
-            loss, info = actor_loss(
+            loss, info = loss_fn(
                 scores,
                 batch.old_logprobs[rows],
                 batch.ref_logprobs[rows],
-                normalized,
+                normalized if objective == "ppo" else raw,
                 mask,
                 kl_coef=0.3,
             )
@@ -372,3 +390,43 @@ def test_update_matches_full_minibatches_with_epochs_partial_batches_and_clippin
         t.grad is None
         for t in (batch.old_logprobs, batch.ref_logprobs, batch.advantages)
     )
+
+
+@pytest.mark.parametrize("objective", ["grpo", "rloo"])
+def test_grouped_single_token_minibatch_without_whitening(
+    local_batch, objective, monkeypatch
+):
+    actor, _, _ = local_batch
+    episode = EpisodeWithAdvantages([1], [4], 1, "length", [2.0])
+    batch = collate(
+        [episode], old_logprobs=[[-3.0]], ref_logprobs=[[-2.8]], pad_token_id=0
+    )
+    before = {f.name: getattr(batch, f.name).clone() for f in fields(batch)}
+    loss_fn = {"grpo": grpo_loss, "rloo": rloo_loss}[objective]
+    expected, _ = loss_fn(
+        token_logprobs(actor, batch.input_ids, batch.attention_mask),
+        batch.old_logprobs,
+        batch.ref_logprobs,
+        batch.advantages,
+        batch.response_mask,
+    )
+
+    def forbidden_whitening(*args, **kwargs):
+        pytest.fail("Single-token grouped minibatch must not normalize")
+
+    monkeypatch.setattr("algorithms.actor.normalize_advantages", forbidden_whitening)
+    optimizer = torch.optim.SGD(actor.parameters(), lr=0.01)
+    history = update_actor(
+        actor,
+        optimizer,
+        batch,
+        epochs=2,
+        minibatch_size=1,
+        microbatch_size=1,
+        objective=objective,
+    )
+    assert history[0]["loss"] == pytest.approx(expected.item())
+    assert history[0]["grad_norm"] > 0
+    assert len(history) == 2
+    for name, value in before.items():
+        assert torch.equal(getattr(batch, name), value)
