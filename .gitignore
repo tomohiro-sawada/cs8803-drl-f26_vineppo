@@ -1,3 +1,6 @@
+# Local scheduler observations (may include reservation/account metadata)
+/artifacts/diagnostics/pace_ice/
+
 # Tom
 cursor
 prose/workflow/*
