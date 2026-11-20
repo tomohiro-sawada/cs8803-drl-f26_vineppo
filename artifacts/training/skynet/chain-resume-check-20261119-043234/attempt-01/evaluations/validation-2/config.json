@@ -1,0 +1,18 @@
+{
+  "split": "validation",
+  "training_output": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/chain-resume-check-20261119-043234/attempt-01",
+  "output": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/chain-resume-check-20261119-043234/attempt-01/evaluations/validation-2",
+  "checkpoint": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/chain-resume-check-20261119-043234/attempt-00/checkpoints/iteration-2.pt",
+  "selection": null,
+  "checkpoint_source": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/chain-resume-check-20261119-043234/attempt-00",
+  "checkpoint_source_sha256": "5d443e7f7d5a00d29ab20e1649259a94692b39e4954dcf7708d329f308db9f48",
+  "rounds": 1,
+  "seed": 42,
+  "batch_size": 32,
+  "expected_gpu": "A40",
+  "wandb_mode": "disabled",
+  "wandb_project": "vineppo",
+  "wandb_entity": null,
+  "wandb_group": null,
+  "wandb_name": "attempt-01-validation-2"
+}

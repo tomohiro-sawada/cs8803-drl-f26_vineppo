@@ -1,0 +1,18 @@
+{
+  "split": "validation",
+  "training_output": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/resumed",
+  "output": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/resumed/evaluations/validation-3",
+  "checkpoint": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/selection-resume-check-20261119-034544/resumed/checkpoints/iteration-3.pt",
+  "selection": null,
+  "checkpoint_source": null,
+  "checkpoint_source_sha256": null,
+  "rounds": 1,
+  "seed": 42,
+  "batch_size": 32,
+  "expected_gpu": "A40",
+  "wandb_mode": "disabled",
+  "wandb_project": "vineppo",
+  "wandb_entity": null,
+  "wandb_group": null,
+  "wandb_name": "resumed-validation-3"
+}

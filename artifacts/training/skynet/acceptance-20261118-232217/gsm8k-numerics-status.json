@@ -1,0 +1,31 @@
+{
+  "kind": "numerics",
+  "task": "gsm8k",
+  "allocation": "4794850",
+  "argv": [
+    "srun",
+    "--jobid=4794850",
+    "--overlap",
+    "--nodes=1",
+    "--ntasks=1",
+    "--cpus-per-task=6",
+    "--immediate=30",
+    "--time=01:00:00",
+    "--chdir=/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo",
+    "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.venv/bin/python",
+    "-u",
+    "scripts/diagnostics/check_training_numerics.py",
+    "--model-path",
+    "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-GSM8K",
+    "--dataset-path",
+    "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/gsm8k",
+    "--task",
+    "gsm8k",
+    "--expected-gpu",
+    "A40",
+    "--output",
+    "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/acceptance-20261118-232217/gsm8k-numerics"
+  ],
+  "returncode": 1,
+  "accepted": false
+}

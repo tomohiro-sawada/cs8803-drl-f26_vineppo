@@ -1,0 +1,243 @@
+{
+  "model": {
+    "kind": "model",
+    "task": "math",
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-MATH",
+    "repo_id": "realtreetune/rho-1b-sft-MATH",
+    "requested_revision": "main",
+    "revision": "f4d0f86bfce159f0042cca9116a52c0b972f34aa"
+  },
+  "dataset": {
+    "kind": "dataset",
+    "task": "math",
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/math",
+    "archive_member": "wandb_export_root/datasets/data-math-openai_split.zip",
+    "splits": {
+      "train": {
+        "rows": 11500,
+        "columns": [
+          "problem",
+          "solution",
+          "answer",
+          "subject",
+          "level",
+          "unique_id",
+          "gold_solution_steps"
+        ]
+      },
+      "validation": {
+        "rows": 500,
+        "columns": [
+          "problem",
+          "solution",
+          "answer",
+          "subject",
+          "level",
+          "unique_id",
+          "gold_solution_steps"
+        ]
+      },
+      "test": {
+        "rows": 500,
+        "columns": [
+          "problem",
+          "solution",
+          "answer",
+          "subject",
+          "level",
+          "unique_id",
+          "gold_solution_steps"
+        ]
+      }
+    },
+    "url": "https://github.com/McGill-NLP/VinePPO/releases/download/latest/wandb_export_root.zip",
+    "release_asset_id": 196429828,
+    "sha256": "c25d3977febe21260a1d6fe484ef368774e3d99ef10ef3f07a4531f4cd02a503",
+    "size_bytes": 8127691
+  },
+  "split": "train",
+  "train_fingerprint": "ae482a592a6e7e8d",
+  "manifest_sha256": "726b62612ce0f4a14034deae8fbe269923cb3cd4e70fad9d92330fb3ed62477b",
+  "selection": [
+    {
+      "id": "math:train:106",
+      "index": 106,
+      "prompt": "[MATH_TASK] Problem:\nCompute the value of the infinite series \\[\n\\sum_{n=2}^{\\infty} \\frac{n^4+3n^2+10n+10}{2^n \\cdot \\left(n^4+4\\right)}\n\\]\n\nSolution:"
+    },
+    {
+      "id": "math:train:409",
+      "index": 409,
+      "prompt": "[MATH_TASK] Problem:\nHow many 0's are located to the right of the decimal point and before the first non-zero digit in the terminating decimal representation of $\\frac{1}{2^5\\cdot5^8}$?\n\nSolution:"
+    },
+    {
+      "id": "math:train:434",
+      "index": 434,
+      "prompt": "[MATH_TASK] Problem:\nCities $A$, $B$, $C$, $D$, and $E$ are connected by roads $\\widetilde{AB}$, $\\widetilde{AD}$, $\\widetilde{AE}$, $\\widetilde{BC}$, $\\widetilde{BD}$, $\\widetilde{CD}$, and $\\widetilde{DE}$. How many different routes are there from $A$ to $B$ that use each road exactly once? (Such a route will necessarily visit some cities more than once.) [asy]\nsize(5cm);\n\npair A=(1,0), B=(4.24,0), C=(5.24,3.08), D=(2.62,4.98), E=(0,3.08);\n\ndot (A);\n\ndot (B);\n\ndot (C);\n\ndot (D);\n\ndot (E);\n\nlabel(\"$A$\",A,S);\n\nlabel(\"$B$\",B,SE);\n\nlabel(\"$C$\",C,E);\n\nlabel(\"$D$\",D,N);\n\nlabel(\"$E$\",E,W);\n\nguide squiggly(path g, real stepsize, real slope=45)\n\n{\n\nreal len = arclength(g);\n\nreal step = len / round(len / stepsize);\n\nguide squig;\n\nfor (real u = 0; u < len; u += step){\n\nreal a = arctime(g, u);\n\nreal b = arctime(g, u + step / 2);\n\npair p = point(g, a);\n\npair q = point(g, b);\n\npair np = unit( rotate(slope) * dir(g,a));\n\npair nq = unit( rotate(0 - slope) * dir(g,b));\n\nsquig = squig .. p{np} .. q{nq};\n\n}\n\nsquig = squig .. point(g, length(g)){unit(rotate(slope)*dir(g,length(g)))};\n\nreturn squig;\n\n}\n\npen pp = defaultpen + 2.718;\n\ndraw(squiggly(A--B, 4.04, 30), pp);\n\ndraw(squiggly(A--D, 7.777, 20), pp);\n\ndraw(squiggly(A--E, 5.050, 15), pp);\n\ndraw(squiggly(B--C, 5.050, 15), pp);\n\ndraw(squiggly(B--D, 4.04, 20), pp);\n\ndraw(squiggly(C--D, 2.718, 20), pp);\n\ndraw(squiggly(D--E, 2.718, -60), pp);[/asy]\n\nSolution:"
+    },
+    {
+      "id": "math:train:488",
+      "index": 488,
+      "prompt": "[MATH_TASK] Problem:\nAssuming $x\\ne0$, simplify $\\frac{12}{x \\cdot x} \\cdot \\frac{x^4}{14x}\\cdot \\frac{35}{3x}$.\n\nSolution:"
+    },
+    {
+      "id": "math:train:520",
+      "index": 520,
+      "prompt": "[MATH_TASK] Problem:\nFind all real numbers $p$ so that\n\\[x^4 + 2px^3 + x^2 + 2px + 1 = 0\\]has at least two distinct negative real roots.\n\nSolution:"
+    },
+    {
+      "id": "math:train:1424",
+      "index": 1424,
+      "prompt": "[MATH_TASK] Problem:\nIn the middle of a vast prairie, a firetruck is stationed at the intersection of two perpendicular straight highways. The truck travels at $50$ miles per hour along the highways and at $14$ miles per hour across the prairie. Consider the set of points that can be reached by the firetruck within six minutes. The area of this region is $m/n$ square miles, where $m$ and $n$ are relatively prime positive integers. Find $m + n$.\n\nSolution:"
+    },
+    {
+      "id": "math:train:1535",
+      "index": 1535,
+      "prompt": "[MATH_TASK] Problem:\nIf $s$ is an integer and the root(s) of the quadratic expression $\\frac{1}{2}x^2+sx-\\frac{1}{2}$ are integers, find the sum of all possible values of $s$.\n\nSolution:"
+    },
+    {
+      "id": "math:train:1679",
+      "index": 1679,
+      "prompt": "[MATH_TASK] Problem:\nThe number 210 is the product of two consecutive positive integers and is also the product of three consecutive integers. What is the sum of those five integers?\n\nSolution:"
+    },
+    {
+      "id": "math:train:1824",
+      "index": 1824,
+      "prompt": "[MATH_TASK] Problem:\nHow many 3-letter \"words\" can be formed from the standard 26-letter alphabet, if the first letter must be a vowel (A, E, I, O, or U)? (We aren't necessarily talking about English words; something like EQX is perfectly valid here.)\n\nSolution:"
+    },
+    {
+      "id": "math:train:2286",
+      "index": 2286,
+      "prompt": "[MATH_TASK] Problem:\nKaleb defined a $\\emph{clever integer}$ as an even integer that is greater than 20, less than 120, and such that the sum of its digits is 9. What fraction of all clever integers is divisible by 27? Express your answer as a common fraction.\n\nSolution:"
+    },
+    {
+      "id": "math:train:3257",
+      "index": 3257,
+      "prompt": "[MATH_TASK] Problem:\nThe domain of the function $q(x) = x^4 + 4x^2 + 4$ is $[0,\\infty)$. What is the range?\n\nSolution:"
+    },
+    {
+      "id": "math:train:3582",
+      "index": 3582,
+      "prompt": "[MATH_TASK] Problem:\nThe endpoints of a line segment are (2, 3) and (8, 15). What is the sum of the coordinates of the midpoint of the segment?\n\nSolution:"
+    },
+    {
+      "id": "math:train:3611",
+      "index": 3611,
+      "prompt": "[MATH_TASK] Problem:\nWhat is the base-10 integer 515 when expressed in base 6?\n\nSolution:"
+    },
+    {
+      "id": "math:train:3657",
+      "index": 3657,
+      "prompt": "[MATH_TASK] Problem:\nSquares are constructed on each of the sides of triangle $\\triangle ABC$, as shown.  If the perimeter of $\\triangle ABC$ is 17, then what is the perimeter of the nine-sided figure that is composed of the remaining three sides of each of the squares? [asy]\nimport olympiad; size(150); defaultpen(linewidth(0.8)); dotfactor=4;\npicture a;\ndraw(a,(0,0)--(3,0)--(0,4)--cycle);\nlabel(\"$A$\",(-2.1,-2.2),SW);\nlabel(\"$B$\",(3.1,-2.2),SE);\nlabel(\"$C$\",(0.05,0.3),N);\ndraw(a,(3,0)--(3,-3)--(0,-3)--(0,0));\ndraw(a,(0,0)--(-4,0)--(-4,4)--(0,4));\ndraw(a,shift(-2.4,2.2)*rotate(90 - aTan(4/3))*((3,0)--(8,0)--(8,-5)--(3,-5)));\nadd(currentpicture,rotate(-130)*a);\n[/asy]\n\nSolution:"
+    },
+    {
+      "id": "math:train:3811",
+      "index": 3811,
+      "prompt": "[MATH_TASK] Problem:\nSolve for $p$: $3p - 2(p-4) = 7p + 6$\n\nSolution:"
+    },
+    {
+      "id": "math:train:4012",
+      "index": 4012,
+      "prompt": "[MATH_TASK] Problem:\nWhat is $2121_3 - 212_3?$ Express your answer in base 3.\n\nSolution:"
+    },
+    {
+      "id": "math:train:4506",
+      "index": 4506,
+      "prompt": "[MATH_TASK] Problem:\nTim is doing a cakewalk with $11$ steps. He takes his first step on step $1$ and takes a total of $139$ steps, walking in a circle (so that after the 11th step he reaches the first step again). Which step of the cakewalk does he end on?\n\nSolution:"
+    },
+    {
+      "id": "math:train:4557",
+      "index": 4557,
+      "prompt": "[MATH_TASK] Problem:\nHow many numbers between 1 and 2005 are integer multiples of 3 or 4 but not 12?\n\nSolution:"
+    },
+    {
+      "id": "math:train:6873",
+      "index": 6873,
+      "prompt": "[MATH_TASK] Problem:\nWhat is the value of $\\displaystyle{{(3!)!\\over3!}}$?\n\nSolution:"
+    },
+    {
+      "id": "math:train:6912",
+      "index": 6912,
+      "prompt": "[MATH_TASK] Problem:\nWhat is the greatest digit that can be placed in the circle so that the six-digit number is divisible by 4? $$3\\:5\\:2\\:9 \\bigcirc 2$$\n\nSolution:"
+    },
+    {
+      "id": "math:train:7359",
+      "index": 7359,
+      "prompt": "[MATH_TASK] Problem:\nLet $f(x)$ be an even function, and let $g(x)$ be an odd function.  Is $f(x) g(x)$ even, odd, or neither?\n\nEnter \"odd\", \"even\", or \"neither\".\n\nSolution:"
+    },
+    {
+      "id": "math:train:8279",
+      "index": 8279,
+      "prompt": "[MATH_TASK] Problem:\nWhat is the sum of the roots of $x^2 - 4x + 3 = 0$?\n\nSolution:"
+    },
+    {
+      "id": "math:train:8928",
+      "index": 8928,
+      "prompt": "[MATH_TASK] Problem:\nAt the chocolatier, classic chocolate fudge costs 10 dollars a pound. Anna purchases $\\frac{7}{9}$ of a pound of the fudge. The cash register rounds to the nearest cent, or hundredth of a dollar. How many dollars does Anna pay for her fudge?\n\nSolution:"
+    },
+    {
+      "id": "math:train:8935",
+      "index": 8935,
+      "prompt": "[MATH_TASK] Problem:\nA pet store has 15 puppies, 6 kittens, and 8 hamsters. Alice, Bob, and Charlie each want to buy a pet. For variety, they each want a different kind of pet. How many ways can Alice, Bob, and Charlie buy pets and leave the store satisfied?\n\nSolution:"
+    },
+    {
+      "id": "math:train:9195",
+      "index": 9195,
+      "prompt": "[MATH_TASK] Problem:\nTwo positive integers $m$ and $n$ are chosen such that $m$ is the smallest positive integer with only two positive divisors and $n$ is the largest integer less than $100$ with exactly three positive divisors. What is $m+n$?\n\nSolution:"
+    },
+    {
+      "id": "math:train:9654",
+      "index": 9654,
+      "prompt": "[MATH_TASK] Problem:\nIn the figure, the visible gray area within the larger circle is equal to three times the area of the white circular region. What is the ratio of the radius of the small circle to the radius of the large circle? Express your answer as a common fraction.\n\n[asy]size(101);\nfilldraw(Circle((0,0),2)^^Circle((.8,-.3),1),gray(.6)+fillrule(1),black);[/asy]\n\nSolution:"
+    },
+    {
+      "id": "math:train:9674",
+      "index": 9674,
+      "prompt": "[MATH_TASK] Problem:\nIf $x+y=4$ and $x^2+y^2=8$, find $x^3+y^3$.\n\nSolution:"
+    },
+    {
+      "id": "math:train:9863",
+      "index": 9863,
+      "prompt": "[MATH_TASK] Problem:\nWhat is the number of degrees in the measure of the smaller obtuse angle formed by the hands of a standard clock at 2:48pm?\n\nSolution:"
+    },
+    {
+      "id": "math:train:10476",
+      "index": 10476,
+      "prompt": "[MATH_TASK] Problem:\n$5$ green balls and $2$ red balls together weigh $10$ pounds, and $1$ green ball and $4$ red balls together weigh $7$ pounds. If all red balls weigh the same amount and all green balls weigh the same, then what is the weight of $8$ red and $8$ green balls together?\n\nSolution:"
+    },
+    {
+      "id": "math:train:10647",
+      "index": 10647,
+      "prompt": "[MATH_TASK] Problem:\nHow many dollars in interest are earned in two years on a deposit of $\\$$10,000 invested at 4.5$\\%$ and compounded annually? Express your answer to the nearest cent.\n\nSolution:"
+    },
+    {
+      "id": "math:train:11087",
+      "index": 11087,
+      "prompt": "[MATH_TASK] Problem:\nLet $a,$ $b,$ $c$ be complex numbers satisfying\n\\begin{align*}\n(a + 1)(b + 1)(c + 1) &= 1, \\\\\n(a + 2)(b + 2)(c + 2) &= 2, \\\\\n(a + 3)(b + 3)(c + 3) &= 3.\n\\end{align*}Find $(a + 4)(b + 4)(c + 4).$\n\nSolution:"
+    },
+    {
+      "id": "math:train:11490",
+      "index": 11490,
+      "prompt": "[MATH_TASK] Problem:\nLet $x,$ $y,$ $z$ be nonnegative real numbers.  Let\n\\begin{align*}\nA &= \\sqrt{x + 2} + \\sqrt{y + 5} + \\sqrt{z + 10}, \\\\\nB &= \\sqrt{x + 1} + \\sqrt{y + 1} + \\sqrt{z + 1}.\n\\end{align*}Find the minimum value of $A^2 - B^2.$\n\nSolution:"
+    }
+  ],
+  "selection_sha256": "3b286b3e2cd74dbbde888f26e8bd7826085d5c1939ecbe4b3064f043aaabc277",
+  "git_commit": "9c50f14b8bce3319e218bd9028df2b7acbe0de21",
+  "git_status": " M .gitignore\n M .trash/.record\n M AGENTS.md\n M scripts/setup/download_model_weights.py\n?? administrator._delegating-hw4-content.md\n?? administrator._policy-update-diagram.md\n?? administrator._vineppo-design-choices.md\n?? artifacts/evaluation/rho-sft-gsm8k-16rounds/\n?? artifacts/evaluation/rho-sft-math-16rounds/\n?? artifacts/evaluation/slurm/rho-sft-eval-4791396.err\n?? artifacts/evaluation/slurm/rho-sft-eval-4791396.out\n?? artifacts/evaluation/slurm/rho-sft-eval-4791571.err\n?? artifacts/evaluation/slurm/rho-sft-eval-4791571.out\n?? artifacts/evaluation/smoke-gsm8k/\n?? artifacts/evaluation/vllm-gsm8k-full/records.jsonl\n?? artifacts/evaluation/vllm-gsm8k-smoke/\n?? artifacts/evaluation/vllm-math-16samples/\n?? artifacts/evaluation/vllm-math-full/records.jsonl\n?? artifacts/segmentation/openrouter-llama32-1b-proxy/gsm8k.jsonl\n?? artifacts/segmentation/openrouter-llama32-1b-proxy/math.jsonl\n?? artifacts/training/\n?? ask\n?? prose/reflections/diagrams/\n?? scripts/diagnostics/check_training_numerics.py\n?? scripts/setup/README.md\n?? tests/setup/test_download_model_weights.py\n?? tests/test_check_training_numerics.py\n?? your\n",
+  "source_sha256": {
+    "scripts/diagnostics/sample_segmentation.py": "798689ef44fe4a24f9942706ea27b1ead1f4bb25204989987578b9f8596b3aa0",
+    "src/core/inference.py": "f83c11f2808a85e9122f116db00bd74d6a46924dd76c5a6a66f78445be1a34fe",
+    "src/core/segmentation.py": "12988f2079cdcbb22875a035b7922ba1a90e16602c4986d5659e144143122bd9",
+    "src/core/vendor/vineppo/math_extract_steps_inplace.py": "7423fcf0853ae6ded7be60e864f1b0776147b22ab52adc75c5ec850edb173e1f",
+    "scripts/paper_artifact_replications/evaluate_sft.py": "f9ffd4df5343a67cefd93a265250831d983b39f0ef0c3e647c4e3771f87a35e4"
+  },
+  "versions": {
+    "torch": "2.15.0",
+    "transformers": "5.22.1",
+    "datasets": "5.1.0",
+    "tokenizers": "0.23.3"
+  },
+  "gpu": "NVIDIA A40",
+  "cuda": "13.2",
+  "artifact_integrity": "Manifest pins downloads; local artifact bytes are not rehashed.",
+  "classification": "Observed first production failure only; upstream_or_span includes unclassified assertions/ValueErrors. No repairs."
+}

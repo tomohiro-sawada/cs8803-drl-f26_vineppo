@@ -1,3 +1,24 @@
+# Local scheduler observations (may include reservation/account metadata)
+/artifacts/diagnostics/pace_ice/
+
+# Tom
+cursor
+prose/workflow/*
+!prose/workflow/tasks
+prose/workflow/tasks/*
+!prose/workflow/tasks/agent-tasks
+prose/conventions
+prose/agent-reports
+prose/knowledge-bases
+AGENTS.template.md
+bash.sh
+.trash
+data
+tmp
+*.pt
+
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -218,3 +239,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.venv-inference-*

@@ -1,0 +1,14 @@
+{
+  "class": "LlamaTokenizer",
+  "is_fast": true,
+  "bos_token_id": 1,
+  "eos_token_ids": [
+    2
+  ],
+  "pad_token_id": 2,
+  "all_special_ids": [
+    1,
+    2,
+    0
+  ]
+}

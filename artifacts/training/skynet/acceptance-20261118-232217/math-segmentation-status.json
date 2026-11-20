@@ -1,0 +1,80 @@
+{
+  "kind": "segmentation",
+  "task": "math",
+  "allocation": "4794852",
+  "argv": [
+    "srun",
+    "--jobid=4794852",
+    "--overlap",
+    "--nodes=1",
+    "--ntasks=1",
+    "--cpus-per-task=6",
+    "--immediate=30",
+    "--time=01:00:00",
+    "--chdir=/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo",
+    "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.venv/bin/python",
+    "-u",
+    "-m",
+    "scripts.diagnostics.sample_segmentation",
+    "--task",
+    "math",
+    "--output",
+    "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/acceptance-20261118-232217/math-segmentation",
+    "--num-prompts",
+    "32",
+    "--num-samples",
+    "2",
+    "--batch-size",
+    "4",
+    "--max-new-tokens",
+    "1024",
+    "--seed",
+    "42"
+  ],
+  "returncode": 0,
+  "metrics": {
+    "expected_samples": 64,
+    "total_samples": 64,
+    "success": 0,
+    "failure": 64,
+    "by_category": {
+      "success": 0,
+      "roundtrip": 64,
+      "inside_token": 0,
+      "special": 0,
+      "empty": 0,
+      "upstream_or_span": 0
+    },
+    "by_finish_reason": {
+      "stop": {
+        "total": 61,
+        "success": 0,
+        "failure": 61,
+        "by_category": {
+          "success": 0,
+          "roundtrip": 61,
+          "inside_token": 0,
+          "special": 0,
+          "empty": 0,
+          "upstream_or_span": 0
+        }
+      },
+      "length": {
+        "total": 3,
+        "success": 0,
+        "failure": 3,
+        "by_category": {
+          "success": 0,
+          "roundtrip": 3,
+          "inside_token": 0,
+          "special": 0,
+          "empty": 0,
+          "upstream_or_span": 0
+        }
+      }
+    },
+    "complete": true,
+    "rejection_frequency": 1.0
+  },
+  "accepted": false
+}

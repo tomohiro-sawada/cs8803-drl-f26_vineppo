@@ -1,0 +1,77 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-19-2026 21:55:17
+Job ID:    7179833
+User ID:   tsawada7
+Account:   math
+Job name:  sampler-acceptance-1p1
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+{
+  "greedy": {
+    "base": {
+      "identical_sequences": 8,
+      "first_divergence": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    "learner": {
+      "identical_sequences": 8,
+      "first_divergence": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  },
+  "zero_adapter": [
+    {
+      "max_abs": 0.12400484085083008,
+      "mean_abs": 0.01027554054875911,
+      "tokens": 1255
+    }
+  ],
+  "learner_change": {
+    "max_abs": 8.348140321671963,
+    "mean_abs": 0.25378066199762417,
+    "tokens": 1255
+  },
+  "changed_adapter": [
+    {
+      "vs_learner": {
+        "max_abs": 0.22635197639465332,
+        "mean_abs": 0.01423410501241792,
+        "tokens": 1255
+      },
+      "vs_previous_version": {
+        "max_abs": 8.160689912736416,
+        "mean_abs": 0.2535696443703121,
+        "tokens": 1255
+      }
+    }
+  ]
+}
+---------------------------------------
+Begin Slurm Epilog: Nov-19-2026 21:56:48
+Job ID:        7179833
+User ID:       tsawada7
+Account:       math
+Job name:      sampler-acceptance-1p1
+Resources:     cpu=12,gres/gpu:a40=2,mem=192G,node=1
+Rsrc Used:     cput=00:17:48,vmem=0,walltime=00:01:29,mem=15976K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-01-005-9-0
+---------------------------------------

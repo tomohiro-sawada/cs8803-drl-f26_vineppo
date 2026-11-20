@@ -1,0 +1,74 @@
+[project]
+name = "cs8803-drl-f26-vineppo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "wandb>=0.31.0",
+    "python-dotenv>=1.2,<2",
+    "datasets>=5.1.0",
+    "jaxtyping>=0.3.11",
+    "peft>=0.21.2,<0.22",
+    "pylatexenc==2.10",
+    "regex>=2023.12.25",
+    "sympy==1.14.0",
+    "torch>=2.14.0",
+    "tqdm>=4.70.1",
+    "transformers>=5.22.1",
+    "typing-extensions>=4.16.0",
+]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"core.vendor.vineppo" = ["LICENSE.*", "NOTICE.md", "sources.json"]
+
+[tool.pytest]
+minversion = "9.2"
+testpaths = ["tests"]
+addopts = ["--import-mode=importlib", "-ra"]
+strict_config = true
+strict_markers = true
+strict_xfail = true
+
+[tool.uv]
+default-groups = ["dev", "sdpa"]
+conflicts = [[{ group = "sdpa" }, { group = "inference" }]]
+no-build-isolation-package = ["flash-attn"]
+
+[tool.uv.dependency-groups]
+inference = { requires-python = ">=3.13,<3.15" }
+
+[[tool.uv.dependency-metadata]]
+name = "flash-attn"
+version = "2.8.4"
+requires-dist = ["torch", "einops"]
+
+[tool.uv.sources]
+# Includes C++20 support required by Torch >=2.13; PyPI 2.8.3.post2 uses C++17.
+flash-attn = { git = "https://github.com/Dao-AILab/flash-attention.git", rev = "68bd095cdd338c5171bccb9c200529f3620b85c9" }
+
+[dependency-groups]
+sdpa = ["torch>=2.15.0"]
+inference = [
+    "vllm==0.34.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "flash-attn==2.8.4; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "setuptools>=78.1.1,<81",
+    "wheel",
+    "packaging",
+    "ninja",
+    "psutil",
+]
+dev = [
+    "jupyterlab>=4.6.5",
+    "notebook>=7.6.4",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+    "ruff-format>=0.5.4",
+]

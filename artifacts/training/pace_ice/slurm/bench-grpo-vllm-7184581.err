@@ -1,0 +1,44 @@
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 3576.53it/s]
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 12160.56it/s]
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from WANDB_API_KEY.
+wandb: Currently logged in as: tsawada to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/bench-grpo-vllm-colocated-01/wandb/run-20261119_223822-de9c943cf5814d4e96678b1017e41f5c
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run bench-grpo-vllm-colocated-01
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/tsawada/vineppo/runs/de9c943cf5814d4e96678b1017e41f5c
+wandb: updating run metadata
+wandb: 
+wandb: Run history:
+wandb:          actor_learning_rate ▁▁▁▁
+wandb:        actor_refresh_seconds ▂▁█▁
+wandb:         actor_update_seconds ▁██▃
+wandb:          allocated_bytes_end ▁▁▁▁
+wandb:                    approx_kl ▄▃█▁
+wandb:     budget/iteration_seconds ▁▄▆█
+wandb:      budget/mc_continuations ▁▁▁▁
+wandb:         budget/mc_expansions ▁▁▁▁
+wandb:             budget/mc_tokens ▁▁▁▁
+wandb: budget/primary_continuations ▁▃▆█
+wandb:                          +43 ...
+wandb: 
+wandb: Run summary:
+wandb:          actor_learning_rate 1e-05
+wandb:        actor_refresh_seconds 0.23006
+wandb:         actor_update_seconds 23.11969
+wandb:          allocated_bytes_end 4555778048
+wandb:                    approx_kl 0.00027
+wandb:     budget/iteration_seconds 175.34084
+wandb:      budget/mc_continuations 0
+wandb:         budget/mc_expansions 0
+wandb:             budget/mc_tokens 0
+wandb: budget/primary_continuations 512
+wandb:                          +55 ...
+wandb: 
+wandb: 🚀 View run bench-grpo-vllm-colocated-01 at: https://forge.coreweave.com/wandb/tsawada/vineppo/runs/de9c943cf5814d4e96678b1017e41f5c
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: Synced 3 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/bench-grpo-vllm-colocated-01/wandb/run-20261119_223822-de9c943cf5814d4e96678b1017e41f5c/logs
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.

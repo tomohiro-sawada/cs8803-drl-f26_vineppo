@@ -1,0 +1,76 @@
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 4253.34it/s]
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 14448.00it/s]
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from WANDB_API_KEY.
+wandb: Currently logged in as: tsawada to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-grpo-rhomath-gsm8k-seed42-vllm-colocated-01/wandb/run-20261119_224112-eb0059e909154ab88da5da8816a538a2
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run pilot-grpo-rhomath-seed42
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/tsawada/vineppo/runs/eb0059e909154ab88da5da8816a538a2
+wandb: updating run metadata
+wandb: 
+wandb: Run history:
+wandb:          actor_learning_rate ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:        actor_refresh_seconds ▁▁▂▁▁▁▂▁▃▁▁▁▁▁▂▁▁▁▁▁▂▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         actor_update_seconds ▂▇▂█▇█▇▇█▇▁▁▁▂▁▁▃▁▁▁▇▁▇▂▂▁▁▁▇▁▁█▁▁▁▂▁▁▁
+wandb:          allocated_bytes_end ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                    approx_kl ▁▂▂▁▃▁▄▃▃▁▃▃▂▃▃▂▃▃▂▂▂▂▃▄▅▃▄▃▆▃█▄▂▂▃▇▃▆▅
+wandb:     budget/iteration_seconds ▁▁▁▂▂▂▂▂▂▃▃▄▄▄▄▄▄▄▄▅▅▅▆▆▆▆▆▆▆▇▇▇▇▇█████
+wandb:      budget/mc_continuations ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         budget/mc_expansions ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:             budget/mc_tokens ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb: budget/primary_continuations ▁▁▁▂▂▂▂▂▂▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇▇███
+wandb:                          +49 ...
+wandb: 
+wandb: Run summary:
+wandb:          actor_learning_rate 1e-05
+wandb:        actor_refresh_seconds 0.20314
+wandb:         actor_update_seconds 5.84522
+wandb:          allocated_bytes_end 4555778048
+wandb:                    approx_kl 0.00032
+wandb:     budget/iteration_seconds 595.30034
+wandb:      budget/mc_continuations 0
+wandb:         budget/mc_expansions 0
+wandb:             budget/mc_tokens 0
+wandb: budget/primary_continuations 4992
+wandb:                          +51 ...
+wandb: 
+wandb: 🚀 View run pilot-grpo-rhomath-seed42 at: https://forge.coreweave.com/wandb/tsawada/vineppo/runs/eb0059e909154ab88da5da8816a538a2
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: Synced 3 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-grpo-rhomath-gsm8k-seed42-vllm-colocated-01/wandb/run-20261119_224112-eb0059e909154ab88da5da8816a538a2/logs
+Traceback (most recent call last):
+  File "/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/experiments/training/run.py", line 828, in <module>
+    main()
+    ~~~~^^
+  File "/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/experiments/training/run.py", line 753, in main
+    trainer.train(**inputs, record_metrics=trainer.record_metrics)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/src/runtime/train.py", line 624, in train
+    self.save_checkpoint()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/experiments/training/run.py", line 423, in save_checkpoint
+    self.pending.update(self.selection.validate(saved, self.iteration))
+                        ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/experiments/training/selection.py", line 273, in validate
+    result = self._evaluate(
+        "validation", checkpoint=checkpoint, iteration=iteration
+    )
+  File "/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/experiments/training/selection.py", line 243, in _evaluate
+    subprocess.run(
+    ~~~~~~~~~~~~~~^
+        command,
+        ^^^^^^^^
+    ...<4 lines>...
+        stderr=subprocess.STDOUT,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/hice1/tsawada7/.local/share/uv/python/cpython-3.13.5-linux-x86_64-gnu/lib/python3.13/subprocess.py", line 577, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.venv/bin/python', '-m', 'experiments.training.evaluate', '--split', 'validation', '--training-output', '/storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-grpo-rhomath-gsm8k-seed42-vllm-colocated-01', '--output', '/storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-grpo-rhomath-gsm8k-seed42-vllm-colocated-01/evaluations/validation-40', '--rounds', '1', '--seed', '42', '--batch-size', '256', '--wandb-mode', 'online', '--wandb-project', 'vineppo', '--wandb-name', 'pilot-grpo-rhomath-gsm8k-seed42-vllm-colocated-01-validation-40', '--backend', 'vllm', '--num-workers', '1', '--worker-dir', '/home/hice1/tsawada7/scratch/cs8803-drl-f26_vineppo/training-cache/workers/7184690', '--checkpoint', '/storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-grpo-rhomath-gsm8k-seed42-vllm-colocated-01/checkpoints/iteration-40.pt', '--wandb-group', 'pilot-20261119']' returned non-zero exit status 1.
+srun: error: atl1-1-03-013-8-0: task 0: Exited with exit code 1
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.

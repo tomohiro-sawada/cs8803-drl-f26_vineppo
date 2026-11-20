@@ -1,0 +1,22 @@
+{
+  "task": "gsm8k",
+  "output": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/evaluation/smoke-gsm8k",
+  "manifest": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/download_manifest.json",
+  "batch_size": 8,
+  "rounds": 1,
+  "limit": 8,
+  "smoke": true,
+  "seed": 42,
+  "expected_gpu": "A40",
+  "temperature": 0.35,
+  "max_new_tokens": 1024,
+  "top_p": 0.9,
+  "top_k": 0,
+  "prompt": "[MATH_TASK] Problem:\n{question}\n\nSolution:",
+  "stop": "\n\n\nProblem:",
+  "dtype": "bfloat16",
+  "attention": "sdpa",
+  "device": "cuda:0",
+  "context_size": 2047,
+  "seed_policy": "seed + zero-based round index"
+}

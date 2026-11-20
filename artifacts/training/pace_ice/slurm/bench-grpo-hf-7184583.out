@@ -1,0 +1,22 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-19-2026 22:38:33
+Job ID:    7184583
+User ID:   tsawada7
+Account:   math
+Job name:  bench-grpo-hf
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+Completed iteration 4; metrics and summary: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/bench-grpo-hf-01
+---------------------------------------
+Begin Slurm Epilog: Nov-19-2026 22:42:06
+Job ID:        7184583
+User ID:       tsawada7
+Account:       math
+Job name:      bench-grpo-hf
+Resources:     cpu=12,gres/gpu:h100=1,mem=96G,node=1
+Rsrc Used:     cput=00:42:36,vmem=0,walltime=00:03:33,mem=9692K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-03-012-23-0
+---------------------------------------

@@ -1,0 +1,68 @@
+{
+  "paper": "https://arxiv.org/html/2410.01679v2",
+  "upstream_commit": "9f716e68bb934e71da86c226c1699c36b5553faf",
+  "model": {
+    "kind": "model",
+    "task": "gsm8k",
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-GSM8K",
+    "repo_id": "realtreetune/rho-1b-sft-GSM8K",
+    "requested_revision": "main",
+    "revision": "b28fda3216f8178c1f37c3c764196e3ca2439a30"
+  },
+  "dataset": {
+    "kind": "dataset",
+    "task": "gsm8k",
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/gsm8k",
+    "archive_member": "wandb_export_root/datasets/data-gsm8k-w_valid_split.zip",
+    "splits": {
+      "train": {
+        "rows": 7100,
+        "columns": [
+          "question",
+          "answer"
+        ]
+      },
+      "validation": {
+        "rows": 373,
+        "columns": [
+          "question",
+          "answer"
+        ]
+      },
+      "test": {
+        "rows": 1319,
+        "columns": [
+          "question",
+          "answer"
+        ]
+      }
+    },
+    "url": "https://github.com/McGill-NLP/VinePPO/releases/download/latest/wandb_export_root.zip",
+    "release_asset_id": 196429828,
+    "sha256": "c25d3977febe21260a1d6fe484ef368774e3d99ef10ef3f07a4531f4cd02a503",
+    "size_bytes": 8127691
+  },
+  "manifest_sha256": "726b62612ce0f4a14034deae8fbe269923cb3cd4e70fad9d92330fb3ed62477b",
+  "selection_sha256": "88c79f46d39df337e3a15059550cba2769fe344f7183d4896a29221fc6dda606",
+  "verifier_policy": "vineppo-question-final-answer-safe-v2",
+  "verifier_provenance": "https://github.com/McGill-NLP/VinePPO/tree/9f716e68bb934e71da86c226c1699c36b5553faf/src/treetune/tasks",
+  "git_commit": "752940141eb748ca9c8561ac740be5ba0de434da",
+  "runner_sha256": "ce686ee0c8cacff04152174269204ece83cbcc41660f2f09a605eb7ed0b78aa5",
+  "versions": {
+    "torch": "2.15.0",
+    "transformers": "5.22.1",
+    "datasets": "5.1.0",
+    "tokenizers": "0.23.3"
+  },
+  "gpu": "NVIDIA A40",
+  "cuda": "13.2",
+  "deviations": [
+    "HF SDPA rather than upstream vLLM; no bitwise parity claim",
+    "Stop string removed after generation; extra draws affect subsequent RNG state",
+    "Sequential seeded rounds rather than upstream batched n=16 completions",
+    "Long-prompt budget counts BOS; upstream tokenize() does not",
+    "Manifest attests downloads, not post-download local file integrity",
+    "MATH uses published answer column; upstream extracts all solution answers (test row 451 has two)",
+    "Shared safe verifier errors abort instead of counting infrastructure failures as wrong"
+  ]
+}

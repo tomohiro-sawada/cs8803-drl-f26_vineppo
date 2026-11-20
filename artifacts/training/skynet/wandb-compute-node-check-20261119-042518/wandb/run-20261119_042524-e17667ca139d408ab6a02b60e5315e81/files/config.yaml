@@ -1,0 +1,38 @@
+_wandb:
+    value:
+        cli_version: 0.31.0
+        m:
+            - "1": iteration
+              "6":
+                - 3
+              "7": []
+            - "2": '*'
+              "5": 1
+              "6":
+                - 1
+              "7": []
+        python_version: 3.13.1
+        t:
+            "3":
+                - 2
+                - 74
+                - 75
+                - 7
+                - 13
+                - 14
+                - 16
+                - 61
+            "4": 3.13.1
+            "5": 0.31.0
+            "12": 0.31.0
+            "13": linux-x86_64
+budget_scope:
+    value: invocation
+cli:
+    value:
+        mode: benchmark
+        wandb_mode: online
+precision:
+    value: Synthetic compute-node connectivity check; no model or data
+start_iteration:
+    value: 0

@@ -1,0 +1,31 @@
+{
+  "kind": "numerics",
+  "task": "math",
+  "allocation": "4794850",
+  "argv": [
+    "srun",
+    "--jobid=4794850",
+    "--overlap",
+    "--nodes=1",
+    "--ntasks=1",
+    "--cpus-per-task=6",
+    "--immediate=30",
+    "--time=01:00:00",
+    "--chdir=/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo",
+    "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.venv/bin/python",
+    "-u",
+    "scripts/diagnostics/check_training_numerics.py",
+    "--model-path",
+    "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-MATH",
+    "--dataset-path",
+    "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/math",
+    "--task",
+    "math",
+    "--expected-gpu",
+    "A40",
+    "--output",
+    "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/artifacts/training/skynet/acceptance-20261118-232217/math-numerics"
+  ],
+  "returncode": 1,
+  "accepted": false
+}

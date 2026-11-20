@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/McGill-NLP/VinePPO",
+  "commit": "9f716e68bb934e71da86c226c1699c36b5553faf",
+  "sha256": {
+    "src/treetune/tasks/math_answer_exctraction.py": "c3f6524295b82ab30a7a43373ef95b825bf6b03ef244f22169ea1f7af4c345d2",
+    "src/treetune/tasks/math_grader.py": "f876a7a08b2fb42003773331946e0915215dfd897ebefff89576b27889f2f608",
+    "src/treetune/tasks/math_grader_minerva.py": "d9e10c41ab614dc2d0d97ce61fe62923aa68da10d6e0b23c4c9f4cb198e20141",
+    "src/treetune/tasks/gsm8k.py": "ef7cff53cb0e048fbf5671d757199ff6bc01ef0dff465d90270c0e20032a1405",
+    "src/treetune/tasks/math.py": "babd883c08a885e44d01b39a11f3b084f3aed9bafd8bcc5e55d7589762801389",
+    "src/treetune/episode_generators/math_episode_generator.py": "2190aa68586fa51abb0b9c728493ad58ec3bde345b882ed29d5418b52c921520",
+    "LICENSE": "e69268828e67ffd1d3393a2d3530f97df6deaa0b961039fc971abea28cec8715"
+  }
+}

@@ -1,0 +1,228 @@
+{
+  "model": {
+    "kind": "model",
+    "task": "gsm8k",
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/models/rho-1b-sft-GSM8K",
+    "repo_id": "realtreetune/rho-1b-sft-GSM8K",
+    "requested_revision": "main",
+    "revision": "b28fda3216f8178c1f37c3c764196e3ca2439a30"
+  },
+  "dataset": {
+    "kind": "dataset",
+    "task": "gsm8k",
+    "path": "/coc/flash13/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.cache/datasets/gsm8k",
+    "archive_member": "wandb_export_root/datasets/data-gsm8k-w_valid_split.zip",
+    "splits": {
+      "train": {
+        "rows": 7100,
+        "columns": [
+          "question",
+          "answer"
+        ]
+      },
+      "validation": {
+        "rows": 373,
+        "columns": [
+          "question",
+          "answer"
+        ]
+      },
+      "test": {
+        "rows": 1319,
+        "columns": [
+          "question",
+          "answer"
+        ]
+      }
+    },
+    "url": "https://github.com/McGill-NLP/VinePPO/releases/download/latest/wandb_export_root.zip",
+    "release_asset_id": 196429828,
+    "sha256": "c25d3977febe21260a1d6fe484ef368774e3d99ef10ef3f07a4531f4cd02a503",
+    "size_bytes": 8127691
+  },
+  "split": "train",
+  "train_fingerprint": "2b2cae6d63fc502a",
+  "manifest_sha256": "726b62612ce0f4a14034deae8fbe269923cb3cd4e70fad9d92330fb3ed62477b",
+  "selection": [
+    {
+      "id": "gsm8k:train:204",
+      "index": 204,
+      "prompt": "[MATH_TASK] Problem:\nCadence has worked for her new company five months longer than she worked for her old company. If she worked at her old company for 3 years earning $5000 per month, and she's now earning 20% more in the new company, calculate the total amount of money she's earned in both companies in the period she's worked for them?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:217",
+      "index": 217,
+      "prompt": "[MATH_TASK] Problem:\nDonna worked 2 hours every morning walking dogs in her neighborhood for $10.00 an hour.  5 days a week, after school, she worked at a card shop for 2 hours and made $12.50 an hour.  On the weekends, she usually made $10.00 an hour babysitting and was guaranteed 4 hours every Saturday from her neighbor.  How much money did she make over 7 days?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:244",
+      "index": 244,
+      "prompt": "[MATH_TASK] Problem:\nRobby, Jaylen and Miranda are employed at a Cheesecake factory, earning $10 per hour. They work 10 hours a day, five days a week. Robby saves 2/5 of his salary, Jaylene saves 3/5 of his salary, while Miranda saves half of her salary. What are the combined savings of the three employees after four weeks?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:260",
+      "index": 260,
+      "prompt": "[MATH_TASK] Problem:\nFor every 1 year a human ages, a dog ages 7 years.  When Max is 3, how much older, in dog years, will his 3-year-old dog be?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:712",
+      "index": 712,
+      "prompt": "[MATH_TASK] Problem:\nSasha made 30 chocolate muffins for her school bake sale fundraiser. Melissa made 4 times as many muffins as Sasha, and Tiffany made half of Sasha and Melissa's total number of muffins. If one muffin sold for $4, how much money did Sasha, Melissa, and Tiffany contribute to the fundraiser?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:767",
+      "index": 767,
+      "prompt": "[MATH_TASK] Problem:\nEthan makes beeswax candles.  For each candle, he uses 8 ounces of beeswax and 1 ounce of coconut oil.  If he makes three less than 10 candles, what will be the combined weight of the candles in ounces?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:839",
+      "index": 839,
+      "prompt": "[MATH_TASK] Problem:\nJohn uses the bathroom every 50 minutes.  How many times does he use the bathroom during a 2.5-hour movie?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:912",
+      "index": 912,
+      "prompt": "[MATH_TASK] Problem:\nCordelia is dyeing her hair red. To get the color she wants, she first has to bleach her dark brown hair to blonde, and then she has to apply the dye. The whole process will take 9 hours. Dyeing takes twice as long as bleaching. How many hours will it take Cordelia to bleach her hair?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:1143",
+      "index": 1143,
+      "prompt": "[MATH_TASK] Problem:\nJo reads at a steady pace. Her current book has 210 pages. Now, she is at page 90. An hour ago, she was at page 60. For how many hours will she be reading the book?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:1628",
+      "index": 1628,
+      "prompt": "[MATH_TASK] Problem:\nYour mom bought a refrigerator and a washing machine. Note that the price of the refrigerator is $4275 and the price of the washing machine is $1490 less than the price of the refrigerator. Calculate the total price of the purchases in dollars.\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:1791",
+      "index": 1791,
+      "prompt": "[MATH_TASK] Problem:\nKerry is ready to celebrate his birthday and wants to have three cakes with his age in candles on each of them. Candles come in boxes of 12 and cost $2.5 a box. If the candles cost $5, how old is Kerry?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:1805",
+      "index": 1805,
+      "prompt": "[MATH_TASK] Problem:\nTim decides to run a campaign for governor.  He gets the maximum $1200 donation from 500 people, and three times as many people donated half this sum of money to his campaign.  These donations together accounted for 40% of the total money that Tim raised.  How much total money did he raise?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:1828",
+      "index": 1828,
+      "prompt": "[MATH_TASK] Problem:\nJermaine, Terrence, and Emilee earn a total of $90. Jermaine earns $5 more than Terrence in a month. If Terrence earns $30, how much does Emilee earn?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:1905",
+      "index": 1905,
+      "prompt": "[MATH_TASK] Problem:\nLighters cost $1.75 each at the gas station, or $5.00 per pack of twelve on Amazon. How much would Amanda save by buying 24 lighters online instead of at the gas station?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:2006",
+      "index": 2006,
+      "prompt": "[MATH_TASK] Problem:\nMary is writing a story, and wants her 60 characters to be split according to their initials. Half of her characters have the initial A, and half of this amount have the initial C. Mary wants the rest of her characters to have the initials D and E, but she wants there to be twice as many characters with the initial D as there are characters with the initial E. How many of Mary’s characters have the initial D?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:2253",
+      "index": 2253,
+      "prompt": "[MATH_TASK] Problem:\nThe result from the 40-item Statistics exam Marion and Ella took already came out. Ella got 4 incorrect answers while Marion got 6 more than half the score of Ella. What is Marion's score?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:3436",
+      "index": 3436,
+      "prompt": "[MATH_TASK] Problem:\nJerry is making cherry syrup. He needs 500 cherries per quart of syrup. It takes him 2 hours to pick 300 cherries and 3 hours to make the syrup. How long will it take him to make 9 quarts of syrup?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:3456",
+      "index": 3456,
+      "prompt": "[MATH_TASK] Problem:\nDave bought 8 books about animals, 6 books about outer space, and 3 books about trains to keep him busy over the holidays. Each book cost $6. How much did Dave spend on the books?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:4139",
+      "index": 4139,
+      "prompt": "[MATH_TASK] Problem:\nIn a triangle with angles A, B, and C, A is 60 degrees, and B is two times as big as C. Calculate the angle of B.\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:4464",
+      "index": 4464,
+      "prompt": "[MATH_TASK] Problem:\nThere were 28 students inside a bus before stopping at an intersection. After stopping at an intersection, there were 58 students on the bus. What's 40% of the number of students who entered the bus at the intermediate stop?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:4467",
+      "index": 4467,
+      "prompt": "[MATH_TASK] Problem:\nSheena is sewing the bridesmaid’s dresses for her sister’s wedding. She can sew one dress in 12 hours. There are 5 bridesmaids in the wedding. If Sheena sews the dresses 4 hours each week, how many weeks will it take her to complete them?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:4597",
+      "index": 4597,
+      "prompt": "[MATH_TASK] Problem:\nEvery day Tom drinks 5 12-oz cans of soda plus 64 ounces of water. How many ounces of fluid does he drink a week?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:4837",
+      "index": 4837,
+      "prompt": "[MATH_TASK] Problem:\nMary, Edna, and Lucy are athletes who train every Saturday. Mary ran 3/8 of a 24-kilometer field on one Saturday. Edna ran 2/3 of the distance of Edna, and Lucy ran 5/6 of the distance of Edna. How many more kilometers should Lucy run to cover the same distance as Mary?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:4931",
+      "index": 4931,
+      "prompt": "[MATH_TASK] Problem:\nDani brings two and half dozen cupcakes for her 2nd-grade class.  There are 27 students (including Dani), 1 teacher, and 1 teacher’s aid.  If 3 students called in sick that day, how many cupcakes are left after Dani gives one to everyone in the class?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:5238",
+      "index": 5238,
+      "prompt": "[MATH_TASK] Problem:\nMatilda bought a smartphone for $300. Then she decided she wouldn't use it anyway and sold it for $255. What percentage of the initial cost did she lose?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:5323",
+      "index": 5323,
+      "prompt": "[MATH_TASK] Problem:\nAhmed has 8 orange trees and four times as many apple trees in his orchard as Hassan. If Hassan has one apple tree and two orange trees, and they both have only apple and orange trees in their orchards, how many more trees are in Ahmed's orchard than in Hassan's?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:5543",
+      "index": 5543,
+      "prompt": "[MATH_TASK] Problem:\nTom is playing a game and gets 10 points for killing an enemy.  If he kills at least 100 enemies he gets a 50% bonus to his score.  What was his total score if he killed 150 enemies?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:5745",
+      "index": 5745,
+      "prompt": "[MATH_TASK] Problem:\nReynald is the head of the varsity department, and he bought 145 balls. Twenty were soccer balls. There were five more basketballs than the soccer balls. Twice the number of soccer balls were tennis balls.  There were ten more baseballs than the soccer balls, and the rest were volleyballs. How many were volleyballs?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:5865",
+      "index": 5865,
+      "prompt": "[MATH_TASK] Problem:\nA ship left a port and headed due west, having 400 pounds of food for the journey's supply. After one day of sailing, 2/5 of the supplies had been used by the sailors in the ship. After another two days of sailing, the sailors used 3/5 of the remaining supplies. Calculate the number of supplies remaining in the ship to last the sailors until they dock.\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:6033",
+      "index": 6033,
+      "prompt": "[MATH_TASK] Problem:\nJasmine wants to organize her books in order of most number of pages to least number of pages. Jasmine's longest book has 396 pages and her shortest book has one-fourth as many pages as the longest. If the book in the middle of her shelf has three times the number of pages of the shortest book, then how many pages does the middle book have?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:6067",
+      "index": 6067,
+      "prompt": "[MATH_TASK] Problem:\nKaylee needs to sell 33 boxes of biscuits. So far, she has sold 12 boxes of lemon biscuits to her aunt, 5 boxes of chocolate biscuits to her mother, and 4 boxes of oatmeal biscuits to a neighbor. How many more boxes of biscuits does Kaylee need to sell?\n\nSolution:"
+    },
+    {
+      "id": "gsm8k:train:6074",
+      "index": 6074,
+      "prompt": "[MATH_TASK] Problem:\nAaron has some brothers. Bennett has 6 brothers. If the number of Bennett's brothers is two less than twice the number of Aaron's brothers, what is the number of Aaron's brothers?\n\nSolution:"
+    }
+  ],
+  "selection_sha256": "1d255655e669c022ddc461f90ea68cd7bb3468e99217f4d80b8a087fc7a3fa88",
+  "git_commit": "9c50f14b8bce3319e218bd9028df2b7acbe0de21",
+  "git_status": " M .gitignore\n M .trash/.record\n M AGENTS.md\n M scripts/setup/download_model_weights.py\n?? administrator._delegating-hw4-content.md\n?? administrator._policy-update-diagram.md\n?? administrator._vineppo-design-choices.md\n?? artifacts/evaluation/rho-sft-gsm8k-16rounds/\n?? artifacts/evaluation/rho-sft-math-16rounds/\n?? artifacts/evaluation/slurm/rho-sft-eval-4791396.err\n?? artifacts/evaluation/slurm/rho-sft-eval-4791396.out\n?? artifacts/evaluation/slurm/rho-sft-eval-4791571.err\n?? artifacts/evaluation/slurm/rho-sft-eval-4791571.out\n?? artifacts/evaluation/smoke-gsm8k/\n?? artifacts/evaluation/vllm-gsm8k-full/records.jsonl\n?? artifacts/evaluation/vllm-gsm8k-smoke/\n?? artifacts/evaluation/vllm-math-16samples/\n?? artifacts/evaluation/vllm-math-full/records.jsonl\n?? artifacts/segmentation/openrouter-llama32-1b-proxy/gsm8k.jsonl\n?? artifacts/segmentation/openrouter-llama32-1b-proxy/math.jsonl\n?? artifacts/training/\n?? ask\n?? prose/reflections/diagrams/\n?? scripts/diagnostics/check_training_numerics.py\n?? scripts/setup/README.md\n?? tests/setup/test_download_model_weights.py\n?? tests/test_check_training_numerics.py\n?? your\n",
+  "source_sha256": {
+    "scripts/diagnostics/sample_segmentation.py": "798689ef44fe4a24f9942706ea27b1ead1f4bb25204989987578b9f8596b3aa0",
+    "src/core/inference.py": "f83c11f2808a85e9122f116db00bd74d6a46924dd76c5a6a66f78445be1a34fe",
+    "src/core/segmentation.py": "12988f2079cdcbb22875a035b7922ba1a90e16602c4986d5659e144143122bd9",
+    "src/core/vendor/vineppo/math_extract_steps_inplace.py": "7423fcf0853ae6ded7be60e864f1b0776147b22ab52adc75c5ec850edb173e1f",
+    "scripts/paper_artifact_replications/evaluate_sft.py": "f9ffd4df5343a67cefd93a265250831d983b39f0ef0c3e647c4e3771f87a35e4"
+  },
+  "versions": {
+    "torch": "2.15.0",
+    "transformers": "5.22.1",
+    "datasets": "5.1.0",
+    "tokenizers": "0.23.3"
+  },
+  "gpu": "NVIDIA A40",
+  "cuda": "13.2",
+  "artifact_integrity": "Manifest pins downloads; local artifact bytes are not rehashed.",
+  "classification": "Observed first production failure only; upstream_or_span includes unclassified assertions/ValueErrors. No repairs."
+}

@@ -1,0 +1,45 @@
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights:   2%|▏         | 4/201 [00:00<00:05, 37.22it/s]Loading weights:   9%|▉         | 19/201 [00:00<00:01, 99.01it/s]Loading weights:  15%|█▍        | 30/201 [00:00<00:01, 92.73it/s]Loading weights:  21%|██▏       | 43/201 [00:00<00:01, 89.35it/s]Loading weights:  26%|██▋       | 53/201 [00:00<00:01, 89.99it/s]Loading weights:  35%|███▌      | 71/201 [00:00<00:01, 113.25it/s]Loading weights:  42%|████▏     | 84/201 [00:00<00:00, 117.18it/s]Loading weights:  48%|████▊     | 96/201 [00:00<00:01, 98.56it/s] Loading weights:  53%|█████▎    | 107/201 [00:01<00:00, 96.54it/s]Loading weights:  59%|█████▊    | 118/201 [00:01<00:00, 85.97it/s]Loading weights:  64%|██████▎   | 128/201 [00:01<00:00, 80.69it/s]Loading weights:  68%|██████▊   | 137/201 [00:01<00:00, 78.99it/s]Loading weights:  73%|███████▎  | 146/201 [00:01<00:00, 68.07it/s]Loading weights:  80%|███████▉  | 160/201 [00:01<00:00, 83.71it/s]Loading weights:  85%|████████▌ | 171/201 [00:01<00:00, 88.23it/s]Loading weights:  90%|█████████ | 181/201 [00:02<00:00, 78.21it/s]Loading weights:  95%|█████████▍| 190/201 [00:02<00:00, 72.25it/s]Loading weights: 100%|██████████| 201/201 [00:02<00:00, 89.69it/s]
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 12080.75it/s]
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from WANDB_API_KEY.
+wandb: Currently logged in as: tsawada to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/smoke-resume-grpo-01/wandb/run-20261119_225445-1249ff3c231a4750afbc3b4086c850f4
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run smoke-resume-grpo-01
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/tsawada/vineppo/runs/1249ff3c231a4750afbc3b4086c850f4
+wandb: updating run metadata
+wandb: uploading wandb-summary.json; uploading config.yaml
+wandb: 
+wandb: Run history:
+wandb:          actor_learning_rate ▁▁
+wandb:        actor_refresh_seconds █▁
+wandb:         actor_update_seconds █▁
+wandb:          allocated_bytes_end ▁▁
+wandb:                    approx_kl ▁█
+wandb:     budget/iteration_seconds ▁█
+wandb:      budget/mc_continuations ▁▁
+wandb:         budget/mc_expansions ▁▁
+wandb:             budget/mc_tokens ▁▁
+wandb: budget/primary_continuations ▁█
+wandb:                          +43 ...
+wandb: 
+wandb: Run summary:
+wandb:          actor_learning_rate 1e-05
+wandb:        actor_refresh_seconds 2.06999
+wandb:         actor_update_seconds 1.13307
+wandb:          allocated_bytes_end 4555778048
+wandb:                    approx_kl 0.00021
+wandb:     budget/iteration_seconds 14.91045
+wandb:      budget/mc_continuations 0
+wandb:         budget/mc_expansions 0
+wandb:             budget/mc_tokens 0
+wandb: budget/primary_continuations 32
+wandb:                          +55 ...
+wandb: 
+wandb: 🚀 View run smoke-resume-grpo-01 at: https://forge.coreweave.com/wandb/tsawada/vineppo/runs/1249ff3c231a4750afbc3b4086c850f4
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: Synced 3 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/smoke-resume-grpo-01/wandb/run-20261119_225445-1249ff3c231a4750afbc3b4086c850f4/logs
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.

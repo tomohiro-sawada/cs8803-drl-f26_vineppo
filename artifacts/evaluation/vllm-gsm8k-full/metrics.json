@@ -1,0 +1,18 @@
+{
+  "complete": true,
+  "smoke": false,
+  "metric": "sample-mean pass@1 (not pass@16)",
+  "num_examples_requested": 1319,
+  "num_examples_completed": 1319,
+  "num_samples": 16,
+  "total_count": 21104,
+  "total_correct": 8487,
+  "accuracy": 0.40215125094768767,
+  "paper_target_accuracy": 0.403,
+  "difference_percentage_points": -0.08487490523123586,
+  "paper_protocol_size": true,
+  "context_budget_policy": "min(1024, 2047 - prompt tokens including BOS); no truncation or batch-peer shrinking",
+  "reduced_budget_prompts": 0,
+  "min_max_tokens": 1024,
+  "max_prompt_tokens": 207
+}
