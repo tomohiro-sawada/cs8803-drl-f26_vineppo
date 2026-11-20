@@ -1,0 +1,45 @@
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights:   3%|▎         | 7/201 [00:00<00:03, 58.24it/s]Loading weights:   6%|▋         | 13/201 [00:00<00:04, 45.34it/s]Loading weights:  13%|█▎        | 26/201 [00:00<00:02, 75.99it/s]Loading weights:  18%|█▊        | 37/201 [00:00<00:01, 86.35it/s]Loading weights:  23%|██▎       | 47/201 [00:00<00:01, 89.50it/s]Loading weights:  32%|███▏      | 65/201 [00:00<00:01, 90.16it/s]Loading weights:  37%|███▋      | 75/201 [00:00<00:01, 88.80it/s]Loading weights:  45%|████▌     | 91/201 [00:01<00:01, 103.46it/s]Loading weights:  51%|█████     | 102/201 [00:01<00:01, 90.55it/s]Loading weights:  56%|█████▌    | 113/201 [00:01<00:00, 91.87it/s]Loading weights:  61%|██████    | 123/201 [00:01<00:00, 86.58it/s]Loading weights:  66%|██████▌   | 132/201 [00:01<00:00, 87.43it/s]Loading weights:  70%|███████   | 141/201 [00:01<00:00, 83.65it/s]Loading weights:  75%|███████▍  | 150/201 [00:01<00:00, 75.40it/s]Loading weights:  79%|███████▊  | 158/201 [00:01<00:00, 67.68it/s]Loading weights:  83%|████████▎ | 167/201 [00:02<00:00, 72.12it/s]Loading weights:  88%|████████▊ | 177/201 [00:02<00:00, 73.71it/s]Loading weights:  96%|█████████▌| 193/201 [00:02<00:00, 94.20it/s]Loading weights: 100%|██████████| 201/201 [00:02<00:00, 87.64it/s]
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 17066.93it/s]
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from WANDB_API_KEY.
+wandb: Currently logged in as: tsawada to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-vineppo-rhomath-gsm8k-seed42-vllm-h100-4rounds-02/wandb/run-20261120_004218-a780cdabd1664e9a840094a9e4566c57
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run pilot-vineppo-rhomath-seed42-h100-4rounds-02
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/tsawada/vineppo/runs/a780cdabd1664e9a840094a9e4566c57
+wandb: updating run metadata
+wandb: uploading config.yaml; uploading wandb-summary.json
+wandb: 
+wandb: Run history:
+wandb:          actor_learning_rate ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:        actor_refresh_seconds ▃▄▃▃▂▂▂▂▂█▃▂▃█▁▂▂▁▂▂▁▂▂▄▂▃▂▁▂▁▁▁▁▄▄▁▁▁▁▂
+wandb:         actor_update_seconds ▂▆▁▆▆▇▁▁█▄▁▁▁▁▂▇▁▁▁▁▁▁▁▁▁▁▁▂▁▁▁▆█▁▁▁▃▃▁▅
+wandb:          allocated_bytes_end ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                    approx_kl ▁▂▁▂▂▂▂▂▂▃▂▃▂▄▂▂▂▃▄▃▄▃▆▄▅▄▄▄▇▄▄▃▃▄▆▄▆█▅▂
+wandb:     budget/iteration_seconds ▁▁▁▁▂▂▂▂▃▃▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇▇██
+wandb:      budget/mc_continuations ▁▁▁▂▂▂▂▂▂▃▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇███
+wandb:         budget/mc_expansions ▁▁▁▁▂▂▂▂▂▃▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▅▆▆▆▆▆▆▇▇▇▇▇███
+wandb:             budget/mc_tokens ▁▁▁▂▂▂▂▂▃▃▃▃▃▃▄▄▄▄▄▄▅▅▅▅▅▅▆▆▆▆▆▆▇▇▇▇▇███
+wandb: budget/primary_continuations ▁▁▁▁▂▂▂▂▂▂▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▆▆▆▆▆▆▇▇▇▇▇▇███
+wandb:                          +53 ...
+wandb: 
+wandb: Run summary:
+wandb:          actor_learning_rate 1e-05
+wandb:        actor_refresh_seconds 0.21546
+wandb:         actor_update_seconds 9.64316
+wandb:          allocated_bytes_end 4555778048
+wandb:                    approx_kl 0.00028
+wandb:     budget/iteration_seconds 1765.59646
+wandb:      budget/mc_continuations 217008
+wandb:         budget/mc_expansions 24112
+wandb:             budget/mc_tokens 20082137
+wandb: budget/primary_continuations 6400
+wandb:                          +71 ...
+wandb: 
+wandb: 🚀 View run pilot-vineppo-rhomath-seed42-h100-4rounds-02 at: https://forge.coreweave.com/wandb/tsawada/vineppo/runs/a780cdabd1664e9a840094a9e4566c57
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: Synced 3 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-vineppo-rhomath-gsm8k-seed42-vllm-h100-4rounds-02/wandb/run-20261120_004218-a780cdabd1664e9a840094a9e4566c57/logs
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.

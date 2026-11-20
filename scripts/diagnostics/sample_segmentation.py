@@ -38,7 +38,6 @@ from core.segmentation import split_solution_inplace, step_boundaries_from_token
 CONTEXT_SIZE = 2048
 CATEGORIES = (
     "success",
-    "roundtrip",
     "inside_token",
     "special",
     "empty",
@@ -118,7 +117,6 @@ def assess(
         message = str(error)
         category = "upstream_or_span"
         for fragment, label in (
-            ("does not roundtrip", "roundtrip"),
             ("inside a sampled token", "inside_token"),
             ("other special tokens", "special"),
             ("Text and sampled response must be nonempty", "empty"),

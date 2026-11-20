@@ -1,0 +1,21 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-19-2026 23:36:24
+Job ID:    7185468
+User ID:   tsawada7
+Account:   math
+Job name:  segmentation-rate
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+---------------------------------------
+Begin Slurm Epilog: Nov-19-2026 23:40:43
+Job ID:        7185468
+User ID:       tsawada7
+Account:       math
+Job name:      segmentation-rate
+Resources:     cpu=12,gres/gpu:a40=1,mem=96G,node=1
+Rsrc Used:     cput=00:51:48,vmem=0,walltime=00:04:19,mem=8516K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-01-005-11-0
+---------------------------------------

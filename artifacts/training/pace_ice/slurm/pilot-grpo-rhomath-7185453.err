@@ -1,0 +1,16 @@
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights:   5%|▌         | 11/201 [00:00<00:01, 106.64it/s]Loading weights:  11%|█         | 22/201 [00:00<00:01, 95.42it/s] Loading weights:  16%|█▌        | 32/201 [00:00<00:02, 60.35it/s]Loading weights:  23%|██▎       | 47/201 [00:00<00:01, 83.22it/s]Loading weights:  28%|██▊       | 57/201 [00:00<00:01, 83.61it/s]Loading weights:  38%|███▊      | 77/201 [00:00<00:01, 114.65it/s]Loading weights:  45%|████▍     | 90/201 [00:00<00:01, 108.84it/s]Loading weights:  52%|█████▏    | 105/201 [00:01<00:00, 96.81it/s]Loading weights:  58%|█████▊    | 116/201 [00:01<00:01, 83.62it/s]Loading weights:  65%|██████▌   | 131/201 [00:01<00:00, 95.39it/s]Loading weights:  71%|███████   | 142/201 [00:01<00:00, 84.17it/s]Loading weights:  76%|███████▌  | 152/201 [00:01<00:00, 83.50it/s]Loading weights:  84%|████████▍ | 169/201 [00:01<00:00, 103.13it/s]Loading weights:  92%|█████████▏| 185/201 [00:01<00:00, 116.98it/s]Loading weights:  99%|█████████▊| 198/201 [00:02<00:00, 118.95it/s]Loading weights: 100%|██████████| 201/201 [00:02<00:00, 99.39it/s] 
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 12222.09it/s]
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from WANDB_API_KEY.
+wandb: Currently logged in as: tsawada to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-grpo-rhomath-gsm8k-seed42-vllm-colocated-02/wandb/run-20261119_231923-3968fc88f9a44f0e9a1debb167b1aa71
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run pilot-grpo-rhomath-seed42-resumed
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/tsawada/vineppo/runs/3968fc88f9a44f0e9a1debb167b1aa71
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+[2026-11-19T23:35:40.781] error: *** JOB 7185453 ON atl1-1-01-005-11-0 CANCELLED AT 2026-11-19T23:35:40 DUE to SIGNAL Terminated ***
+[2026-11-19T23:35:40.781] error: *** STEP 7185453.0 ON atl1-1-01-005-11-0 CANCELLED AT 2026-11-19T23:35:40 DUE to SIGNAL Terminated ***
+srun: forcing job termination
+srun: forcing job termination

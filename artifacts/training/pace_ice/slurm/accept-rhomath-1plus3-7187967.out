@@ -1,0 +1,111 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-20-2026 10:23:41
+Job ID:    7187967
+User ID:   tsawada7
+Account:   math
+Job name:  accept-rhomath-1plus3
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+{
+  "greedy": {
+    "base": {
+      "identical_sequences": 8,
+      "first_divergence": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    "learner": {
+      "identical_sequences": 6,
+      "first_divergence": [
+        31,
+        27,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  },
+  "zero_adapter": [
+    {
+      "max_abs": 0.15198135375976562,
+      "mean_abs": 0.012875194473713707,
+      "tokens": 1256
+    },
+    {
+      "max_abs": 0.15198135375976562,
+      "mean_abs": 0.012875194473713707,
+      "tokens": 1256
+    },
+    {
+      "max_abs": 0.15198135375976562,
+      "mean_abs": 0.012875194473713707,
+      "tokens": 1256
+    }
+  ],
+  "learner_change": {
+    "max_abs": 8.169310048222542,
+    "mean_abs": 0.25283299333518133,
+    "tokens": 1256
+  },
+  "changed_adapter": [
+    {
+      "vs_learner": {
+        "max_abs": 0.21917963027954102,
+        "mean_abs": 0.014677041288351596,
+        "tokens": 1256
+      },
+      "vs_previous_version": {
+        "max_abs": 8.231797650456429,
+        "mean_abs": 0.25246779103573697,
+        "tokens": 1256
+      }
+    },
+    {
+      "vs_learner": {
+        "max_abs": 0.18761467933654785,
+        "mean_abs": 0.014692336040469486,
+        "tokens": 1256
+      },
+      "vs_previous_version": {
+        "max_abs": 8.10682912170887,
+        "mean_abs": 0.25258402162598076,
+        "tokens": 1256
+      }
+    },
+    {
+      "vs_learner": {
+        "max_abs": 0.295448362827301,
+        "mean_abs": 0.014795851025048854,
+        "tokens": 1256
+      },
+      "vs_previous_version": {
+        "max_abs": 8.169311001896858,
+        "mean_abs": 0.2518499255650739,
+        "tokens": 1256
+      }
+    }
+  ]
+}
+---------------------------------------
+Begin Slurm Epilog: Nov-20-2026 10:25:11
+Job ID:        7187967
+User ID:       tsawada7
+Account:       math
+Job name:      accept-rhomath-1plus3
+Resources:     cpu=32,gres/gpu:h100=4,mem=256G,node=2
+Rsrc Used:     cput=00:46:56,vmem=0,walltime=00:01:28,mem=31408K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-03-012-18-0,atl1-1-03-013-8-0
+---------------------------------------

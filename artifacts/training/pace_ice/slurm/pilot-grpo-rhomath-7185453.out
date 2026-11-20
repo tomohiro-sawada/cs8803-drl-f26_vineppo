@@ -1,0 +1,9 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-19-2026 23:13:16
+Job ID:    7185453
+User ID:   tsawada7
+Account:   math
+Job name:  pilot-grpo-rhomath
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------

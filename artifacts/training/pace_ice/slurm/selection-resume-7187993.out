@@ -1,0 +1,24 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-20-2026 02:40:09
+Job ID:    7187993
+User ID:   tsawada7
+Account:   math
+Job name:  selection-resume
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+Completed iteration 4; metrics and summary: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/smoke-selection-resume-rhomath-h100-02
+true
+Early winner retained after resumed pruning: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/smoke-selection-resume-rhomath-h100-01/checkpoints/iteration-1.pt
+---------------------------------------
+Begin Slurm Epilog: Nov-20-2026 02:46:39
+Job ID:        7187993
+User ID:       tsawada7
+Account:       math
+Job name:      selection-resume
+Resources:     cpu=8,gres/gpu:h100=1,mem=64G,node=1
+Rsrc Used:     cput=00:52:16,vmem=0,walltime=00:06:32,mem=15856K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-03-013-8-0
+---------------------------------------

@@ -1,0 +1,26 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-20-2026 01:02:33
+Job ID:    7186293
+User ID:   tsawada7
+Account:   math
+Job name:  replay-rhomath-1plus1
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+{"configuration": "vllm-1+1", "prefixes": 52, "siblings": 9, "completions": 468, "output_tokens": 31755, "seconds": 5.4895136191044, "output_tokens_per_second": 5784.665491945851, "output_length": {"p50": 59.0, "p90": 119.0, "p99": 190.31, "max": 505}, "truncated": 0, "prefix_length": {"mean": 99.76923076923077, "max": 199}, "learner_gpu": "NVIDIA H100 80GB HBM3", "workers": 1, "worker_gpus": ["NVIDIA H100 80GB HBM3"], "allocated_gpus": 2, "replayed_from": null, "max_in_flight_sequences": 32, "per_worker": [{"requests": 52, "tokens": 31755, "errors": 0}]}
+{"configuration": "vllm-1+1", "prefixes": 52, "siblings": 9, "completions": 468, "output_tokens": 31885, "seconds": 1.8648380520753562, "output_tokens_per_second": 17097.9994560469, "output_length": {"p50": 58.0, "p90": 121.0, "p99": 212.34, "max": 483}, "truncated": 0, "prefix_length": {"mean": 99.76923076923077, "max": 199}, "learner_gpu": "NVIDIA H100 80GB HBM3", "workers": 1, "worker_gpus": ["NVIDIA H100 80GB HBM3"], "allocated_gpus": 2, "replayed_from": null, "max_in_flight_sequences": 128, "per_worker": [{"requests": 52, "tokens": 31885, "errors": 0}]}
+{"configuration": "vllm-1+1", "prefixes": 52, "siblings": 9, "completions": 468, "output_tokens": 33647, "seconds": 3.2169260820373893, "output_tokens_per_second": 10459.363734801827, "output_length": {"p50": 60.0, "p90": 123.1, "p99": 199.79, "max": 1024}, "truncated": 2, "prefix_length": {"mean": 99.76923076923077, "max": 199}, "learner_gpu": "NVIDIA H100 80GB HBM3", "workers": 1, "worker_gpus": ["NVIDIA H100 80GB HBM3"], "allocated_gpus": 2, "replayed_from": null, "max_in_flight_sequences": 256, "per_worker": [{"requests": 52, "tokens": 33647, "errors": 0}]}
+{"configuration": "vllm-1+1", "prefixes": 52, "siblings": 9, "completions": 468, "output_tokens": 33180, "seconds": 3.3070768730249256, "output_tokens_per_second": 10033.029552666803, "output_length": {"p50": 59.0, "p90": 111.0, "p99": 208.02, "max": 1024}, "truncated": 3, "prefix_length": {"mean": 99.76923076923077, "max": 199}, "learner_gpu": "NVIDIA H100 80GB HBM3", "workers": 1, "worker_gpus": ["NVIDIA H100 80GB HBM3"], "allocated_gpus": 2, "replayed_from": null, "max_in_flight_sequences": 512, "per_worker": [{"requests": 52, "tokens": 33180, "errors": 0}]}
+{"configuration": "hf-sequential", "prefixes": 52, "siblings": 9, "completions": 468, "output_tokens": 33475, "seconds": 134.59839015593752, "output_tokens_per_second": 248.70282594923978, "output_length": {"p50": 57.5, "p90": 118.0, "p99": 246.25, "max": 1024}, "truncated": 3, "prefix_length": {"mean": 99.76923076923077, "max": 199}, "learner_gpu": "NVIDIA H100 80GB HBM3", "workers": 0, "worker_gpus": ["NVIDIA H100 80GB HBM3"], "allocated_gpus": 1, "replayed_from": null}
+---------------------------------------
+Begin Slurm Epilog: Nov-20-2026 01:09:59
+Job ID:        7186293
+User ID:       tsawada7
+Account:       math
+Job name:      replay-rhomath-1plus1
+Resources:     cpu=16,gres/gpu:h100=2,mem=128G,node=1
+Rsrc Used:     cput=01:58:40,vmem=0,walltime=00:07:25,mem=16180K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-03-013-3-0
+---------------------------------------

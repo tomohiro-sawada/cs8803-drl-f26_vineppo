@@ -273,8 +273,22 @@ def test_bounded_retry_reuses_the_logical_request_then_aborts(actor, tmp_path):
     assert inference.client.stats[0]["errors"] == 2
     dead = make(actor, tmp_path, [FakeReplica(fail=10**6)], "dead")
     dead.sync(0)
-    with pytest.raises((httpx.ConnectError, AssertionError)):
+    with pytest.raises(httpx.ConnectError, match="worker died"):
         dead.generate(PREFIXES, num_samples=3, max_new_tokens=5)
+
+
+def test_last_active_slot_drains_its_own_retry(actor, tmp_path, caplog):
+    replica = FakeReplica(fail=1)
+    inference = make(actor, tmp_path, [replica], max_sequences=1)
+    inference.sync(0)
+
+    result = inference.generate(PREFIXES[:1], num_samples=1, max_new_tokens=5)
+
+    first, retry = replica.requests
+    assert first == retry
+    assert result[0][0].token_ids == sample(first, 0)[0]
+    assert inference.client.stats[0]["errors"] == 1
+    assert "worker died" in caplog.text
 
 
 @pytest.mark.parametrize(

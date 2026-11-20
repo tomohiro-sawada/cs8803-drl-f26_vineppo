@@ -13,6 +13,7 @@ agree only up to that rounding, which the sampler acceptance check measures.
 """
 
 import json
+import logging
 import shutil
 import subprocess
 from collections import deque
@@ -33,6 +34,7 @@ from core.inference import Completion
 from core.lora import lora_identity
 
 BASE_MODEL = "base"  # Served name of the unadapted model on every replica.
+logger = logging.getLogger(__name__)
 
 
 def file_sha256(path: Path) -> str:
@@ -82,8 +84,11 @@ class VLLMClient:
         self.clients = [
             httpx.Client(
                 base_url=url,
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=httpx.Timeout(3600.0, connect=30.0),
+                # Close each socket after its response. The drain slots bound
+                # concurrency; a second queue in the HTTP pool can stall them.
+                headers={"Authorization": f"Bearer {api_key}", "Connection": "close"},
+                limits=httpx.Limits(max_connections=None, max_keepalive_connections=0),
+                timeout=httpx.Timeout(300.0, connect=30.0, pool=30.0),
                 transport=transport,
             )
             for url in urls
@@ -151,8 +156,8 @@ class VLLMClient:
 
         Every replica drains one shared queue through max_sequences // n slots,
         refilling as requests finish. A transport failure requeues that request
-        (same seed, hence the same logical sample) up to `retries` times and
-        retires the failing slot; any other failure aborts the whole call.
+        (same logical sample and seed) up to `retries` times. The slot keeps
+        draining so a late retry always has a consumer.
         """
         assert bodies and len({body["n"] for body in bodies}) == 1
         n = bodies[0]["n"]
@@ -181,14 +186,24 @@ class VLLMClient:
                         "Worker altered the prefix"
                     )
                 except httpx.TransportError as error:
+                    logger.warning(
+                        "vLLM replica %s request %s failed on attempt %s: %r",
+                        worker,
+                        index,
+                        attempt + 1,
+                        error,
+                    )
                     with lock:
                         self.stats[worker]["errors"] += 1
                         if attempt < self.retries:
                             pending.append((index, attempt + 1))
                         else:
                             failures.append(error)
-                    return
+                    continue
                 except BaseException as error:
+                    logger.exception(
+                        "vLLM replica %s request %s aborted", worker, index
+                    )
                     with lock:
                         failures.append(error)
                     return

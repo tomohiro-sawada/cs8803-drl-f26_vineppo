@@ -1,0 +1,22 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-20-2026 00:47:58
+Job ID:    7186783
+User ID:   tsawada7
+Account:   math
+Job name:  long-grpo-rhomath
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+Completed iteration 200; metrics and summary: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/long-grpo-rhomath-gsm8k-seed42-vllm-h100-200iter-01
+---------------------------------------
+Begin Slurm Epilog: Nov-20-2026 01:30:05
+Job ID:        7186783
+User ID:       tsawada7
+Account:       math
+Job name:      long-grpo-rhomath
+Resources:     cpu=12,gres/gpu:h100=1,mem=96G,node=1
+Rsrc Used:     cput=08:25:00,vmem=0,walltime=00:42:05,mem=17260K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-03-013-3-0
+---------------------------------------

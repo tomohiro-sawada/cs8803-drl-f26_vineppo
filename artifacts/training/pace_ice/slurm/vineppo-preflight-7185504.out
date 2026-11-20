@@ -1,0 +1,29 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-19-2026 23:17:17
+Job ID:    7185504
+User ID:   tsawada7
+Account:   math
+Job name:  vineppo-preflight
+Partition: ice-cpu
+QOS:       coc-ice
+---------------------------------------
+train rows=7100 fingerprint=2b2cae6d63fc502a question_sha256=ef630d62d096c600604a2ead1bb277ef704f7c12f67a2fee3c3fae1b075fd1c3
+validation rows=373 fingerprint=576e2ee88ca003fd question_sha256=c751df2e7c3a2bfcb61e8cd65d768d73d33406ee3250c22d253fc5b5b9771401
+test rows=1319 fingerprint=23d99c6f5f132d12 question_sha256=6b09f9e30502e4ee3492dc271b72f16677fa3eff0f6c7b5292e2878de53d925c
+train/validation overlap=0
+train/test overlap=0
+validation/test overlap=0
+Transitions {('success', 'success'): 500, ('roundtrip', 'success'): 10, ('upstream_or_span', 'success'): 2}
+Changed previously accepted boundaries []
+---------------------------------------
+Begin Slurm Epilog: Nov-19-2026 23:17:45
+Job ID:        7185504
+User ID:       tsawada7
+Account:       math
+Job name:      vineppo-preflight
+Resources:     cpu=4,mem=12G,node=1
+Rsrc Used:     cput=00:01:52,vmem=0,walltime=00:00:28,mem=8140K,energy_used=0
+Partition:     ice-cpu
+QOS:           coc-ice
+Nodes:         atl1-1-02-003-20-1
+---------------------------------------

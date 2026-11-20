@@ -1,13 +1,11 @@
 """VinePPO MATH/GSM8K segmentation with a shared exact-token adapter.
 
-The low-level MATH/GSM8K adapters accept spans; ``step_boundaries_from_tokens``
-constructs verified spans using a fast tokenizer. For the low-level adapters,
+The low-level MATH/GSM8K adapters accept spans. ``step_boundaries_from_tokens``
+constructs them by incrementally decoding the sampled IDs. For both adapters,
 ``token_spans[i]`` must describe the actual sampled ``response_ids[i]`` in
 ``text``, using Python character offsets, NOT UTF-8 byte offsets. The caller
-must establish this correspondence; lengths alone cannot prove it. Offsets
-from re-encoding text are valid only after checking the entire encoded ID
-sequence against the sampled IDs (with explicit special-token handling).
-Independently decoded token lengths are not a valid source of offsets.
+must establish this correspondence. Decoding tokens in isolation loses context
+needed for whitespace and multi-token Unicode characters.
 
 Spans must cover text without gaps in monotone order. Overlap is allowed
 (e.g. byte-fallback tokens sharing a Unicode character), but a step cannot
@@ -27,6 +25,7 @@ MIT license: core/vendor/vineppo/LICENSE.VinePPO.
 
 from bisect import bisect_left
 from collections.abc import Callable, Sequence
+from functools import partial
 from itertools import accumulate, pairwise
 from typing import TYPE_CHECKING, Literal
 
@@ -44,38 +43,35 @@ def step_boundaries_from_tokens(
     eos_token_ids: Sequence[int],
     context_ids: Sequence[int] = (),
 ) -> tuple[int, ...]:
-    """Segment sampled IDs using verified fast-tokenizer character offsets.
+    """Segment sampled IDs using character offsets from incremental decoding.
 
-    context_ids are the prompt tokens the response was sampled after. They are
-    decoded and re-encoded together with the response, because tokenizers such
-    as Llama's encode standalone text differently from a continuation (a dummy
-    prefix token). One leading BOS is dropped; offsets are response-relative.
+    context_ids are the prompt tokens the response was sampled after. Decoding
+    response prefixes in that context preserves continuation whitespace.
+    One leading BOS is dropped, and offsets are response-relative.
 
     Supply EOS IDs from the generation configuration, not tokenizer defaults.
     One terminal EOS is excluded from text and assigned to the final step;
-    other special tokens, empty text, non-roundtripping sampled IDs, uncovered
-    whitespace offsets, and character cuts inside tokens fail loudly. This
-    intentionally does not retokenize steps or approximate sampled prefixes.
+    other special tokens, empty text, and character cuts inside tokens raise.
     Returns response-relative token boundaries including 0 and len(response_ids).
     Adjacent boundaries delimit nonempty slices of the original sampled IDs.
     The lower-level adapters accept externally established spans when needed.
 
     Compatibility caveats (AGENT INSTRUCTIONS):
-        Preserve the pinned upstream splitter's behavior, not just Appendix B's
-        prose description. MATH inputs such as "x" and "Short." raise
-        AssertionError upstream; repeated multiline math placeholders can also
-        fail. GSM8K newline-only inputs can produce degenerate partitions,
-        which this adapter rejects. These are not repaired or skipped.
+        Keep the original sampled IDs even when the tokenizer would encode the
+        decoded text differently. Derive offsets from decoded sampled prefixes.
+        Preserve the pinned upstream splitters' behavior except that GSM8K
+        treats everything from the first answer marker onward as one suffix,
+        including repeated markers. MATH splitter errors and degenerate GSM8K
+        whitespace-only partitions propagate.
         A valid character split may fall inside one sampled token. That also
         raises AssertionError: rounding the cut, merging steps, or re-encoding
-        each step would change the trajectory/advantage assignment. Likewise,
-        identical decoded text does not establish identical sampled token IDs.
+        each step would change the trajectory/advantage assignment.
         Do not add silent recovery for these cases; changing this policy requires
         an explicit compatibility decision and updated regression tests in
         tests/core/test_segmentation.py.
     """
     assert dataset in ("math", "gsm8k"), "Unsupported segmentation dataset"
-    assert tokenizer.is_fast, "Exact offsets require a fast tokenizer"
+    assert tokenizer.is_fast, "Segmentation requires a fast tokenizer"
     ids = list(response_ids)
     assert ids and all(type(token) is int and token >= 0 for token in ids)
     assert all(type(token) is int and token >= 0 for token in eos_token_ids)
@@ -90,32 +86,37 @@ def step_boundaries_from_tokens(
     assert not set(context).intersection(tokenizer.all_special_ids), (
         "Context contains special tokens other than one leading BOS"
     )
-    prefix, full = (
-        tokenizer.decode(
-            ids, skip_special_tokens=False, clean_up_tokenization_spaces=False
-        )
-        for ids in (context, context + content_ids)
+    decode = partial(
+        tokenizer.decode, skip_special_tokens=False, clean_up_tokenization_spaces=False
     )
+    sequence = context + content_ids
+    prefix, full = decode(context), decode(sequence)
     assert full.startswith(prefix), "Context does not decode to a prefix"
-    text = full[len(prefix) :]
-    encoded = tokenizer(
-        full,
-        add_special_tokens=False,
-        padding=False,
-        truncation=False,
-        return_offsets_mapping=True,
-    )
-    assert encoded["input_ids"] == context + content_ids, (
-        "Decoded text does not roundtrip to the exact sampled token IDs"
-    )
+    offset = len(prefix)
+    text = full[offset:]
+    # Incomplete byte runs can rewrite earlier decoded characters or yield
+    # replacement characters. Work backward to retain the last exact prefix
+    # at each character offset and discard transient cuts that later retract.
+    cuts = [(len(content_ids), len(text))]
+    for i in range(len(content_ids) - 1, 0, -1):
+        decoded = decode(sequence[: len(context) + i])
+        end = len(decoded) - offset
+        if 0 < end < cuts[-1][1] and full.startswith(decoded):
+            cuts.append((i, end))
+    cuts.append((0, 0))
     spans = [
-        (start - len(prefix), end - len(prefix))
-        for start, end in encoded["offset_mapping"][len(context) :]
+        (start, end)
+        for (a, start), (b, end) in pairwise(reversed(cuts))
+        for _ in range(b - a)
     ]
     if has_eos:
         spans.append((len(text), len(text)))
     segment = math_step_boundaries if dataset == "math" else gsm8k_step_boundaries
-    return segment(text, ids, spans)
+    try:
+        return segment(text, ids, spans)
+    except AssertionError as error:
+        error.add_note(f"Sampled response token IDs: {ids}")
+        raise
 
 
 def math_step_boundaries(
@@ -146,10 +147,9 @@ def gsm8k_step_boundaries(
     Split only on literal LF (not periods, math, CR, or Unicode line separators).
     Newlines belong to the following step; leading whitespace-only lines merge
     into the first nonblank step. Interior/trailing blank lines remain steps.
-    The exact ``\\n#### `` answer suffix, when present, merges with the last
-    nonblank reasoning step, including intervening blank lines. Multiple answer
-    prefixes raise ValueError, as upstream does. Without that exact prefix, no
-    answer-specific merging occurs. See the module's shared token-span contract.
+    The suffix starting at the first exact ``\\n#### `` answer marker merges with
+    the last nonblank reasoning step, including intervening blank lines and
+    any repeated answer markers. See the module's shared token-span contract.
     """
     return _token_step_boundaries(
         text, response_ids, token_spans, _gsm8k_character_boundaries
@@ -158,14 +158,13 @@ def gsm8k_step_boundaries(
 
 def _gsm8k_character_boundaries(text: str) -> list[int]:
     prefix = "\n#### "
-    pieces = text.split(prefix)
-    reasoning, answer = (text, None) if len(pieces) == 1 else pieces
+    reasoning, marker, answer = text.partition(prefix)
     steps = reasoning.split("\n")
     first = next((i for i, step in enumerate(steps) if step.strip()), 0)
     steps[: first + 1] = ["\n".join(steps[: first + 1])]
-    if answer is not None:
+    if marker:
         last = next((i for i in range(len(steps) - 1, -1, -1) if steps[i].strip()), 0)
-        steps[last:] = ["\n".join(steps[last:]) + prefix + answer]
+        steps[last:] = ["\n".join(steps[last:]) + marker + answer]
     assert "\n".join(steps) == text
     return list(
         accumulate((len(step) + (i > 0) for i, step in enumerate(steps)), initial=0)
