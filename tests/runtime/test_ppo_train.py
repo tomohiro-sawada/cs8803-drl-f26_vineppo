@@ -190,9 +190,9 @@ def test_real_updates_reuse_fixed_targets_after_all_actor_epochs(ppo_case, monke
     initial = states(run)
     events, estimates, cache_calls, target_rows = [], [], [], Counter()
     batches = {}
-    for name in ("step_boundaries_from_tokens", "estimate_vineppo"):
+    for name in ("step_boundaries_from_tokens", "estimate_vineppo_batch"):
         monkeypatch.setattr(train_module, name, forbidden)
-    monkeypatch.setattr(run, "estimate_vineppo", forbidden)
+    monkeypatch.setattr(run, "estimate_vineppo_batch", forbidden)
     real_values = train_module.token_values
 
     def cache(*args):

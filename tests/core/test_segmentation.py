@@ -229,7 +229,7 @@ def test_gsm8k_exact_token_boundaries_with_trailing_eos():
 def test_estimator_uses_exact_original_token_prefixes():
     from algorithms.vineppo import estimate_vineppo, vineppo_advantage_method
     from core.data import Episode
-    from core.inference import Completion
+    from core.inference import Completion, HFInference
 
     episode = Episode([99, 98], [900, 7, 3, 51, 2], 1.0, "stop")
     text = "First sentence is long enough. Second sentence is long enough."
@@ -240,6 +240,8 @@ def test_estimator_uses_exact_original_token_prefixes():
     scored = []
 
     class Inference:
+        generate_each = HFInference.generate_each
+
         def generate(self, prefixes: list[list[int]], **kwargs):
             assert kwargs["num_samples"] == 1
             seen_prefixes.extend(prefixes)

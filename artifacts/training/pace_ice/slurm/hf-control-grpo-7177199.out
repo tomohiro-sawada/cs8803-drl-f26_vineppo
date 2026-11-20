@@ -1,0 +1,22 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-19-2026 15:51:30
+Job ID:    7177199
+User ID:   tsawada7
+Account:   math
+Job name:  hf-control-grpo
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+Completed iteration 3; metrics and summary: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/hf-control-grpo-20261119
+---------------------------------------
+Begin Slurm Epilog: Nov-19-2026 15:54:24
+Job ID:        7177199
+User ID:       tsawada7
+Account:       math
+Job name:      hf-control-grpo
+Resources:     cpu=6,gres/gpu:h100=1,mem=96G,node=1
+Rsrc Used:     cput=00:17:30,vmem=0,walltime=00:02:55,mem=20656K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-03-012-23-0
+---------------------------------------

@@ -459,6 +459,9 @@ def test_main_local_model_assembly_and_real_warmup_summary(
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
     monkeypatch.setattr(
+        runner, "gpu_identity", lambda: {"uuid": "GPU-fake", "driver": "fake"}
+    )
+    monkeypatch.setattr(
         torch.cuda,
         "get_device_properties",
         lambda _: SimpleNamespace(name="fake A40", total_memory=1000, major=8, minor=6),
@@ -835,6 +838,9 @@ def test_main_recovers_validation_before_updates_or_finalization(
     )
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(
+        runner, "gpu_identity", lambda: {"uuid": "GPU-fake", "driver": "fake"}
+    )
     monkeypatch.setattr(
         torch.cuda,
         "get_device_properties",

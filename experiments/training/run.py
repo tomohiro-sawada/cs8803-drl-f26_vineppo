@@ -1,4 +1,9 @@
-"""Offline, single-CUDA-device PPO/VinePPO/GRPO/RLOO training.
+"""Offline PPO/VinePPO/GRPO/RLOO training; the learner owns one CUDA device.
+
+--backend hf samples from the live actor on the learner GPU. --backend vllm keeps
+scoring, the frozen reference and updates on the learner and samples from
+--num-workers persistent vLLM replicas (experiments/training/vllm_worker.py), each
+on its own GPU, which are republished the LoRA actor before every iteration.
 
 Both modes perform real updates; --num-iterations (default 3) is the TOTAL target,
 including resumed iterations. Set it explicitly for longer training. Benchmark
@@ -60,6 +65,7 @@ from algorithms.vineppo import VinePPOConfig
 from core.data import Example
 from core.inference import HFInference
 from core.lora import apply_lora, lora_identity
+from core.vllm_inference import VLLMClient, VLLMInference, gpu_identity
 from experiments.training.selection import CheckpointSelection
 from experiments.training.tracking import WandBTracker
 from runtime.config import PPOTrainerConfig
@@ -72,6 +78,7 @@ PHASES = (
     "mc_estimation",
     "ppo_estimation",
     "score_cache",
+    "actor_refresh",
     "actor_update",
     "critic_update",
     "checkpoint",
@@ -170,7 +177,22 @@ def parse_args(argv=None):
     parser.add_argument("--eval-batch-size", type=positive_int, default=4)
     parser.add_argument("--eval-seed", type=int, default=42)
     parser.add_argument("--eval-timeout-seconds", type=positive_int, default=7200)
+    parser.add_argument("--backend", choices=("hf", "vllm"), default="hf")
+    parser.add_argument("--num-workers", type=positive_int)
+    parser.add_argument(
+        "--worker-dir", type=Path, help="Set by launch.sh: worker identity files"
+    )
     args = parser.parse_args(argv)
+    if (args.backend == "vllm") != (args.num_workers is not None) or (
+        args.backend == "vllm"
+    ) != (args.worker_dir is not None):
+        parser.error(
+            "--backend vllm requires --num-workers and --worker-dir, hf neither"
+        )
+    if args.backend == "vllm" and (
+        args.finetuning != "lora" or args.algorithm == "ppo"
+    ):
+        parser.error("--backend vllm publishes LoRA actors for vineppo/grpo/rloo")
     if not 0 <= args.eval_seed <= 2**32 - max(16, args.validation_rounds):
         parser.error("Evaluation seed range exceeds NumPy bounds")
     if args.evaluation != "disabled":
@@ -290,10 +312,16 @@ class Meter:
             self.active = previous
 
 
-class MeasuredInference(HFInference):
+class Measured:
+    """Count and time whichever sampler follows in the MRO."""
+
     def __init__(self, *args, meter, **kwargs):
         super().__init__(*args, **kwargs)
         self.meter = meter
+
+    def sync(self, version):
+        with self.meter.phase("actor_refresh"):
+            super().sync(version)
 
     def generate(self, prefixes, **kwargs):
         assert self.meter.active in ("primary_generation", "mc_estimation")
@@ -307,6 +335,14 @@ class MeasuredInference(HFInference):
         if kind == "mc":
             self.meter.counts["mc_expansions"] += len(prefixes)
         return result
+
+
+class MeasuredInference(Measured, HFInference):
+    pass
+
+
+class MeasuredVLLMInference(Measured, VLLMInference):
+    pass
 
 
 class MeasuredTrainer(PPOTrainer):
@@ -339,8 +375,8 @@ class MeasuredTrainer(PPOTrainer):
         return super().collect_completions(*args, **kwargs)
 
     @timed("mc_estimation")
-    def estimate_vineppo(self, *args, **kwargs):
-        return super().estimate_vineppo(*args, **kwargs)
+    def estimate_vineppo_batch(self, *args, **kwargs):
+        return super().estimate_vineppo_batch(*args, **kwargs)
 
     @timed("ppo_estimation")
     def _estimate_ppo(self, *args, **kwargs):
@@ -452,10 +488,7 @@ def git(*args):
 
 def main(argv=None):
     args = parse_args(argv)
-    assert torch.cuda.is_available(), "CUDA required; no CPU/MPS fallback"
-    assert torch.cuda.device_count() == 1, (
-        "Expose exactly one GPU with CUDA_VISIBLE_DEVICES"
-    )
+    learner_gpu = gpu_identity()
     gpu = torch.cuda.get_device_properties(0)
     assert (
         args.expected_gpu is None or args.expected_gpu.casefold() in gpu.name.casefold()
@@ -538,16 +571,47 @@ def main(argv=None):
         critic_optimizer = torch.optim.AdamW(
             critic.parameters(), lr=args.critic_learning_rate, weight_decay=0.0
         )
+    meter = Meter()
+    workers = client = None
+    if args.backend == "vllm":
+        client, workers = VLLMClient.from_directory(
+            args.worker_dir,
+            count=args.num_workers,
+            api_key=os.environ["VLLM_API_KEY"],
+            model_path=args.model_path,
+            other_gpu_uuids=[learner_gpu["uuid"]],
+        )
+        assert all(
+            args.expected_gpu is None
+            or args.expected_gpu.casefold() in worker["gpu"]["name"].casefold()
+            for worker in workers
+        ), f"Expected worker GPUs {args.expected_gpu!r}: {workers}"
+        make_inference = lambda: MeasuredVLLMInference(
+            actor,
+            client,
+            pad_token_id=tokenizer.pad_token_id,
+            export_dir=args.output / "actors",
+            seed=args.seed,
+            manifest={
+                "base_model": str(args.model_path),
+                "base_config_sha256": hashlib.sha256(
+                    (args.model_path / "config.json").read_bytes()
+                ).hexdigest(),
+                "tokenizer_sha256": tokenizer_sha256,
+            },
+            meter=meter,
+        )
+    else:
+        make_inference = lambda: MeasuredInference(
+            actor, pad_token_id=tokenizer.pad_token_id, meter=meter
+        )
     # Reserve only after configuration, data and model validation; never reuse an output.
     args.output.mkdir(parents=True, exist_ok=False)
-    meter = Meter()
     warmup = args.warmup_iterations if args.mode == "benchmark" else 0
     with (
         ExitStack() as tracking_context,
         (args.output / "metrics.jsonl").open("x") as stream,
-        MeasuredInference(
-            actor, pad_token_id=tokenizer.pad_token_id, meter=meter
-        ) as inference,
+        make_inference() as inference,
     ):
         trainer = MeasuredTrainer(
             config,
@@ -623,7 +687,10 @@ def main(argv=None):
                 "total_memory": gpu.total_memory,
                 "capability": [gpu.major, gpu.minor],
                 "visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+                **learner_gpu,
             },
+            "workers": workers,
+            "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
             "git": {
                 "commit": git("rev-parse", "HEAD"),
                 "dirty": bool(git("status", "--porcelain")),
@@ -667,6 +734,9 @@ def main(argv=None):
                 args, checkpoint_every, trainer.iteration
             )
             trainer.selection.recover(trainer.iteration)
+            if args.resume is None:
+                with meter.phase("validation"):
+                    trainer.selection.baseline()
         if trainer.iteration < args.num_iterations:
             trainer.train(**inputs, record_metrics=trainer.record_metrics)
         assert trainer.pending is None
@@ -710,6 +780,7 @@ def main(argv=None):
                     {"path": str(path), "bytes": path.stat().st_size}
                     for path in trainer.saved
                 ],
+                "worker_stats": client.stats if client is not None else None,
             },
         )
         tracker.finish_summary(json.loads((args.output / "summary.json").read_text()))

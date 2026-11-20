@@ -251,7 +251,7 @@ def optimize(actor, batch, objective, micro, evidence, label, epochs=2):
 
     optimizer.step = inspected_step
     # Production updater only; tripwires ensure grouped probes cannot whiten or branch.
-    with patch.object(HFInference, "generate", forbid), patch.object(train_module, "estimate_vineppo", forbid):
+    with patch.object(HFInference, "generate", forbid), patch.object(train_module, "estimate_vineppo_batch", forbid):
         if objective != "ppo":
             with patch("algorithms.actor.normalize_advantages", forbid):
                 history = update_actor(actor, optimizer, batch, epochs=epochs,

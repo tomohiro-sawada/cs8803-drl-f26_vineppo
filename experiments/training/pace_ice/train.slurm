@@ -3,12 +3,12 @@
 #SBATCH --partition=ice-gpu
 #SBATCH --account=math
 #SBATCH --qos=coc-ice
-#SBATCH --constraint=gpu-h100|gpu-h200
+#SBATCH --constraint=gpu-a40|gpu-h100|gpu-h200
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=6
-#SBATCH --gpus=1
-#SBATCH --mem=96G
+#SBATCH --gpus-per-task=1
+#SBATCH --mem-per-cpu=16G
 #SBATCH --time=02:00:00
 #SBATCH --output=artifacts/training/pace_ice/slurm/%x-%j.out
 #SBATCH --error=artifacts/training/pace_ice/slurm/%x-%j.err

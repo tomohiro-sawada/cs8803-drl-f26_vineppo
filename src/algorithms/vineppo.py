@@ -116,7 +116,37 @@ def estimate_vineppo(
     retains only aggregate values. Generation, scoring, and recording errors
     propagate. The caller owns the inference model and its lifetime.
     """
-    _validate_boundaries(episode, step_boundaries)
+    return estimate_vineppo_batch(
+        [(episode_id, episode, step_boundaries, score_response)],
+        inference=inference,
+        num_samples=num_samples,
+        max_new_tokens=max_new_tokens,
+        max_sequence_length=max_sequence_length,
+        temperature=temperature,
+        record_prefix_samples=record_prefix_samples,
+    )[0]
+
+
+def estimate_vineppo_batch(
+    items: Sequence[
+        tuple[str, Episode, tuple[int, ...], Callable[[list[int], str], float]]
+    ],
+    *,
+    inference: HFInference,
+    num_samples: int,
+    max_new_tokens: int = 1024,
+    max_sequence_length: int = 2048,
+    temperature: float,
+    record_prefix_samples: Callable[[PrefixSamples], None] | None = None,
+) -> list[VinePPOValueEstimate]:
+    """estimate_vineppo for (episode_id, episode, step_boundaries, scorer) items.
+
+    Every item is validated and every nonterminal prefix of every episode is
+    submitted in one generate_each call before any result is awaited, so a
+    concurrent sampler sees the whole iteration's work. Results are reduced in
+    submission order: sampler arrival order cannot change an estimate. Each
+    scorer is bound to its own episode's reference answer.
+    """
     if type(num_samples) is not int or num_samples <= 0:
         raise ValueError("num_samples must be a positive integer")
     if type(max_new_tokens) is not int or max_new_tokens <= 0:
@@ -129,67 +159,73 @@ def estimate_vineppo(
         raise ValueError("temperature must be finite and nonnegative")
     if temperature == 0 and num_samples != 1:
         raise ValueError("greedy decoding requires one sample")
-    if not isfinite(episode.reward):
-        raise ValueError("episode reward must be finite")
-
-    prefixes = _get_prefixes(episode, step_boundaries)
-    budgets = [
-        continuation_budget(
-            len(prefix),
-            max_sequence_length=max_sequence_length,
-            max_new_tokens=max_new_tokens,
-        )
-        for prefix in prefixes
-    ]
-    if len(episode.prompt_ids) + len(episode.response_ids) > max_sequence_length:
-        raise ValueError("episode exceeds max_sequence_length")
-    prefix_values = []
-    for boundary, prefix, budget in zip(
-        step_boundaries[:-1], prefixes, budgets, strict=True
-    ):
-        groups = inference.generate(
-            prefixes=[prefix],
-            num_samples=num_samples,
-            max_new_tokens=budget,
-            temperature=temperature,
-        )
-        if len(groups) != 1 or len(groups[0]) != num_samples:
-            raise ValueError(
-                "generation must return one group with num_samples completions"
+    prefixes, budgets = [], []
+    for _, episode, step_boundaries, _ in items:
+        _validate_boundaries(episode, step_boundaries)
+        if not isfinite(episode.reward):
+            raise ValueError("episode reward must be finite")
+        episode_prefixes = _get_prefixes(episode, step_boundaries)
+        budgets += [
+            continuation_budget(
+                len(prefix),
+                max_sequence_length=max_sequence_length,
+                max_new_tokens=max_new_tokens,
             )
-        rewards = []
-        samples = []
-        for continuation in groups[0]:
-            response_tokens = episode.response_ids[:boundary] + continuation.token_ids
-            reward = score_response(response_tokens, continuation.finish_reason)
-            if not isfinite(reward):
-                raise ValueError("sample reward must be finite")
-            rewards.append(reward)
+            for prefix in episode_prefixes
+        ]
+        prefixes += episode_prefixes
+        if len(episode.prompt_ids) + len(episode.response_ids) > max_sequence_length:
+            raise ValueError("episode exceeds max_sequence_length")
+    groups = inference.generate_each(
+        prefixes, budgets, num_samples=num_samples, temperature=temperature
+    )
+    if len(groups) != len(prefixes) or any(len(g) != num_samples for g in groups):
+        raise ValueError("generation returned invalid completion cardinality")
+
+    groups = iter(groups)
+    estimates = []
+    for episode_id, episode, step_boundaries, score_response in items:
+        prefix_values = []
+        for boundary in step_boundaries[:-1]:
+            rewards = []
+            samples = []
+            for continuation in next(groups):
+                response_tokens = (
+                    episode.response_ids[:boundary] + continuation.token_ids
+                )
+                reward = score_response(response_tokens, continuation.finish_reason)
+                if not isfinite(reward):
+                    raise ValueError("sample reward must be finite")
+                rewards.append(reward)
+                if record_prefix_samples is not None:
+                    samples.append(
+                        MCContinuation(
+                            response_ids=tuple(continuation.token_ids),
+                            finish_reason=continuation.finish_reason,
+                            reward=reward,
+                        )
+                    )
+            prefix_values.append(sum(rewards) / len(rewards))
             if record_prefix_samples is not None:
-                samples.append(
-                    MCContinuation(
-                        response_ids=tuple(continuation.token_ids),
-                        finish_reason=continuation.finish_reason,
-                        reward=reward,
+                record_prefix_samples(
+                    PrefixSamples(
+                        episode_id=episode_id,
+                        response_prefix_length=boundary,
+                        continuations=tuple(samples),
                     )
                 )
-        prefix_values.append(sum(rewards) / len(rewards))
-        if record_prefix_samples is not None:
-            record_prefix_samples(
-                PrefixSamples(
-                    episode_id=episode_id,
-                    response_prefix_length=boundary,
-                    continuations=tuple(samples),
-                )
+        estimates.append(
+            VinePPOValueEstimate(
+                episode_id=episode_id,
+                episode=episode,
+                step_boundaries=step_boundaries,
+                mc_prefix_values=tuple(prefix_values),
+                raw_step_advantages=compute_step_advantages(
+                    prefix_values, episode.reward
+                ),
             )
-
-    return VinePPOValueEstimate(
-        episode_id=episode_id,
-        episode=episode,
-        step_boundaries=step_boundaries,
-        mc_prefix_values=tuple(prefix_values),
-        raw_step_advantages=compute_step_advantages(prefix_values, episode.reward),
-    )
+        )
+    return estimates
 
 
 def vineppo_advantage_method(estimate: VinePPOValueEstimate) -> list[float]:

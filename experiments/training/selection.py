@@ -11,10 +11,10 @@ from pathlib import Path
 from time import perf_counter
 
 from experiments.training.evaluate import (
-    PROTOCOL,
     checkpoint_source,
     file_sha256,
     load_examples,
+    protocol_for,
     selected_checkpoint,
     validate_validation,
     write_json,
@@ -32,19 +32,20 @@ class CheckpointSelection:
         self.frozen_path = args.output / "selection-frozen.json"
         self.directory = args.output / "evaluations"
         self.directory.mkdir()
+        protocol = protocol_for(args.backend)
         self.state = {
             "schema_version": 1,
             "frozen": False,
             "task": args.task,
             "training_output": str(args.output),
             "tie_rule": TIE_RULE,
-            "validation_protocol": PROTOCOL
+            "validation_protocol": protocol
             | {
                 "rounds": args.validation_rounds,
                 "seed": args.eval_seed,
                 "batch_size": args.eval_batch_size,
             },
-            "test_protocol": PROTOCOL
+            "test_protocol": protocol
             | {
                 "rounds": 16,
                 "seed": args.eval_seed,
@@ -56,6 +57,8 @@ class CheckpointSelection:
             ),
             "best": None,
             "candidates": [],
+            # Unadapted iteration-0 actor: reported separately, never selectable.
+            "baseline": None,
         }
         metadata = json.loads((args.output / "metadata.json").read_text())
         config = dict(metadata["trainer_config"])
@@ -156,6 +159,7 @@ class CheckpointSelection:
             ),
             None,
         )
+        self.state["baseline"] = source["baseline"]
         self.state["resume"] = {
             "selection": str(source_path),
             "sha256": file_sha256(source_path),
@@ -203,7 +207,18 @@ class CheckpointSelection:
             "--wandb-name",
             f"{args.output.name}-{name}",
         ]
-        if split == "validation":
+        if args.backend == "vllm":
+            command += [
+                "--backend",
+                "vllm",
+                "--num-workers",
+                str(args.num_workers),
+                "--worker-dir",
+                str(args.worker_dir),
+            ]
+        if split == "validation" and checkpoint is None:
+            command += ["--baseline"]
+        elif split == "validation":
             command += ["--checkpoint", str(checkpoint)]
             if checkpoint == self.pending_checkpoint:
                 command += [
@@ -235,6 +250,17 @@ class CheckpointSelection:
             )
         result = json.loads((output / "result.json").read_text())
         assert result["complete"] is True and result["split"] == split
+        return result
+
+    def baseline(self):
+        """Validate the initial actor once, with the candidates' exact protocol."""
+        assert self.state["baseline"] is None and not self.state["candidates"]
+        result = self._evaluate("validation", iteration=0)
+        validate_validation(result, self.args.task, self.args.output)
+        assert result["protocol"] == self.state["validation_protocol"]
+        assert result["dataset"] == self.state["plan"]["validation_dataset"]
+        self.state["baseline"] = result
+        write_json(self.path, self.state)
         return result
 
     def validate(self, checkpoint, iteration):

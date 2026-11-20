@@ -29,9 +29,16 @@ def launch(tmp_path):
         f"#!{sys.executable}\n"
         + """import json, os, pathlib, sys
 if pathlib.Path(sys.argv[0]).name == "srun":
+    start = next(i for i, arg in enumerate(sys.argv) if i and not arg.startswith("--"))
+    command = sys.argv[start:]
+    with open(os.environ["SRUN_CAPTURE"] + "l", "a") as stream:
+        stream.write(json.dumps(sys.argv[1:]) + chr(10))
+    if command[1].endswith("vllm_worker.py"):
+        import time
+        time.sleep(float(os.environ.get("WORKER_LIFETIME", "30")))
+        sys.exit(3)
     pathlib.Path(os.environ["SRUN_CAPTURE"]).write_text(json.dumps(sys.argv[1:]))
-    assert sys.argv[1] == "--ntasks=1"
-    os.execv(sys.argv[2], sys.argv[2:])
+    os.execv(command[0], command)
 elif sys.argv[1] == "-c":
     code = sys.argv[2]
     sys.argv = ["-c", *sys.argv[3:]]
@@ -56,7 +63,7 @@ else:
         key: value
         for key, value in os.environ.items()
         if not key.startswith(
-            ("SLURM_", "TRAINING_", "HF_", "PYTHON", "OMP_", "TOKENIZERS_")
+            ("SLURM_", "TRAINING_", "HF_", "PYTHON", "OMP_", "TOKENIZERS_", "VLLM_")
         )
     }
     env.update(
@@ -102,7 +109,13 @@ else:
 
 
 @pytest.mark.parametrize(
-    "cluster,gpu", [("skynet", "A40"), ("pace_ice", "H100"), ("pace_ice", "H200")]
+    "cluster,gpu",
+    [
+        ("skynet", "A40"),
+        ("pace_ice", "A40"),
+        ("pace_ice", "H100"),
+        ("pace_ice", "H200"),
+    ],
 )
 @pytest.mark.parametrize("mode", ["train", "benchmark"])
 def test_wrapper_defaults_are_valid_runner_argv_and_offline(launch, cluster, gpu, mode):
@@ -228,7 +241,7 @@ def test_explicit_lora_options_and_supported_algorithms(
         ("skynet", ["--algorithm", "unknown"], "Unsupported algorithm"),
         ("skynet", ["--expected-gpu", "H100"], "must be A40"),
         ("pace_ice", [], "PACE requires --expected-gpu"),
-        ("pace_ice", ["--expected-gpu", "A40"], "PACE requires --expected-gpu"),
+        ("pace_ice", ["--expected-gpu", "A100"], "PACE requires --expected-gpu"),
         ("skynet", ["--mode", "train"], "Unsupported option"),
         ("skynet", ["--num-iterations"], "Missing value"),
         ("skynet", ["--task", "unknown"], "--task gsm8k|math is required"),
@@ -321,8 +334,8 @@ def test_wrapper_resource_directives(cluster, mode):
             "--partition=ice-gpu",
             "--account=math",
             "--qos=coc-ice",
-            "--gpus=1",
-            "--constraint=gpu-h100|gpu-h200",
+            "--gpus-per-task=1",
+            "--constraint=gpu-a40|gpu-h100|gpu-h200",
         } <= directives
 
 
@@ -463,3 +476,79 @@ def test_resumable_wrapper_resumes_latest_checkpoint_into_new_attempt(launch, tm
     for option in ("--output", "--resume", "--resume-selection"):
         rejected = run([option, "value"])
         assert rejected.returncode == 2 and "chosen by this wrapper" in rejected.stderr
+
+
+def distributed(launch, workers, tasks):
+    launch.env.update(
+        SLURM_NTASKS=str(tasks), SLURM_JOB_ID="77", VLLM_PYTHON=launch.env["PYTHON"]
+    )
+    return launch.run(
+        "pace_ice",
+        "benchmark",
+        [
+            "--expected-gpu", "A40", "--backend", "vllm", "--num-workers", str(workers),
+            "--finetuning", "lora", "--lora-rank", "8", "--max-sequence-length", "512",
+        ],
+    )  # fmt: skip
+
+
+def test_distributed_layout_is_one_single_gpu_step_per_process(launch):
+    result = distributed(launch, 3, 4)
+    assert result.returncode == 0, result.stderr
+    steps = [
+        json.loads(line)
+        for line in Path(launch.env["SRUN_CAPTURE"] + "l").read_text().splitlines()
+    ]
+    assert len(steps) == 4
+    assert all(
+        step[:5]
+        == ["--nodes=1", "--ntasks=1", "--gpus=1", "--cpus-per-task=6", "--exact"]
+        for step in steps
+    )
+    worker_dir = launch.cache / "workers/77"
+    workers = sorted(
+        (step for step in steps if "experiments/training/vllm_worker.py" in step),
+        key=lambda step: step[step.index("--rank") + 1],
+    )
+    assert [step[step.index("--rank") + 1] for step in workers] == ["0", "1", "2"]
+    for rank, step in enumerate(workers):
+        assert step[5] == f"--output={worker_dir}/worker-{rank}.log"
+        assert step[step.index("--worker-dir") + 1] == str(worker_dir)
+        assert step[step.index("--max-sequence-length") + 1] == "512"
+        assert step[step.index("--max-lora-rank") + 1] == "8"
+    captured = json.loads(Path(launch.env["PYTHON_CAPTURE"]).read_text())
+    args = runner.parse_args(captured["argv"][1:])
+    assert (args.backend, args.num_workers, args.worker_dir) == ("vllm", 3, worker_dir)
+    assert len(captured["env"]["VLLM_API_KEY"]) == 36
+
+
+def test_worker_death_fails_the_job(launch):
+    launch.env["WORKER_LIFETIME"] = "0"
+    launch.env["PYTHON_CAPTURE"] = "/nonexistent/learner-never-finishes"
+    assert distributed(launch, 1, 2).returncode != 0
+
+
+@pytest.mark.parametrize(
+    "extra,tasks,message",
+    [
+        (["--num-workers", "1"], 2, "requires --backend vllm"),
+        (["--backend", "vllm"], 2, "requires --num-workers"),
+        (["--backend", "vllm", "--num-workers", "3"], 2, "sbatch --ntasks=4"),
+        (["--backend", "sglang", "--num-workers", "1"], 2, "Unknown backend"),
+    ],
+)
+def test_backend_and_allocation_must_agree(launch, extra, tasks, message):
+    launch.env.update(SLURM_NTASKS=str(tasks), VLLM_PYTHON=launch.env["PYTHON"])
+    result = launch.run("pace_ice", "benchmark", ["--expected-gpu", "A40", *extra])
+    assert result.returncode == 2 and message in result.stderr
+    assert not Path(launch.env["SRUN_CAPTURE"]).exists()
+
+
+def test_distributed_requires_inference_python(launch):
+    launch.env.update(SLURM_NTASKS="2")
+    result = launch.run(
+        "pace_ice",
+        "benchmark",
+        ["--expected-gpu", "A40", "--backend", "vllm", "--num-workers", "1"],
+    )
+    assert result.returncode == 2 and "VLLM_PYTHON" in result.stderr
