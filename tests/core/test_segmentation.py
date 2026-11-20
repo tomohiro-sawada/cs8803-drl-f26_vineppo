@@ -121,13 +121,27 @@ def test_unicode_overlaps_are_valid_away_from_step_cuts(segment):
 
 
 @pytest.mark.parametrize("spans", [[(0, 31), (31, 62)], [(0, 30), (29, 62)]])
-def test_straddling_or_overlapping_step_cut_is_rejected(spans):
+def test_math_straddling_or_overlapping_step_cut_keeps_the_original_tokens(spans):
+    text = "First sentence is long enough. Second sentence is long enough."
+    assert math_step_boundaries(text, [17, 18], spans) == (
+        (0, 1, 2) if spans[0][1] == spans[1][0] else (0, 2)
+    )
     with pytest.raises(AssertionError, match="inside a sampled token"):
-        math_step_boundaries(
-            "First sentence is long enough. Second sentence is long enough.",
-            [17, 18],
-            spans,
-        )
+        math_step_boundaries(text, [17, 18], spans, round_forward=False)
+
+
+def test_math_coincident_rounded_cuts_and_terminal_eos():
+    steps = [
+        "First sentence is long enough.",
+        " Second sentence is long enough.",
+        " Third sentence is long enough.",
+    ]
+    text = "".join(steps)
+    end = len(text)
+    assert math_step_boundaries(
+        text, [10, 11, 2], [(0, 65), (65, end), (end, end)]
+    ) == (0, 1, 3)
+    assert math_step_boundaries(text, [10, 2], [(0, end), (end, end)]) == (0, 2)
 
 
 @pytest.mark.parametrize(
@@ -172,6 +186,7 @@ def test_invalid_alignment_fails_loudly(text, ids, spans, segment):
         ("α\n😀", ["α", "\n😀"]),
         (" \t", [" \t"]),
         ("a\nb\n#### 2", ["a", "\nb\n#### 2"]),
+        ("a\nb\n#### 1\n#### 2", ["a", "\nb\n#### 1\n#### 2"]),
         ("a\nb\n\n#### 2", ["a", "\nb\n\n#### 2"]),
         ("a\n\n#### 2", ["a\n\n#### 2"]),
         ("\n#### 2", ["\n#### 2"]),
@@ -206,12 +221,6 @@ def test_gsm8k_upstream_degenerate_whitespace_partition_is_rejected(text):
         )
 
 
-def test_gsm8k_repeated_answer_prefix_retains_upstream_failure():
-    text = "a\n#### 1\n#### 2"
-    with pytest.raises(ValueError):
-        gsm8k_step_boundaries(text, [10], [(0, len(text))])
-
-
 @pytest.mark.parametrize("spans", [[(0, 2), (2, 3)], [(0, 1), (0, 3)]])
 def test_gsm8k_newline_cut_inside_sampled_token_is_rejected(spans):
     with pytest.raises(AssertionError, match="inside a sampled token"):
@@ -227,7 +236,7 @@ def test_gsm8k_exact_token_boundaries_with_trailing_eos():
 
 
 def test_estimator_uses_exact_original_token_prefixes():
-    from algorithms.vineppo import estimate_vineppo, vineppo_advantage_method
+    from algorithms.vineppo import estimate_vineppo_batch, vineppo_advantage_method
     from core.data import Episode
     from core.inference import Completion, HFInference
 
@@ -247,17 +256,14 @@ def test_estimator_uses_exact_original_token_prefixes():
             seen_prefixes.extend(prefixes)
             return [[Completion([42, 2], "stop")]]
 
-    def score(ids, finish):
-        assert finish == "stop"
-        scored.append(ids)
-        return 0.5
+    def score(responses):
+        assert all(item.finish_reason == "stop" for item in responses)
+        scored.extend(item.token_ids for item in responses)
+        return [0.5] * len(responses)
 
-    estimate = estimate_vineppo(
-        "test",
-        episode,
-        step_boundaries=boundaries,
+    (estimate,) = estimate_vineppo_batch(
+        [("test", episode, boundaries, score)],
         inference=Inference(),
-        score_response=score,
         num_samples=1,
         max_new_tokens=2,
         temperature=1.0,
@@ -300,6 +306,38 @@ def test_real_tokenizer_segmentation(byte_tokenizer, dataset, eos):
     assert boundaries == (0, len(first.encode("utf-8")), len(ids))
     assert ids == original
     assert byte_tokenizer.decode(ids[: boundaries[1]]) == first
+
+
+@pytest.mark.parametrize("first", ["a\ufffd", "a\ufffd😀", "a😀\ufffd"])
+def test_literal_replacement_character_keeps_all_sampled_bytes(byte_tokenizer, first):
+    ids = byte_tokenizer.encode(first + "\nb", add_special_tokens=False)
+    assert step_boundaries_from_tokens(
+        ids, byte_tokenizer, dataset="gsm8k", eos_token_ids=[]
+    ) == (0, len(first.encode("utf-8")), len(ids))
+
+
+@pytest.mark.parametrize(
+    ("raw", "decoded"),
+    [
+        ("😀é".encode(), "😀é"),
+        ("😀".encode() + b"\xff", "\ufffd" * 5),
+        ("\ufffd\ufffd".encode(), "\ufffd\ufffd"),
+    ],
+)
+def test_byte_fallback_can_revise_a_decoded_prefix(raw, decoded):
+    from tokenizers import Tokenizer, decoders, models
+    from transformers import PreTrainedTokenizerFast
+
+    tokens = ["a", "\n", "b", *dict.fromkeys(f"<0x{x:02X}>" for x in raw)]
+    vocab = {token: i for i, token in enumerate(tokens)}
+    backend = Tokenizer(models.BPE(vocab, []))
+    backend.decoder = decoders.Sequence([decoders.ByteFallback(), decoders.Fuse()])
+    tokenizer = PreTrainedTokenizerFast(tokenizer_object=backend)
+    ids = [vocab["a"], *(vocab[f"<0x{x:02X}>"] for x in raw), vocab["\n"], vocab["b"]]
+    assert tokenizer.decode(ids) == f"a{decoded}\nb"
+    assert step_boundaries_from_tokens(
+        ids, tokenizer, dataset="gsm8k", eos_token_ids=[]
+    ) == (0, len(raw) + 1, len(ids))
 
 
 @pytest.mark.parametrize(
@@ -396,14 +434,13 @@ def test_token_entry_point_preserves_segmentation_failures(
         )
 
 
-def test_same_text_different_sampled_ids_is_rejected(byte_tokenizer):
-    ids = byte_tokenizer.encode("ab", add_special_tokens=False)
+def test_noncanonical_sampled_ids_keep_their_boundaries(byte_tokenizer):
+    ids = byte_tokenizer.encode("ab\ncd", add_special_tokens=False)
     byte_tokenizer.add_tokens(["ab"])
-    assert byte_tokenizer.decode(ids) == "ab"
-    with pytest.raises(AssertionError, match="exact sampled token IDs"):
-        step_boundaries_from_tokens(
-            ids, byte_tokenizer, dataset="gsm8k", eos_token_ids=[]
-        )
+    assert byte_tokenizer.encode("ab\ncd", add_special_tokens=False) != ids
+    assert step_boundaries_from_tokens(
+        ids, byte_tokenizer, dataset="gsm8k", eos_token_ids=[]
+    ) == (0, 2, 5)
 
 
 def test_real_tokenizer_token_straddling_newline_is_rejected(byte_tokenizer):
@@ -413,6 +450,20 @@ def test_real_tokenizer_token_straddling_newline_is_rejected(byte_tokenizer):
         step_boundaries_from_tokens(
             ids, byte_tokenizer, dataset="gsm8k", eos_token_ids=[]
         )
+
+
+def test_math_rounds_sampled_ids_that_would_reencode_differently(byte_tokenizer):
+    first = "First sentence is long enough. Second"
+    rest = " sentence is long enough."
+    byte_tokenizer.add_tokens([first])
+    sampled = byte_tokenizer.encode(first + rest, add_special_tokens=False)
+    byte_tokenizer.add_tokens([first + rest])
+    assert byte_tokenizer.encode(first + rest, add_special_tokens=False) != sampled
+    boundaries = step_boundaries_from_tokens(
+        sampled, byte_tokenizer, dataset="math", eos_token_ids=[]
+    )
+    assert boundaries == (0, 1, len(sampled))
+    assert byte_tokenizer.decode(sampled[:1]) == first
 
 
 @pytest.mark.parametrize("special", ["eos_token_id", "pad_token_id"])
@@ -439,9 +490,7 @@ def test_eos_only_response_is_rejected(byte_tokenizer):
         )
 
 
-def test_prompt_context_resolves_standalone_encoding_mismatch(byte_tokenizer):
-    # Like Llama's dummy prefix: a response is not the canonical encoding of its
-    # own text, but is the canonical continuation of the prompt it followed.
+def test_noncanonical_prompt_and_response_keep_their_boundaries(byte_tokenizer):
     byte_tokenizer.add_tokens(["Q:a"])
     prompt = byte_tokenizer.encode("Q:", add_special_tokens=False)
     response = byte_tokenizer.encode(
@@ -451,28 +500,29 @@ def test_prompt_context_resolves_standalone_encoding_mismatch(byte_tokenizer):
         "Q:a first step\nsecond step", add_special_tokens=False
     )
     assert merged != prompt + response
-    with pytest.raises(AssertionError, match="exact sampled token IDs"):
-        step_boundaries_from_tokens(
-            response,
-            byte_tokenizer,
-            dataset="gsm8k",
-            eos_token_ids=[],
-            context_ids=prompt,
-        )
-    byte_tokenizer_response = byte_tokenizer.encode(
-        "first step\nsecond step", add_special_tokens=False
-    )
-    plain = step_boundaries_from_tokens(
-        byte_tokenizer_response, byte_tokenizer, dataset="gsm8k", eos_token_ids=[]
-    )
-    assert plain == step_boundaries_from_tokens(
-        byte_tokenizer_response,
+    assert step_boundaries_from_tokens(
+        response,
         byte_tokenizer,
         dataset="gsm8k",
         eos_token_ids=[],
-        context_ids=byte_tokenizer.encode("Q: ", add_special_tokens=False),
+        context_ids=prompt,
+    ) == (0, len("a first step"), len(response))
+
+
+def test_sentencepiece_continuation_preserves_prompt_relative_whitespace():
+    from tokenizers import Tokenizer, decoders, models
+    from transformers import PreTrainedTokenizerFast
+
+    backend = Tokenizer(models.BPE({"Q:": 0, "▁a": 1, "\n": 2, "b": 3}, []))
+    backend.decoder = decoders.Sequence(
+        [decoders.Replace("▁", " "), decoders.Fuse(), decoders.Strip(" ", 1, 0)]
     )
-    assert plain == (0, len("first step"), len(byte_tokenizer_response))
+    tokenizer = PreTrainedTokenizerFast(tokenizer_object=backend)
+    assert tokenizer.decode([1, 2, 3]) == "a\nb"
+    assert tokenizer.decode([0, 1, 2, 3]) == "Q: a\nb"
+    assert step_boundaries_from_tokens(
+        [1, 2, 3], tokenizer, dataset="gsm8k", eos_token_ids=[], context_ids=[0]
+    ) == (0, 1, 3)
 
 
 def test_context_with_special_tokens_is_rejected(byte_tokenizer):

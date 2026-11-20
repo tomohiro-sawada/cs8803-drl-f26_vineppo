@@ -1,6 +1,7 @@
 """Offline fixed-span replay of explicit OpenRouter proxy .json/.jsonl inputs.
 
 JSON accepts the version-1 fixture envelope; JSONL accepts producer records.
+Replays the historical strict cut policy captured in those snapshots.
 No tokenizer, model, network, sampled-token validation, or repairs are involved.
 """
 
@@ -8,12 +9,16 @@ import argparse
 import hashlib
 import json
 import re
+from functools import partial
 from pathlib import Path
 
 from core.segmentation import gsm8k_step_boundaries, math_step_boundaries
 
 TOKEN_SOURCE = "locally_reencoded_proxy_text_NOT_sampled"
-SEGMENT = {"gsm8k": gsm8k_step_boundaries, "math": math_step_boundaries}
+SEGMENT = {
+    "gsm8k": gsm8k_step_boundaries,
+    "math": partial(math_step_boundaries, round_forward=False),
+}
 LIMITATIONS = (
     "Only saved proxy text, token IDs and character spans are replayed; their "
     "tokenizer correspondence is not validated. Tokenizer roundtrip and special-"

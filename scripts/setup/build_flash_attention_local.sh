@@ -2,8 +2,9 @@
 # No Slurm/GPU required. Use on login nodes only if site policy permits long builds.
 # Do not run other installers or inference jobs in this environment during the build.
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-source ./bash.sh
+repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+cd "$repo_root"
+source "$repo_root/bash.sh"
 mkdir -p artifacts
 log="artifacts/flash-attn-local-$(timestamp).log"
 exec > >(tee "$log") 2>&1

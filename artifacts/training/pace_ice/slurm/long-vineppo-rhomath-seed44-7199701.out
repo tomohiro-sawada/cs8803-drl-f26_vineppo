@@ -1,0 +1,9 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-20-2026 14:51:26
+Job ID:    7199701
+User ID:   tsawada7
+Account:   math
+Job name:  long-vineppo-rhomath-seed44
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------

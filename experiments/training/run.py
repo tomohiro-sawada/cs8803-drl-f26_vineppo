@@ -10,10 +10,8 @@ the learner's GPU, where the two alternate rather than compete.
 Both modes perform real updates; --num-iterations (default 3) is the TOTAL target,
 including resumed iterations. Set it explicitly for longer training. Benchmark
 excludes the first --warmup-iterations of THIS invocation only from its summary.
-Native BF16 is not AMP: parameters, gradients and AdamW moments are BF16 (the
-optimizer step counter is FP32); there are no FP32 master weights. With LoRA,
-only the actor adapters are trainable, in FP32 with FP32 AdamW moments; the base
-and separate frozen reference use --dtype. PPO's critic remains full-parameter.
+Trainable parameters, gradients and AdamW moments use FP32. Critic-free LoRA
+can load the frozen actor base and reference in BF16 through --dtype.
 Core scoring and losses use FP32. No quantization, gradient checkpointing or DDP.
 
 Checkpoint retention applies only to this fresh output directory. Atomic writes
@@ -67,7 +65,8 @@ from algorithms.vineppo import VinePPOConfig
 from core.data import Example
 from core.inference import HFInference
 from core.lora import apply_lora, lora_identity
-from core.vllm_inference import VLLMClient, VLLMInference, gpu_identity
+from core.segmentation import MATH_SEGMENTATION_POLICY
+from core.vllm_inference import VLLMClient, VLLMInference, gpu_identity, slurm_attempt
 from experiments.training.selection import CheckpointSelection
 from experiments.training.tracking import WandBTracker
 from runtime.config import PPOTrainerConfig
@@ -110,7 +109,9 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--mode", choices=("train", "benchmark"), required=True)
+    parser.add_argument(
+        "--mode", choices=("train", "benchmark", "evaluate"), required=True
+    )
     parser.add_argument(
         "--algorithm", choices=("vineppo", "ppo", "grpo", "rloo"), required=True
     )
@@ -145,11 +146,15 @@ def parse_args(argv=None):
         help="Default: 1e-6 full tuning, 1e-5 LoRA; tune independently",
     )
     parser.add_argument("--critic-learning-rate", type=positive_float, default=1e-5)
+    parser.add_argument("--math-grader-workers", type=positive_int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--checkpoint-every",
         type=positive_int,
         help="Default: every train iteration; benchmark final only. Final always saved.",
+    )
+    parser.add_argument(
+        "--checkpoint-format", choices=("full", "compact-lora"), default="full"
     )
     parser.add_argument(
         "--resume", type=Path, help="Core iteration-N.pt; output must still be new"
@@ -202,7 +207,16 @@ def parse_args(argv=None):
         parser.error("--backend vllm publishes LoRA actors for vineppo/grpo/rloo")
     if not 0 <= args.eval_seed <= 2**32 - max(16, args.validation_rounds):
         parser.error("Evaluation seed range exceeds NumPy bounds")
-    if args.evaluation != "disabled":
+    if args.mode == "evaluate":
+        if (
+            args.resume_selection is None
+            or args.resume is not None
+            or args.evaluation == "disabled"
+        ):
+            parser.error(
+                "Evaluate mode requires a frozen --resume-selection and automatic evaluation"
+            )
+    elif args.evaluation != "disabled":
         if args.mode != "train":
             parser.error("Automatic checkpoint selection requires train mode")
         if (args.resume is None) != (args.resume_selection is None):
@@ -215,6 +229,16 @@ def parse_args(argv=None):
         args.lora_rank is not None or args.lora_alpha is not None
     ):
         parser.error("LoRA options require --finetuning lora")
+    if args.checkpoint_format == "compact-lora" and args.finetuning != "lora":
+        parser.error("--checkpoint-format compact-lora requires --finetuning lora")
+    if args.math_grader_workers > 1 and args.task != "math":
+        parser.error("--math-grader-workers applies to MATH")
+    if (
+        args.mode != "evaluate"
+        and args.dtype == "bfloat16"
+        and (args.finetuning == "full" or args.algorithm == "ppo")
+    ):
+        parser.error("Full tuning and PPO require --dtype float32")
     if args.finetuning == "lora":
         args.lora_rank = 16 if args.lora_rank is None else args.lora_rank
         args.lora_alpha = 32.0 if args.lora_alpha is None else args.lora_alpha
@@ -231,9 +255,12 @@ def parse_args(argv=None):
         assert path.is_dir(), f"Expected local directory: {path}"
         setattr(args, name, path)
     args.output = args.output.expanduser().resolve()
-    assert not args.output.exists(), (
-        "Output must be a new directory, including on resume"
-    )
+    if args.mode == "evaluate":
+        assert args.output.is_dir(), "Evaluate mode needs an existing run root"
+    else:
+        assert not args.output.exists(), (
+            "Output must be a new directory, including on resume"
+        )
     if args.resume is not None:
         args.resume = args.resume.expanduser().resolve(strict=True)
         assert args.resume.is_file(), "Resume must be a checkpoint file"
@@ -493,25 +520,11 @@ def git(*args):
     ).strip()
 
 
-def main(argv=None):
-    args = parse_args(argv)
-    learner_gpu = gpu_identity()
-    gpu = torch.cuda.get_device_properties(0)
-    assert (
-        args.expected_gpu is None or args.expected_gpu.casefold() in gpu.name.casefold()
-    ), f"Expected GPU {args.expected_gpu!r}, found {gpu.name!r}"
-    if args.dtype == "bfloat16":
-        assert torch.cuda.is_bf16_supported(including_emulation=False), (
-            "Native BF16 required"
-        )
-    torch.cuda.set_device(0)
-    torch.manual_seed(args.seed)
-    examples, dataset_info = load_examples(args.dataset_path, args.task)
-    assert len(examples) >= args.prompts_per_iteration
+def trainer_config(args):
     checkpoint_every = args.checkpoint_every
     if checkpoint_every is None:
         checkpoint_every = args.num_iterations if args.mode == "benchmark" else 1
-    config = PPOTrainerConfig(
+    return PPOTrainerConfig(
         checkpoint_dir=args.output / "checkpoints",
         algorithm_config={
             "vineppo": VinePPOConfig,
@@ -536,6 +549,48 @@ def main(argv=None):
             )
         },
     )
+
+
+def validate_grading_resources(workers):
+    if workers == 1:
+        return
+    cpus = os.process_cpu_count()
+    assert cpus is not None, "Unable to determine available CPU count"
+    if "SLURM_CPUS_PER_TASK" in os.environ:
+        cpus = min(cpus, int(os.environ["SLURM_CPUS_PER_TASK"]))
+    assert workers <= cpus, "MATH grader workers exceed available CPUs"
+    if "SLURM_MEM_PER_NODE" in os.environ:
+        memory_mib = int(os.environ["SLURM_MEM_PER_NODE"])
+    elif "SLURM_MEM_PER_CPU" in os.environ:
+        memory_mib = cpus * int(os.environ["SLURM_MEM_PER_CPU"])
+    else:
+        return
+    assert workers * 1024 < memory_mib, (
+        "Reserve 1 GiB per MATH worker plus learner memory"
+    )
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    validate_grading_resources(args.math_grader_workers)
+    assert args.mode in ("train", "benchmark"), (
+        "Dispatch final testing through the launcher"
+    )
+    learner_gpu = gpu_identity()
+    gpu = torch.cuda.get_device_properties(0)
+    assert (
+        args.expected_gpu is None or args.expected_gpu.casefold() in gpu.name.casefold()
+    ), f"Expected GPU {args.expected_gpu!r}, found {gpu.name!r}"
+    if args.dtype == "bfloat16":
+        assert torch.cuda.is_bf16_supported(including_emulation=False), (
+            "Native BF16 required"
+        )
+    torch.cuda.set_device(0)
+    torch.manual_seed(args.seed)
+    examples, dataset_info = load_examples(args.dataset_path, args.task)
+    assert len(examples) >= args.prompts_per_iteration
+    config = trainer_config(args)
+    checkpoint_every = config.checkpoint_every
     tokenizer = AutoTokenizer.from_pretrained(
         str(args.model_path),
         local_files_only=True,
@@ -633,6 +688,8 @@ def main(argv=None):
             reference_policy=reference,
             critic=critic,
             critic_optimizer=critic_optimizer,
+            compact_lora_checkpoints=args.checkpoint_format == "compact-lora",
+            math_grader_workers=args.math_grader_workers,
             meter=meter,
             stream=stream,
             warmup_iterations=warmup,
@@ -681,6 +738,9 @@ def main(argv=None):
                 "weights_content_hashed": False,
             },
             "dataset": {"path": str(args.dataset_path), **dataset_info},
+            "math_segmentation_policy": MATH_SEGMENTATION_POLICY
+            if args.task == "math" and args.algorithm == "vineppo"
+            else None,
             "prompt": PROMPT,
             "tokenizer_sha256": tokenizer_sha256,
             "pad_uses_eos_because_missing": pad_was_missing,
@@ -702,7 +762,7 @@ def main(argv=None):
                 **learner_gpu,
             },
             "workers": workers,
-            "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+            **slurm_attempt(),
             "git": {
                 "commit": git("rev-parse", "HEAD"),
                 "dirty": bool(git("status", "--porcelain")),
@@ -710,9 +770,9 @@ def main(argv=None):
             "start_iteration": trainer.iteration,
             "precision": (
                 "FP32 actor adapters/gradients/moments; frozen base/reference use dtype; "
-                "PPO critic native dtype; no AMP/master weights"
+                "PPO critic uses FP32"
                 if args.finetuning == "lora"
-                else "Native dtype; AdamW moments follow parameters; FP32 step counter; no AMP/master weights"
+                else "FP32 parameters, gradients and AdamW moments"
             ),
             "measurement_contract": __doc__,
         }

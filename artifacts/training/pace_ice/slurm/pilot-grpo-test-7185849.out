@@ -1,0 +1,21 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-19-2026 23:40:56
+Job ID:    7185849
+User ID:   tsawada7
+Account:   math
+Job name:  pilot-grpo-test
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+---------------------------------------
+Begin Slurm Epilog: Nov-19-2026 23:55:01
+Job ID:        7185849
+User ID:       tsawada7
+Account:       math
+Job name:      pilot-grpo-test
+Resources:     cpu=8,gres/gpu:a40=1,mem=64G,node=1
+Rsrc Used:     cput=01:52:24,vmem=0,walltime=00:14:03,mem=15680K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-01-005-11-0
+---------------------------------------

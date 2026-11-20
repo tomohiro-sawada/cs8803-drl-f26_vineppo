@@ -1,0 +1,92 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-19-2026 23:35:20
+Job ID:    7185841
+User ID:   tsawada7
+Account:   math
+Job name:  vineppo-tests
+Partition: ice-cpu
+QOS:       coc-ice
+---------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.16.0, platformdirs-4.14.3, jaxtyping-0.3.11
+collected 1533 items
+
+tests/algorithms/test_actor.py ...................                       [  1%]
+tests/algorithms/test_grpo.py .......................................... [  3%]
+....                                                                     [  4%]
+tests/algorithms/test_ppo.py ........................................... [  7%]
+                                                                         [  7%]
+tests/algorithms/test_rloo.py ...................                        [  8%]
+tests/algorithms/test_vineppo.py ....................................... [ 10%]
+...........................................................              [ 14%]
+tests/core/test_data.py ................................................ [ 17%]
+.......................                                                  [ 19%]
+tests/core/test_data_integration.py .                                    [ 19%]
+tests/core/test_inference.py ........................................... [ 22%]
+............................................                             [ 25%]
+tests/core/test_lora.py ..................................               [ 27%]
+tests/core/test_segmentation.py ........................................ [ 29%]
+........................................................................ [ 34%]
+..........................................                               [ 37%]
+tests/core/test_segmentation_proxy.py ......                             [ 37%]
+tests/core/test_verifier.py ............................................ [ 40%]
+............................................                             [ 43%]
+tests/core/test_vllm_inference.py .....................                  [ 44%]
+tests/runtime/test_checkpoint_actor.py ................................. [ 46%]
+                                                                         [ 46%]
+tests/runtime/test_config.py ........................................... [ 49%]
+........................................................................ [ 54%]
+..............................                                           [ 56%]
+tests/runtime/test_evaluate.py ......................................... [ 59%]
+..........                                                               [ 59%]
+tests/runtime/test_group_train.py .................                      [ 60%]
+tests/runtime/test_lora_train.py .......                                 [ 61%]
+tests/runtime/test_ppo_train.py ...............                          [ 62%]
+tests/runtime/test_train.py ............................................ [ 65%]
+...........                                                              [ 65%]
+tests/runtime/test_training_diagnostics.py ......                        [ 66%]
+tests/setup/test_download_model_weights.py ...................           [ 67%]
+tests/setup/test_install.py .......                                      [ 67%]
+tests/test_check_segmentation.py ....................................... [ 70%]
+....                                                                     [ 70%]
+tests/test_check_training_numerics.py ............                       [ 71%]
+tests/test_checkpoint_evaluation.py .................................... [ 73%]
+.............................                                            [ 75%]
+tests/test_checkpoint_selection.py .................                     [ 76%]
+tests/test_log_pace_ice.py ..........                                    [ 77%]
+tests/test_paper_evaluate_sft.py ...........................             [ 79%]
+tests/test_paper_evaluate_sft_vllm.py ...........................        [ 81%]
+tests/test_sample_segmentation.py ..................................     [ 83%]
+tests/test_training_launchers.py ....................................... [ 85%]
+........................................                                 [ 88%]
+tests/test_training_runner.py .......................................... [ 91%]
+................................................................         [ 95%]
+tests/test_training_tracking.py ........................................ [ 97%]
+...............................                                          [100%]
+
+=============================== warnings summary ===============================
+tests/core/test_lora.py: 6 warnings
+tests/core/test_vllm_inference.py: 21 warnings
+tests/runtime/test_lora_train.py: 7 warnings
+tests/test_check_training_numerics.py: 3 warnings
+  /home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/.venv/lib/python3.13/site-packages/peft/tuners/lora/layer.py:2760: UserWarning: fan_in_fan_out is set to False but the target module is `Conv1D`. Setting fan_in_fan_out to True.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================= 1533 passed, 37 warnings in 92.81s (0:01:32) =================
+---------------------------------------
+Begin Slurm Epilog: Nov-19-2026 23:36:59
+Job ID:        7185841
+User ID:       tsawada7
+Account:       math
+Job name:      vineppo-tests
+Resources:     cpu=6,mem=24G,node=1
+Rsrc Used:     cput=00:09:54,vmem=0,walltime=00:01:39,mem=9068K,energy_used=0
+Partition:     ice-cpu
+QOS:           coc-ice
+Nodes:         atl1-1-01-002-36-0
+---------------------------------------

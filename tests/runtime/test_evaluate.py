@@ -1,6 +1,5 @@
 """Offline evaluator contracts using deterministic text backends and real grading."""
 
-import json
 from collections.abc import Sequence
 from dataclasses import FrozenInstanceError, asdict
 from types import SimpleNamespace
@@ -9,8 +8,8 @@ import pytest
 
 from core.data import Example
 from core.inference import TextCompletion
-from core.verifier import MAX_INPUT_CHARS, VERIFIER_POLICY, VERIFIER_PROVENANCE
-from runtime.evaluate import EvaluatorConfig, evaluate, inference_context, main
+from core.verifier import MAX_INPUT_CHARS
+from runtime.evaluate import evaluate, inference_context
 
 
 class FakeGenerator:
@@ -316,7 +315,7 @@ def test_formatter_errors_propagate(examples, settings):
 
 @pytest.mark.parametrize("owned", [False, True])
 @pytest.mark.parametrize("failure", ["backend", "verifier", "cardinality"])
-def test_failures_and_ownership(examples, settings, tmp_path, owned, failure):
+def test_failures_and_ownership(examples, settings, owned, failure):
     responses = responses_for(examples)
     error = RuntimeError("backend failure") if failure == "backend" else None
     if failure == "verifier":
@@ -331,80 +330,15 @@ def test_failures_and_ownership(examples, settings, tmp_path, owned, failure):
         "verifier": ValueError,
         "cardinality": AssertionError,
     }[failure]
-    output = tmp_path / "run"
     with pytest.raises(expected_error) as caught:
         if owned:
-            main(
-                EvaluatorConfig(**settings),
-                examples=examples,
-                generator_factory=lambda: generator,
-                output_dir=output,
-            )
+            with inference_context(lambda: generator) as opened:
+                evaluate(examples, opened, **settings)
         else:
             evaluate(examples, generator, **settings)
     if error is not None:
         assert caught.value is error
     assert generator.close_count == int(owned)
-    assert not output.exists()
-
-
-@pytest.mark.parametrize("custom_prompt", [False, True])
-def test_main_writes_resolved_artifacts_and_closes(
-    examples, settings, tmp_path, custom_prompt
-):
-    formatter = (lambda q: "Solve " + q) if custom_prompt else None
-    responses = responses_for(examples)
-    if custom_prompt:
-        responses = {formatter(q): value for q, value in responses.items()}
-    generator = FakeGenerator(responses)
-    config = EvaluatorConfig(**settings)
-    output = tmp_path / "run"
-    records, metrics = main(
-        config,
-        examples=examples,
-        generator_factory=lambda: generator,
-        output_dir=output,
-        formatter=formatter,
-    )
-    assert generator.close_count == 1
-    assert {p.name for p in output.iterdir()} == {
-        "records.jsonl",
-        "metrics.json",
-        "config.json",
-        "provenance.json",
-    }
-    assert [
-        json.loads(line) for line in (output / "records.jsonl").read_text().splitlines()
-    ] == [
-        {**asdict(r), "extracted_answers": list(r.extracted_answers)} for r in records
-    ]
-    assert json.loads((output / "config.json").read_text()) == asdict(config)
-    assert json.loads((output / "metrics.json").read_text()) == metrics
-    provenance = json.loads((output / "provenance.json").read_text())
-    assert provenance["verifier_policy"] == VERIFIER_POLICY
-    assert provenance["verifier_provenance"] == VERIFIER_PROVENANCE
-    assert provenance["prompt_policy"] == (
-        "caller-supplied; see records for exact prompts"
-        if custom_prompt
-        else "bare-question-smoke-test"
-    )
-
-
-def test_write_failure_still_closes_and_preserves_existing_output(
-    examples, settings, tmp_path
-):
-    generator = FakeGenerator(responses_for(examples))
-    marker = tmp_path / "records.jsonl"
-    marker.write_text("existing run")
-    with pytest.raises(FileExistsError):
-        main(
-            EvaluatorConfig(**settings),
-            examples=examples,
-            generator_factory=lambda: generator,
-            output_dir=tmp_path,
-        )
-    assert generator.close_count == 1
-    assert marker.read_text() == "existing run"
 
 
 def test_factory_and_close_failures_propagate():

@@ -1,0 +1,45 @@
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights:   5%|▌         | 11/201 [00:00<00:02, 86.02it/s]Loading weights:  10%|▉         | 20/201 [00:00<00:02, 77.56it/s]Loading weights:  14%|█▍        | 28/201 [00:00<00:02, 65.44it/s]Loading weights:  20%|██        | 41/201 [00:00<00:01, 85.36it/s]Loading weights:  29%|██▉       | 58/201 [00:00<00:01, 107.53it/s]Loading weights:  38%|███▊      | 77/201 [00:00<00:00, 127.85it/s]Loading weights:  45%|████▌     | 91/201 [00:01<00:01, 86.77it/s] Loading weights:  53%|█████▎    | 106/201 [00:01<00:00, 99.06it/s]Loading weights:  59%|█████▊    | 118/201 [00:01<00:01, 79.97it/s]Loading weights:  64%|██████▍   | 129/201 [00:01<00:00, 85.92it/s]Loading weights:  70%|██████▉   | 140/201 [00:01<00:00, 78.17it/s]Loading weights:  77%|███████▋  | 155/201 [00:01<00:00, 93.16it/s]Loading weights:  83%|████████▎ | 166/201 [00:01<00:00, 92.26it/s]Loading weights:  93%|█████████▎| 186/201 [00:01<00:00, 111.71it/s]Loading weights: 100%|██████████| 201/201 [00:01<00:00, 101.75it/s]
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 13633.29it/s]
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from WANDB_API_KEY.
+wandb: Currently logged in as: tsawada to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/long-vineppo-rhomath-gsm8k-seed42-vllm-h100-200iter-01/wandb/run-20261120_020957-05cc2b2ba8854f3e871594b260135bcf
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run long-vineppo-rhomath-seed42-h100-200iter
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/tsawada/vineppo/runs/05cc2b2ba8854f3e871594b260135bcf
+wandb: updating run metadata
+wandb: uploading history steps 199-199, summary
+wandb: 
+wandb: Run history:
+wandb:          actor_learning_rate ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:        actor_refresh_seconds ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄▂▁▁▁▁▁▁▁▁▁▁▂▁█▁▁▁▁▅▁▂▁▁▂
+wandb:         actor_update_seconds ▇█▁▁▇▁▇▁▂▂▂▁▁▁▂▁▂▁▂▁▂▂▂▂▁▁▂▂▂▁▂▁▁▁█▁▁▁▁▁
+wandb:          allocated_bytes_end ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                    approx_kl ▁▁▂▂▂▁▁▂▃▃▂▅▂▂▃▃▆▄▃▄█▆▃▇▃▇█▄▄▁▄▃▂▇▂▆▄▇▅▅
+wandb:     budget/iteration_seconds ▁▁▁▁▂▂▂▃▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▅▆▆▆▆▆▆▇▇▇▇▇▇▇███
+wandb:      budget/mc_continuations ▁▁▁▁▁▁▂▂▂▂▂▃▃▃▃▃▄▄▄▄▄▄▄▄▄▅▅▅▅▆▆▆▆▇▇▇▇▇██
+wandb:         budget/mc_expansions ▁▁▁▁▁▂▂▂▂▃▃▃▄▄▄▄▄▅▅▅▅▅▅▅▅▆▆▆▆▆▆▆▇▇▇▇████
+wandb:             budget/mc_tokens ▁▁▂▂▂▂▂▂▂▃▃▃▃▄▄▄▄▄▄▄▅▅▅▅▆▆▆▆▆▇▇▇▇▇▇▇▇▇██
+wandb: budget/primary_continuations ▁▁▁▁▂▂▂▂▂▃▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▅▅▆▆▆▆▆▆▇▇▇▇▇▇█
+wandb:                          +53 ...
+wandb: 
+wandb: Run summary:
+wandb:          actor_learning_rate 1e-05
+wandb:        actor_refresh_seconds 0.36662
+wandb:         actor_update_seconds 5.744
+wandb:          allocated_bytes_end 4555778048
+wandb:                    approx_kl 0.00085
+wandb:     budget/iteration_seconds 6015.17739
+wandb:      budget/mc_continuations 876573
+wandb:         budget/mc_expansions 97397
+wandb:             budget/mc_tokens 78072615
+wandb: budget/primary_continuations 25600
+wandb:                          +71 ...
+wandb: 
+wandb: 🚀 View run long-vineppo-rhomath-seed42-h100-200iter at: https://forge.coreweave.com/wandb/tsawada/vineppo/runs/05cc2b2ba8854f3e871594b260135bcf
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: Synced 3 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/long-vineppo-rhomath-gsm8k-seed42-vllm-h100-200iter-01/wandb/run-20261120_020957-05cc2b2ba8854f3e871594b260135bcf/logs
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.

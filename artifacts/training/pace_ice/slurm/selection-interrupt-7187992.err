@@ -1,0 +1,5 @@
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 4898.69it/s]
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 16598.51it/s]
+srun: error: atl1-1-03-013-8-0: task 0: Exited with exit code 42
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.

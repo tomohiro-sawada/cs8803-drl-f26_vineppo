@@ -314,6 +314,16 @@ def test_update_validation_clears_gradients(local_batch, invalid):
     assert all(p.grad is None for p in critic.parameters())
 
 
+def test_critic_update_rejects_bf16_trainable_parameters(local_batch):
+    critic, batch = local_batch
+    critic.bfloat16()
+    optimizer = torch.optim.AdamW(critic.parameters(), lr=1e-6)
+    with pytest.raises(AssertionError, match="Trainable parameter .* requires FP32"):
+        update_critic(
+            critic, optimizer, batch, epochs=1, minibatch_size=3, microbatch_size=1
+        )
+
+
 def test_update_clears_partial_accumulation_on_forward_failure(
     local_batch, monkeypatch
 ):

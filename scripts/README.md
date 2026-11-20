@@ -19,7 +19,11 @@ These are sequential scheduler observations, not an atomic snapshot, GPU compute
 ## Quickstart. 
 
 
-- `setup`: for setting up repo to run experiments. 
-- `remote_sync`: local storage is limited, so we push large artifacts (most notably model checkpoints) to remote. 
-- `codebase_hygiene`: make sure codebase is compliant with my stylistic desiderata 
-- `paper_artifact_replications`: replicating figures from the original paper. Useful to write these at the start because its clearer what artifacts we need to generate from our experiemnts.
+- `setup` installs the training and inference environments and stages the paper assets.
+- `codebase_hygiene` checks the repository's Git file-size policy.
+- `paper_artifact_replications` reproduces the paper's evaluation artifacts.
+
+Run `python3 scripts/codebase_hygiene/check_file_sizes.py` to audit every
+tracked file in `HEAD`. Pull-request CI checks newly added or modified Git
+blobs against the same 500 KiB limit. The exact `uv.lock` path is exempt so the
+repository can retain its generated dependency lockfile.

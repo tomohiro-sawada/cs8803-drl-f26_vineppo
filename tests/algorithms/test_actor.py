@@ -255,6 +255,29 @@ def test_duplicate_optimizer_parameters_rejected(local_batch):
         )
 
 
+def test_actor_update_requires_fp32_and_moves_weights_at_small_lr(local_batch):
+    actor, _, batch = local_batch
+    optimizer = torch.optim.AdamW(actor.parameters(), lr=1e-6)
+    before = deepcopy(actor.state_dict())
+    update_actor(actor, optimizer, batch, epochs=1, minibatch_size=5, microbatch_size=2)
+    assert any(
+        not torch.equal(parameter, before[name])
+        for name, parameter in actor.named_parameters()
+    )
+    assert {state["exp_avg"].dtype for state in optimizer.state.values()} == {
+        torch.float32
+    }
+    with pytest.raises(AssertionError, match="Trainable parameter .* requires FP32"):
+        update_actor(
+            actor.bfloat16(),
+            optimizer,
+            batch,
+            epochs=1,
+            minibatch_size=5,
+            microbatch_size=2,
+        )
+
+
 def record_step_gradients(optimizer):
     gradients = []
     optimizer.register_step_pre_hook(

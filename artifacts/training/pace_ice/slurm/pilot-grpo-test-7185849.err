@@ -1,0 +1,34 @@
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from WANDB_API_KEY.
+wandb: Currently logged in as: tsawada to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-grpo-rhomath-gsm8k-seed42-vllm-colocated-02/evaluations/test-selected-retry-01/wandb/run-20261119_234716-fce91298bb4f4a4a81ccedeb29377d2f
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run pilot-grpo-rhomath-seed42-test-retry
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/tsawada/vineppo/runs/fce91298bb4f4a4a81ccedeb29377d2f
+wandb: updating run metadata
+wandb: uploading wandb-summary.json; uploading config.yaml
+wandb: 
+wandb: Run history:
+wandb:         eval/test/num_examples ▁
+wandb:            eval/test/pass_at_1 ▁
+wandb: eval/test/round_std_population ▁
+wandb:     eval/test/rounds_completed ▁
+wandb:          eval/test/total_count ▁
+wandb:                      iteration ▁
+wandb: 
+wandb: Run summary:
+wandb:         eval/test/num_examples 1319
+wandb:            eval/test/pass_at_1 0.4412
+wandb: eval/test/round_std_population 0.00927
+wandb:     eval/test/rounds_completed 16
+wandb:          eval/test/total_count 21104
+wandb: eval/validation/best_pass_at_1 0.59786
+wandb:                      iteration 50
+wandb: 
+wandb: 🚀 View run pilot-grpo-rhomath-seed42-test-retry at: https://forge.coreweave.com/wandb/tsawada/vineppo/runs/fce91298bb4f4a4a81ccedeb29377d2f
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: Synced 2 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-grpo-rhomath-gsm8k-seed42-vllm-colocated-02/evaluations/test-selected-retry-01/wandb/run-20261119_234716-fce91298bb4f4a4a81ccedeb29377d2f/logs
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.

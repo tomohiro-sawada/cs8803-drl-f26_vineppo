@@ -53,6 +53,35 @@ def cli(tmp_path):
     ]
 
 
+@pytest.mark.parametrize("algorithm,finetuning", [("grpo", "full"), ("ppo", "lora")])
+def test_bf16_requires_critic_free_lora(cli, capsys, algorithm, finetuning):
+    with pytest.raises(SystemExit) as error:
+        runner.parse_args(
+            cli
+            + [
+                "--algorithm",
+                algorithm,
+                "--finetuning",
+                finetuning,
+                "--dtype",
+                "bfloat16",
+            ]
+        )
+    assert error.value.code == 2
+    assert "require --dtype float32" in capsys.readouterr().err
+
+
+def test_math_grading_workers_require_cpu_and_memory_budget(monkeypatch):
+    monkeypatch.setattr(runner.os, "process_cpu_count", lambda: 12)
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "4")
+    monkeypatch.setenv("SLURM_MEM_PER_NODE", "4096")
+    runner.validate_grading_resources(3)
+    with pytest.raises(AssertionError, match="available CPUs"):
+        runner.validate_grading_resources(5)
+    with pytest.raises(AssertionError, match="1 GiB per MATH worker"):
+        runner.validate_grading_resources(4)
+
+
 @pytest.mark.parametrize("task", ["gsm8k", "math"])
 def test_local_train_only_normalization_and_identity(tmp_path, task):
     question, answer = (
@@ -424,11 +453,20 @@ def test_retention_only_prunes_owned_files_after_success(monkeypatch, tmp_path, 
 
 
 @pytest.mark.parametrize(
-    "algorithm,task",
-    [("vineppo", "gsm8k"), ("ppo", "math"), ("grpo", "gsm8k"), ("rloo", "math")],
-)
-@pytest.mark.parametrize(
-    "finetuning,dtype", [("full", "float32"), ("lora", "bfloat16")]
+    "algorithm,task,finetuning,dtype",
+    [
+        (algorithm, task, finetuning, dtype)
+        for algorithm, task in (
+            ("vineppo", "gsm8k"),
+            ("ppo", "math"),
+            ("grpo", "gsm8k"),
+            ("rloo", "math"),
+        )
+        for finetuning, dtype in (
+            ("full", "float32"),
+            ("lora", "float32" if algorithm == "ppo" else "bfloat16"),
+        )
+    ],
 )
 @pytest.mark.parametrize("tracking_mode", ["disabled", "offline"])
 def test_main_local_model_assembly_and_real_warmup_summary(
@@ -629,10 +667,12 @@ def test_main_local_model_assembly_and_real_warmup_summary(
     if finetuning == "lora":
         apply_lora.assert_called_once_with(actor, rank=8, alpha=12.5)
         lora_identity.assert_called_once_with(wrapped)
-        bf16_supported.assert_called_once_with(including_emulation=False)
     else:
         apply_lora.assert_not_called()
         lora_identity.assert_not_called()
+    if dtype == "bfloat16":
+        bf16_supported.assert_called_once_with(including_emulation=False)
+    else:
         bf16_supported.assert_not_called()
     metadata = json.loads((tmp_path / "output/metadata.json").read_text())
     assert metadata["cli"]["finetuning"] == finetuning
@@ -642,7 +682,7 @@ def test_main_local_model_assembly_and_real_warmup_summary(
     assert metadata["model"]["lora"] == (identity if finetuning == "lora" else None)
     assert metadata["software"]["peft"] == runner.version("peft")
     assert metadata["precision"].startswith(
-        "FP32 actor adapters" if finetuning == "lora" else "Native dtype"
+        "FP32 actor adapters" if finetuning == "lora" else "FP32 parameters"
     )
     config = assembly.call_args.args[0]
     assert config.checkpoint_every == 3

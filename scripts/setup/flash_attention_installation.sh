@@ -16,9 +16,10 @@
 # Do not run other installers or inference jobs using this environment concurrently.
 set -euo pipefail
 : "${SLURM_JOB_ID:?Submit this script with sbatch}"
-cd "${SLURM_SUBMIT_DIR:?Submit from the repository root}"
+repo_root=${SLURM_SUBMIT_DIR:?Submit from the repository root}
+cd "$repo_root"
 test -f scripts/setup/install.py
-source ./bash.sh
+source "$repo_root/bash.sh"
 printf 'Started: %s; commit: %s; job: %s\n' "$(timestamp)" "$(git rev-parse --short HEAD)" "$SLURM_JOB_ID"
 
 module load cuda/13.0.1

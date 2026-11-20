@@ -39,6 +39,7 @@ from core.vllm_inference import (
 )
 from experiments.training.tracking import WandBTracker
 from runtime.checkpoint_actor import load_checkpoint_actor
+from runtime.checkpoints import file_identity, file_sha256
 from runtime.evaluate import evaluate, inference_context
 from scripts.paper_artifact_replications.evaluate_sft import (
     PROMPT,
@@ -129,20 +130,18 @@ class RemotePaperGenerator:
         self.client.close()
 
 
-def write_json(path, value):
+def write_json(path, value, *, exclusive=False):
     temporary = path.with_suffix(".tmp")
     temporary.write_text(
         json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
     )
-    temporary.replace(path)
-
-
-def file_sha256(path):
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    if exclusive:
+        try:
+            os.link(temporary, path)
+        finally:
+            temporary.unlink()
+    else:
+        temporary.replace(path)
 
 
 def positive_int(text):
@@ -158,6 +157,7 @@ def parse_args(argv=None):
     for name in ("training-output", "output"):
         parser.add_argument(f"--{name}", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument("--checkpoint-sha256")
     parser.add_argument("--selection", type=Path)
     parser.add_argument("--checkpoint-source", type=Path)
     parser.add_argument("--checkpoint-source-sha256")
@@ -194,6 +194,14 @@ def parse_args(argv=None):
         args.selection is None or args.checkpoint is not None or args.rounds != 16
     ):
         parser.error("test requires --selection, --rounds 16, and forbids --checkpoint")
+    if args.checkpoint_sha256 is not None and (
+        args.checkpoint is None
+        or len(args.checkpoint_sha256) != 64
+        or any(c not in "0123456789abcdef" for c in args.checkpoint_sha256)
+    ):
+        parser.error(
+            "--checkpoint-sha256 requires a validation checkpoint and a SHA256"
+        )
     if (args.checkpoint_source is None) != (args.checkpoint_source_sha256 is None):
         parser.error("checkpoint source requires path and metadata SHA256 together")
     if args.split == "test" and args.checkpoint_source is not None:
@@ -238,8 +246,12 @@ def load_examples(path, task, split):
 
 def validate_validation(result, task, training_output):
     """Validate the complete evidence, not just a caller-supplied accuracy."""
+    validate_results(result, task, training_output, split="validation")
+
+
+def validate_results(result, task, training_output, *, split):
     assert result["schema_version"] == 1 and result["complete"] is True
-    assert result["task"] == task and result["split"] == "validation"
+    assert result["task"] == task and result["split"] == split
     assert result["training_run"]["path"] == str(training_output)
     protocol = result["protocol"]
     assert all(
@@ -250,7 +262,7 @@ def validate_validation(result, task, training_output):
     assert type(n) is int and n > 0
     assert type(protocol["batch_size"]) is int and protocol["batch_size"] > 0
     assert type(protocol["seed"]) is int and 0 <= protocol["seed"] <= 2**32 - n
-    rows = EXPECTED_ROWS["validation"][task]
+    rows = EXPECTED_ROWS[split][task]
     assert result["dataset"]["rows"] == result["num_examples"] == rows
     assert result["rounds_completed"] == len(result["rounds"]) == n
     for index, row in enumerate(result["rounds"]):
@@ -285,7 +297,7 @@ def checkpoint_source(candidate):
     return path
 
 
-def selected_checkpoint(selection, task, training_output):
+def selected_checkpoint(selection, task, training_output, *, verify_digest=True):
     assert selection["schema_version"] == 1 and selection["frozen"] is True
     assert selection["task"] == task and selection["training_output"] == str(
         training_output
@@ -319,9 +331,9 @@ def selected_checkpoint(selection, task, training_output):
         candidates, key=lambda c: (-c["accuracy"], c["checkpoint"]["iteration"])
     ), "Best violates selection tie rule"
     checkpoint = Path(best["checkpoint"]["path"]).resolve(strict=True)
-    assert file_sha256(checkpoint) == best["checkpoint"]["sha256"], (
-        "Selected checkpoint hash mismatch"
-    )
+    assert (
+        not verify_digest or file_sha256(checkpoint) == best["checkpoint"]["sha256"]
+    ), "Selected checkpoint hash mismatch"
     return checkpoint
 
 
@@ -422,7 +434,9 @@ def main(argv=None):
             assert selection["test_protocol"] == protocol, (
                 "Test CLI protocol differs from frozen selection"
             )
-            checkpoint = selected_checkpoint(selection, task, args.training_output)
+            checkpoint = selected_checkpoint(
+                selection, task, args.training_output, verify_digest=False
+            )
         elif args.baseline:
             checkpoint = model_path / "model.safetensors"
         else:
@@ -497,8 +511,14 @@ def main(argv=None):
                     .eval()
                 )
         else:
+            checkpoint_identity = file_identity(checkpoint)
+            expected_digest = (
+                selection["best"]["checkpoint"]["sha256"]
+                if selection is not None
+                else args.checkpoint_sha256
+            )
             model, tokenizer, info = load_checkpoint_actor(
-                checkpoint, model_path, device=device
+                checkpoint, model_path, device=device, expected_sha256=expected_digest
             )
             if info["dtype"] == "bfloat16":
                 assert torch.cuda.is_bf16_supported(including_emulation=False), (
@@ -528,9 +548,12 @@ def main(argv=None):
             for key in ("dtype", "finetuning"):
                 assert info[key] == cli[key], f"Training {key} mismatch"
             assert info["lora"] == metadata["model"]["lora"], "Training LoRA mismatch"
-            assert file_sha256(checkpoint) == info["checkpoint_sha256"], (
+            assert file_identity(checkpoint) == checkpoint_identity, (
                 "Checkpoint changed during loading"
             )
+            assert (
+                expected_digest is None or info["checkpoint_sha256"] == expected_digest
+            ), "Selected checkpoint hash mismatch"
             checkpoint_info = {
                 "path": str(checkpoint),
                 "sha256": info["checkpoint_sha256"],
@@ -590,36 +613,44 @@ def main(argv=None):
             "dataset": dataset,
             "training_run": training_run,
             "checkpoint_source": source,
-            "evaluation_run": training_run,
         } | identity
-        write_json(
-            args.output / "provenance.json",
-            base
-            | {
-                "model": metadata["model"],
-                "model_path": str(model_path),
-                "actor": info,
-                "metadata_sha256": file_sha256(source_path / "metadata.json"),
-                "selection": selection,
-                "gpu": gpu,
-                "software": {
-                    name: version(name) for name in ("torch", "transformers", "peft")
-                },
-                "cuda": torch.version.cuda,
-                "attention": "sdpa" if args.backend == "hf" else "vllm",
-                "workers": workers,
-                "evaluation_code_sha256": file_sha256(Path(__file__)),
-                "verifier_policy": VERIFIER_POLICY,
-                "verifier_provenance": VERIFIER_PROVENANCE,
-                "deviations": [
-                    "HF rather than upstream vLLM; no bitwise parity claim",
-                    "Stop string trimmed after generation; extra draws affect subsequent RNG state",
-                    "Sequential seeded rounds rather than upstream batched n=16 completions",
-                    "Checkpoint dtype preserved rather than forced BF16",
-                    "Long-prompt budget counts BOS; upstream tokenize() does not",
-                ],
-            },
+        deviations = [
+            "Sequential seeded rounds of one sample per question",
+            "Long-prompt budget counts BOS",
+            "No bitwise parity claim",
+        ]
+        backend = protocol.get("backend", "hf")
+        deviations += (
+            [
+                "HF generation trims the stop string after generation",
+                "Extra draws can affect the global RNG within a round",
+                "Checkpoint dtype preserved",
+            ]
+            if backend == "hf"
+            else [
+                "vLLM uses server-side stopping and per-request hashed seeds",
+                "BF16 serving includes adapter conversion",
+                "Concurrent batching can affect reproducibility",
+            ]
         )
+        provenance = {
+            "model": metadata["model"],
+            "model_path": str(model_path),
+            "actor": info,
+            "metadata_sha256": file_sha256(source_path / "metadata.json"),
+            "selection": selection,
+            "gpu": gpu,
+            "software": {
+                name: version(name) for name in ("torch", "transformers", "peft")
+            },
+            "cuda": torch.version.cuda,
+            "attention": "sdpa" if backend == "hf" else "vllm",
+            "workers": workers,
+            "evaluation_code_sha256": file_sha256(Path(__file__)),
+            "verifier_policy": VERIFIER_POLICY,
+            "verifier_provenance": VERIFIER_PROVENANCE,
+            "deviations": deviations,
+        }
         with WandBTracker(
             args,
             {
@@ -628,7 +659,14 @@ def main(argv=None):
                 "checkpoint": checkpoint_info,
             },
         ) as tracker:
+            base["evaluation_run"] = {
+                "path": str(args.output),
+                "wandb": json.loads((args.output / "wandb.json").read_text())
+                if args.wandb_mode != "disabled"
+                else None,
+            }
             with inference_context(make_generator) as generator:
+                write_json(args.output / "provenance.json", base | provenance)
                 result = base | run_rounds(args, task, examples, generator, identity)
             tracker.log_evaluation(result, selection=selection)
         write_json(args.output / "result.json", result)

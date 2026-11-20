@@ -7,7 +7,7 @@ cluster=$1
 mode=$2
 shift 2
 case "$cluster" in skynet|pace_ice) ;; *) fail "Unknown cluster: $cluster" ;; esac
-case "$mode" in train|benchmark) ;; *) fail "Unknown mode: $mode" ;; esac
+case "$mode" in train|benchmark|evaluate) ;; *) fail "Unknown mode: $mode" ;; esac
 cd "${SLURM_SUBMIT_DIR:?Submit with sbatch from the repository root}"
 
 args=("$@")
@@ -35,7 +35,7 @@ while (( $# )); do
         --worker-placement) placement=$2 ;;
         --max-sequence-length) context=$2 ;;
         --lora-rank) rank=$2 ;;
-        --num-iterations|--warmup-iterations|--prompts-per-iteration|--num-samples|--mc-num-samples|--update-epochs|--minibatch-size|--microbatch-size|--max-new-tokens|--learning-rate|--critic-learning-rate|--seed|--checkpoint-every|--keep-checkpoints|--dtype|--finetuning|--lora-alpha) ;;
+        --num-iterations|--warmup-iterations|--prompts-per-iteration|--num-samples|--mc-num-samples|--update-epochs|--minibatch-size|--microbatch-size|--max-new-tokens|--learning-rate|--critic-learning-rate|--math-grader-workers|--seed|--checkpoint-every|--checkpoint-format|--keep-checkpoints|--dtype|--finetuning|--lora-alpha) ;;
         *) fail "Unsupported option: $1 (mode is fixed by the SLURM wrapper; use --option value)" ;;
     esac
     shift 2
@@ -44,7 +44,11 @@ case "$task" in gsm8k|math) ;; *) fail '--task gsm8k|math is required' ;; esac
 [[ -n $model && -d $model ]] || fail '--model-path must name an existing local model directory'
 [[ -n $dataset && -e $dataset ]] || fail '--dataset-path must name an existing local dataset'
 [[ -n $output ]] || fail '--output is required; choose a unique artifacts/training/<cluster>/<runname>'
-[[ ! -e $output && ! -L $output ]] || fail "Output already exists; choose a new run directory: $output"
+if [[ $mode == evaluate ]]; then
+    [[ -d $output ]] || fail 'Final evaluation requires an existing run root'
+else
+    [[ ! -e $output && ! -L $output ]] || fail "Output already exists; choose a new run directory: $output"
+fi
 [[ -z $resume || -e $resume ]] || fail "Resume checkpoint does not exist: $resume"
 case "$cluster" in
     skynet)
@@ -91,11 +95,28 @@ defaults=(--mode "$mode" --algorithm vineppo ${expected_gpu:+--expected-gpu "$ex
     --max-sequence-length 2048 --max-new-tokens 1024
     --keep-checkpoints 2 --dtype float32 --wandb-mode online)
 case "$mode" in
-    train) defaults+=(--num-iterations 100 --warmup-iterations 0 --checkpoint-every 10) ;;
+    train|evaluate) defaults+=(--num-iterations 100 --warmup-iterations 0 --checkpoint-every 10) ;;
     benchmark) defaults+=(--num-iterations 3 --warmup-iterations 1) ;;
 esac
 # argparse uses the last occurrence, so explicit CLI values override defaults.
-run=("$python" "$entry" "${defaults[@]}" "${args[@]}")
+options=("${defaults[@]}" "${args[@]}")
+if [[ $backend == vllm ]]; then
+    restart_count=${SLURM_RESTART_COUNT-0}
+    [[ $restart_count =~ ^(0|[1-9][0-9]*)$ ]] || fail 'Invalid SLURM_RESTART_COUNT'
+    worker_dir=$TRAINING_CACHE/workers/${SLURM_JOB_ID:?Expected a Slurm job ID}-$restart_count
+    options+=(--worker-dir "$worker_dir")
+fi
+run=("$python" "$entry")
+if [[ $mode == evaluate ]]; then
+    finalizer=("$python" -m experiments.training.finalize)
+    status=$("${finalizer[@]}" prepare "${options[@]}")
+    case "$status" in
+        complete) printf '%s\n' 'Frozen run is complete'; exit 0 ;;
+        run) run=("${finalizer[@]}" run) ;;
+        *) fail "Unexpected finalization status: $status" ;;
+    esac
+fi
+run+=("${options[@]}")
 [[ $backend == vllm ]] || exec srun --ntasks=1 "${run[@]}"
 
 # One Slurm step per process. Dedicated: each step gets exactly one
@@ -104,7 +125,6 @@ run=("$python" "$entry" "${defaults[@]}" "${args[@]}")
 # (sampling, then scoring/updating), so the worker's memory share is capped.
 # The first process to exit ends the job: a worker never exits normally, so its
 # death fails the learner instead of hanging it.
-worker_dir=$TRAINING_CACHE/workers/$SLURM_JOB_ID
 mkdir -p "$TRAINING_CACHE/workers" && mkdir "$worker_dir"
 read -r VLLM_API_KEY < /proc/sys/kernel/random/uuid
 export VLLM_API_KEY
@@ -113,12 +133,38 @@ if [[ $placement == colocated ]]; then
 else
     step=(srun --nodes=1 --ntasks=1 --gpus=1 --cpus-per-task="$SLURM_CPUS_PER_TASK" --exact) worker_memory=0.85
 fi
-trap 'kill $(jobs -p) 2>/dev/null' EXIT
+pids=()
+cleanup() {
+    kill "${pids[@]}" 2>/dev/null || true
+    wait "${pids[@]}" 2>/dev/null || true
+}
+trap cleanup EXIT
+mkfifo "$worker_dir/step-status"
+exec 8<>"$worker_dir/step-status"
+unlink "$worker_dir/step-status"
+# A completion notification survives even if a step exits before the launcher
+# starts waiting. The per-step subshell owns and reaps its srun process.
+start_step() {
+    local role=$1
+    shift
+    (
+        trap - EXIT
+        "$@" &
+        pid=$!
+        trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; exit 143' TERM
+        status=0
+        wait "$pid" || status=$?
+        printf '%s %s\n' "$role" "$status" >&8
+    ) &
+    pids+=("$!")
+}
 for ((worker = 0; worker < workers; worker++)); do
-    "${step[@]}" --output="$worker_dir/worker-$worker.log" "$VLLM_PYTHON" experiments/training/vllm_worker.py \
+    start_step worker "${step[@]}" --output="$worker_dir/worker-$worker.log" "$VLLM_PYTHON" experiments/training/vllm_worker.py \
         --rank "$worker" --model-path "$model" --worker-dir "$worker_dir" \
         --max-sequence-length "$context" --max-lora-rank "$rank" \
-        --gpu-memory-utilization "$worker_memory" &
+        --gpu-memory-utilization "$worker_memory"
 done
-"${step[@]}" "${run[@]}" --worker-dir "$worker_dir" &
-wait -n
+start_step learner "${step[@]}" "${run[@]}"
+read -r role status <&8
+[[ $role != worker || $status != 0 ]] || fail 'Worker exited before the learner'
+exit "$status"

@@ -67,11 +67,8 @@ Snapshot frozen base/reference weights and adapter parameters. On a fixed batch:
   A constant-reward group can legitimately have no policy update (while KL may
   still act if actor and reference differ). Do not misdiagnose that as a bug.
 
-For full-parameter BF16, moments and parameters are BF16, with no FP32 master
-weights. Small learning rates can be ineffective despite finite loss. PPO's
-critic remains full-parameter even in actor-LoRA mode; check its parameter deltas
-and moment dtype separately. No GradScaler, AMP, or gradient checkpointing is
-implicitly enabled by these launchers.
+Full tuning and PPO require FP32. PPO's critic remains full-parameter even
+with a LoRA actor. Check its parameter deltas and moment dtype separately.
 
 ## 4. Grouped-algorithm checks
 

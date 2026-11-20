@@ -1,0 +1,22 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-20-2026 00:38:51
+Job ID:    7186748
+User ID:   tsawada7
+Account:   math
+Job name:  pilot-vineppo-rhomath
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+Completed iteration 50; metrics and summary: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/pilot-vineppo-rhomath-gsm8k-seed42-vllm-h100-4rounds-02
+---------------------------------------
+Begin Slurm Epilog: Nov-20-2026 01:16:12
+Job ID:        7186748
+User ID:       tsawada7
+Account:       math
+Job name:      pilot-vineppo-rhomath
+Resources:     cpu=12,gres/gpu:h100=1,mem=96G,node=1
+Rsrc Used:     cput=07:28:00,vmem=0,walltime=00:37:20,mem=29684K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-03-012-18-0
+---------------------------------------

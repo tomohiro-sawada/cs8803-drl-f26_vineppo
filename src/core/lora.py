@@ -14,8 +14,8 @@ def apply_lora(model, *, rank: int = 16, alpha: float = 32.0) -> PeftModel:
     """Wrap an exclusively owned actor in place; keep its reference model separate.
 
     Only adapters are trainable and cast to FP32; frozen base weights retain their
-    dtype. Checkpoint callers should retain the full state_dict, not adapter-only
-    saves. Do not cast the returned model wholesale to a lower precision.
+    dtype. Checkpoints preserve the frozen tensors either inline or in a
+    hash-verified compact checkpoint dependency. Preserve FP32 adapter storage.
     """
     assert type(rank) is int and rank > 0, "rank must be a positive integer"
     assert type(alpha) in (int, float) and isfinite(alpha) and alpha > 0, (

@@ -24,6 +24,7 @@ from algorithms.grpo import grpo_loss
 from algorithms.rloo import rloo_loss
 from core.data import PolicyGradientBatch
 from core.inference import token_logprobs
+from core.optimization import assert_fp32_optimizer_state, trainable_fp32_parameters
 
 
 def normalize_advantages(advantages: Tensor, mask: Tensor) -> Tensor:
@@ -162,12 +163,13 @@ def update_actor(
     ).any()
     for value in (batch.old_logprobs, batch.ref_logprobs, batch.advantages):
         assert torch.isfinite(value[batch.response_mask]).all()
-    parameters = [p for p in actor.parameters() if p.requires_grad]
+    parameters = trainable_fp32_parameters(actor)
     owned = [p for group in optimizer.param_groups for p in group["params"]]
     assert len(owned) == len({id(p) for p in owned}), "Duplicate optimizer parameters"
     assert parameters and {id(p) for p in owned} == {id(p) for p in parameters}, (
         "Optimizer must own exactly the trainable actor parameters"
     )
+    assert_fp32_optimizer_state(optimizer.state)
     device = parameters[0].device
     assert all(p.device == device for p in parameters), "Single-device update only"
     history = []

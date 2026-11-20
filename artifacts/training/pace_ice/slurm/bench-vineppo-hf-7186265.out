@@ -1,0 +1,22 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-20-2026 00:06:06
+Job ID:    7186265
+User ID:   tsawada7
+Account:   math
+Job name:  bench-vineppo-hf
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+Completed iteration 4; metrics and summary: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/bench-vineppo-hf-h100-02
+---------------------------------------
+Begin Slurm Epilog: Nov-20-2026 02:14:07
+Job ID:        7186265
+User ID:       tsawada7
+Account:       math
+Job name:      bench-vineppo-hf
+Resources:     cpu=12,gres/gpu:h100=1,mem=96G,node=1
+Rsrc Used:     cput=1-01:36:12,vmem=0,walltime=02:08:01,mem=8628K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-03-012-23-0
+---------------------------------------

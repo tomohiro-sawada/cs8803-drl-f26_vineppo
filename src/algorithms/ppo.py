@@ -14,6 +14,7 @@ from transformers import PreTrainedModel
 
 from algorithms.base import AlgorithmConfig
 from core.data import CriticBatch
+from core.optimization import assert_fp32_optimizer_state, trainable_fp32_parameters
 
 
 @dataclass
@@ -193,7 +194,7 @@ def update_critic(
             batch.response_mask
             & ~(batch.attention_mask[:, :-1] & batch.attention_mask[:, 1:])
         ).any(), "Response tokens need attended states and actions"
-        parameters = [p for p in critic.parameters() if p.requires_grad]
+        parameters = trainable_fp32_parameters(critic)
         owned = [p for group in optimizer.param_groups for p in group["params"]]
         assert len(owned) == len({id(p) for p in owned}), (
             "Duplicate optimizer parameters"
@@ -201,6 +202,7 @@ def update_critic(
         assert parameters and {id(p) for p in owned} == {id(p) for p in parameters}, (
             "Optimizer must own exactly the trainable critic parameters"
         )
+        assert_fp32_optimizer_state(optimizer.state)
         device = parameters[0].device
         assert all(p.device == device for p in critic.parameters()), (
             "Single-device update only"

@@ -11,11 +11,29 @@ import torch
 from transformers import GPT2Config, GPT2LMHeadModel
 
 from algorithms.vineppo import estimate_vineppo_batch
+from core import vllm_inference
 from core.data import Episode
 from core.lora import apply_lora
 from core.vllm_inference import BASE_MODEL, VLLMClient, VLLMInference
 
 EOS = 2
+
+
+def test_discovery_rejects_stale_restart_before_health_check(tmp_path, monkeypatch):
+    monkeypatch.setenv("SLURM_JOB_ID", "77")
+    monkeypatch.setenv("SLURM_RESTART_COUNT", "1")
+    (tmp_path / "worker-0.json").write_text(
+        json.dumps(
+            {"slurm_job_id": "77", "slurm_restart_count": 0, "url": "http://worker-0"}
+        )
+    )
+
+    def forbidden(*args):
+        pytest.fail("A stale worker must not be contacted")
+
+    monkeypatch.setattr(vllm_inference, "_healthy", forbidden)
+    with pytest.raises(AssertionError, match="different Slurm attempt"):
+        VLLMClient.from_directory(tmp_path, count=1, api_key="key", model_path=tmp_path)
 
 
 def sample(body, index):
@@ -184,7 +202,14 @@ def test_arrival_order_and_layout_cannot_change_samples_or_advantages(actor, tmp
         records = []
         estimates = estimate_vineppo_batch(
             [
-                (key, episode, bounds, lambda ids, reason: float(sum(ids) % 3))
+                (
+                    key,
+                    episode,
+                    bounds,
+                    lambda responses: [
+                        float(sum(item.token_ids) % 3) for item in responses
+                    ],
+                )
                 for key, episode, bounds in episodes
             ],
             inference=inference,
@@ -273,8 +298,22 @@ def test_bounded_retry_reuses_the_logical_request_then_aborts(actor, tmp_path):
     assert inference.client.stats[0]["errors"] == 2
     dead = make(actor, tmp_path, [FakeReplica(fail=10**6)], "dead")
     dead.sync(0)
-    with pytest.raises((httpx.ConnectError, AssertionError)):
+    with pytest.raises(httpx.ConnectError, match="worker died"):
         dead.generate(PREFIXES, num_samples=3, max_new_tokens=5)
+
+
+def test_last_active_slot_drains_its_own_retry(actor, tmp_path, caplog):
+    replica = FakeReplica(fail=1)
+    inference = make(actor, tmp_path, [replica], max_sequences=1)
+    inference.sync(0)
+
+    result = inference.generate(PREFIXES[:1], num_samples=1, max_new_tokens=5)
+
+    first, retry = replica.requests
+    assert first == retry
+    assert result[0][0].token_ids == sample(first, 0)[0]
+    assert inference.client.stats[0]["errors"] == 1
+    assert "worker died" in caplog.text
 
 
 @pytest.mark.parametrize(

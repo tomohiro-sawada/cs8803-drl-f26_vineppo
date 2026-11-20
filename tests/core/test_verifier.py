@@ -1,5 +1,6 @@
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 import pytest
 
@@ -7,6 +8,93 @@ from core import verifier
 from core._safe_symbolic import parse_expr
 from core.vendor.vineppo.math_answer_exctraction import extract_answer, strip_string
 from core.verifier import VerificationResult, verify_response
+
+
+@pytest.fixture(autouse=True)
+def fresh_grading_cache():
+    verifier._math_correct.cache_clear()
+    yield
+    verifier._math_correct.cache_clear()
+
+
+def test_exact_math_cache_preserves_order_and_multiplicity(monkeypatch):
+    import json
+
+    observed = []
+
+    def passed(args, *, input, **kwargs):
+        observed.append(json.loads(input))
+        return subprocess.CompletedProcess(args, 0, "true", "")
+
+    monkeypatch.setattr(subprocess, "run", passed)
+    for predictions in (("1", "2"), ("1", "2"), ("2", "1"), ("1", "1", "2")):
+        assert verifier._math_correct(predictions, ("1", "2"))
+    assert observed == [
+        [["1", "2"], ["1", "2"]],
+        [["2", "1"], ["1", "2"]],
+        [["1", "1", "2"], ["1", "2"]],
+    ]
+    assert verifier._math_correct.cache_info().hits == 1
+    assert verifier._math_correct.cache_info().maxsize == 8192
+
+
+def test_batched_grading_matches_individual_math_results():
+    responses = [r"\boxed{\sqrt{8}}", r"\boxed{1}", r"\boxed{2\sqrt{2}}", ""]
+    kwargs = {"question": "Find the value.", "reference_is_solution": True}
+    reference = r"Solution: \boxed{2\sqrt{2}}"
+    expected = [
+        verify_response(text, reference, task="math", **kwargs) for text in responses
+    ]
+    verifier._math_correct.cache_clear()
+    assert (
+        verifier.verify_math_responses(responses, reference, workers=2, **kwargs)
+        == expected
+    )
+
+
+def test_batched_grading_deduplicates_work_with_bounded_overlap(monkeypatch):
+    import json
+
+    overlap = Barrier(2)
+    calls = []
+
+    def run(args, *, input, **kwargs):
+        predictions, references = json.loads(input)
+        calls.append(predictions)
+        overlap.wait(timeout=5)
+        return subprocess.CompletedProcess(
+            args, 0, json.dumps(predictions == references), ""
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    results = verifier.verify_math_responses(
+        [r"\boxed{1}", r"\boxed{2}", r"\boxed{1}"],
+        "1",
+        question="",
+        reference_is_solution=False,
+        workers=2,
+    )
+    assert [item.correct for item in results] == [True, False, True]
+    assert sorted(calls) == [["1"], ["2"]]
+
+
+def test_batched_grading_propagates_worker_failures_without_caching(monkeypatch):
+    def interrupted(args, **kwargs):
+        raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", interrupted)
+    for _ in range(2):
+        with pytest.raises(subprocess.TimeoutExpired) as failure:
+            verifier.verify_math_responses(
+                [r"\boxed{1}"] * 2,
+                "1",
+                question="",
+                reference_is_solution=False,
+                workers=2,
+            )
+        assert "MATH sample 0" in failure.value.__notes__[0]
+    cache = verifier._math_correct.cache_info()
+    assert (cache.hits, cache.misses, cache.currsize) == (0, 2, 0)
 
 
 @pytest.mark.parametrize(

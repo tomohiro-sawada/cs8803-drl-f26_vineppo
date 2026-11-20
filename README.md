@@ -87,16 +87,14 @@ the same environment.
 
 ## Step segmentation
 
-`src/core/segmentation.py` provides `math_step_boundaries()` and
-`gsm8k_step_boundaries()`, returning response-relative token boundaries for
-VinePPO. MATH preserves the original in-place splitter's heuristics (including
-its quirks); GSM8K preserves newline splitting and the upstream answer-suffix
-handling. Neither rewrites the sampled token sequence.
-
-Callers must supply verified character spans for the **actual sampled tokens**.
-A character boundary inside a token raises rather than silently rounding it.
-Thus this is an exact-boundary utility, not yet a tokenizer-offset extraction or
-training integration. Sampled trailing EOS tokens belong to the final step.
+VinePPO calls `step_boundaries_from_tokens()` in `src/core/segmentation.py`.
+It decodes successive prefixes in prompt context and maps each character cut
+to an index in the original sampled response. MATH moves cuts that fall
+inside tokens to the next complete token boundary and merges coincident cuts.
+The crossing token belongs to the earlier step. MC branching and PPO credit
+use the same response-relative offsets. GSM8K uses exact newline cuts and
+keeps the suffix from the first answer marker together. Sampled EOS belongs
+to the final step.
 
 ## HF inference
 

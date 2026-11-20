@@ -35,9 +35,9 @@ from algorithms.ppo import (
 )
 from algorithms.rloo import RLOOConfig, rloo_advantages
 from algorithms.vineppo import (
+    ScoreResponses,
     VinePPOConfig,
     continuation_budget,
-    estimate_vineppo,
     estimate_vineppo_batch,
     vineppo_advantage_method,
 )
@@ -56,8 +56,19 @@ from core.data import (
 )
 from core.inference import Completion, HFInference, token_logprobs
 from core.lora import lora_identity
+from core.optimization import assert_fp32_optimizer_state, trainable_fp32_parameters
 from core.segmentation import step_boundaries_from_tokens
-from core.verifier import verify_response
+from core.verifier import verify_math_responses, verify_response
+from runtime.checkpoints import (
+    COMPACT_LORA,
+    FULL,
+    checkpoint_models,
+    file_identity,
+    file_sha256,
+    publish_checkpoint,
+    trainable_state_keys,
+    validate_tensor_state,
+)
 from runtime.config import PPOTrainerConfig
 
 
@@ -129,6 +140,8 @@ class PPOTrainer:
         reference_policy: PreTrainedModel | None = None,
         critic: TokenCritic | None = None,
         critic_optimizer: torch.optim.Optimizer | None = None,
+        compact_lora_checkpoints: bool = False,
+        math_grader_workers: int = 1,
     ):
         # validate the inputs
         assert inference.model is policy, "Inference must share the training actor"
@@ -146,6 +159,13 @@ class PPOTrainer:
         self.reference_policy = reference_policy
         self.critic = critic
         self.critic_optimizer = critic_optimizer
+        assert not compact_lora_checkpoints or lora_identity(policy) is not None, (
+            "Compact checkpoints require a LoRA actor"
+        )
+        self.compact_lora_checkpoints = compact_lora_checkpoints
+        assert type(math_grader_workers) is int and math_grader_workers > 0
+        self.math_grader_workers = math_grader_workers
+        self._frozen_checkpoint = None
         self.iteration = 0  # Number of fully completed iterations.
         self._generator: torch.Generator | None = None
         self._identity: str | None = None
@@ -206,40 +226,9 @@ class PPOTrainer:
             results.update(zip(indices, completions, strict=True))
         return [results[index] for index in range(len(prefixes))]
 
-    def estimate_vineppo(
-        self,
-        episode_id: str,
-        episode: Episode,
-        *,
-        step_boundaries: tuple[int, ...],
-        score_response: Callable[[list[int], str], float],
-        num_samples: int,
-        max_new_tokens: int | None = None,
-        record_prefix_samples: Callable[[PrefixSamples], None] | None = None,
-    ) -> VinePPOValueEstimate:
-        """Estimate values under the same T=1 policy used for primary rollouts.
-
-        The caller binds the scorer to this episode's reference answer and
-        training truncation policy, not the evaluator's scoring policy.
-        """
-        return estimate_vineppo(
-            episode_id,
-            episode,
-            step_boundaries=step_boundaries,
-            inference=self.inference,
-            score_response=score_response,
-            num_samples=num_samples,
-            max_new_tokens=self._generation_cap(max_new_tokens),
-            max_sequence_length=self.config.max_sequence_length,
-            temperature=self.config.temperature,
-            record_prefix_samples=record_prefix_samples,
-        )
-
     def estimate_vineppo_batch(
         self,
-        items: Sequence[
-            tuple[str, Episode, tuple[int, ...], Callable[[list[int], str], float]]
-        ],
+        items: Sequence[tuple[str, Episode, tuple[int, ...], ScoreResponses]],
         *,
         record_prefix_samples: Callable[[PrefixSamples], None] | None = None,
     ) -> list[VinePPOValueEstimate]:
@@ -296,7 +285,7 @@ class PPOTrainer:
             (t.device, t.untyped_storage().data_ptr()) for t in ref_tensors if t.numel()
         ), "Reference must not share actor storage"
         owned = [p for group in self.optimizer.param_groups for p in group["params"]]
-        trainable = [p for p in actor if p.requires_grad]
+        trainable = trainable_fp32_parameters(self.policy)
         assert trainable and len(owned) == len({id(p) for p in owned})
         assert {id(p) for p in owned} == {id(p) for p in trainable}, (
             "Optimizer must own exactly the trainable actor parameters"
@@ -333,7 +322,7 @@ class PPOTrainer:
                 for group in self.critic_optimizer.param_groups
                 for p in group["params"]
             ]
-            trainable = [p for p in self.critic.parameters() if p.requires_grad]
+            trainable = trainable_fp32_parameters(self.critic)
             assert trainable and len(owned) == len({id(p) for p in owned})
             assert {id(p) for p in owned} == {id(p) for p in trainable}, (
                 "Critic optimizer must own exactly the trainable critic parameters"
@@ -478,39 +467,65 @@ class PPOTrainer:
             for index, groups in zip(indices, completions, strict=True):
                 example = examples[index]
 
-                def score_response(
-                    ids: list[int],
-                    reason: str,
+                def score_responses(
+                    responses: Sequence[Completion],
                     example: Example = example,
-                ) -> float:
-                    assert reason in ("stop", "length"), "Unsupported finish reason"
-                    if reason == "length":
-                        return float(self.config.truncation_reward)
-                    text = tokenizer.decode(
-                        ids,
-                        skip_special_tokens=True,
-                        clean_up_tokenization_spaces=False,
-                    )
-                    return float(
-                        verify_response(
-                            text,
-                            example.reference_answer,
-                            task=task,
-                            question=example.question,
-                            reference_is_solution=reference_is_solution,
-                        ).correct
-                    )
+                ) -> list[float]:
+                    rewards = [float(self.config.truncation_reward)] * len(responses)
+                    stopped = {}
+                    for sample, response in enumerate(responses):
+                        assert response.finish_reason in ("stop", "length"), (
+                            "Unsupported finish reason"
+                        )
+                        if response.finish_reason == "stop":
+                            stopped[sample] = tokenizer.decode(
+                                response.token_ids,
+                                skip_special_tokens=True,
+                                clean_up_tokenization_spaces=False,
+                            )
+                    try:
+                        if task == "math" and self.math_grader_workers > 1:
+                            verified = verify_math_responses(
+                                list(stopped.values()),
+                                example.reference_answer,
+                                question=example.question,
+                                reference_is_solution=reference_is_solution,
+                                workers=self.math_grader_workers,
+                            )
+                        else:
+                            verified = [
+                                verify_response(
+                                    text,
+                                    example.reference_answer,
+                                    task=task,
+                                    question=example.question,
+                                    reference_is_solution=reference_is_solution,
+                                )
+                                for text in stopped.values()
+                            ]
+                    except Exception as error:
+                        error.add_note(
+                            f"Verification example {example.id}; stopped samples "
+                            f"{list(stopped.items())!r:.512}"
+                        )
+                        raise
+                    for sample, result in zip(stopped, verified, strict=True):
+                        rewards[sample] = float(result.correct)
+                    return rewards
 
-                for sample_index, completion in enumerate(groups):
+                rewards = score_responses(groups)
+                for sample_index, (completion, reward) in enumerate(
+                    zip(groups, rewards, strict=True)
+                ):
                     episode = Episode(
                         prompts[index],
                         completion.token_ids,
-                        score_response(completion.token_ids, completion.finish_reason),
+                        reward,
                         completion.finish_reason,
                     )
                     raw_episodes.append(episode)
                     episode_ids.append(f"{self.iteration}:{example.id}:{sample_index}")
-                    scorers.append(score_response)
+                    scorers.append(score_responses)
             if isinstance(algorithm, VinePPOConfig):
                 # Segment every primary response, then queue all MC work at once.
                 estimates = self.estimate_vineppo_batch(
@@ -796,13 +811,32 @@ class PPOTrainer:
             )
         ]
 
+    def _separate_lora_state(self):
+        trainable = trainable_state_keys(self.policy)
+        policy = self.policy.state_dict()
+        assert trainable and trainable <= policy.keys(), (
+            "Checkpoint omits trainable parameters"
+        )
+        frozen = {
+            "policy": {
+                key: value for key, value in policy.items() if key not in trainable
+            },
+            "reference": self.reference_policy.state_dict(),
+        }
+        # Include persistent buffers in the immutable snapshot and its mutation check.
+        signature = {
+            (model, key): (value.data_ptr(), value._version, value.dtype, value.shape)
+            for model, weights in frozen.items()
+            for key, value in weights.items()
+        }
+        return {key: policy[key] for key in sorted(trainable)}, frozen, signature
+
     def save_checkpoint(self, path: str | Path | None = None) -> Path:
         """Save a completed boundary; default checkpoint_dir/iteration-N.pt.
 
         Tensor/state-dict payloads plus primitive metadata only; no model objects,
         tokenizer, formatter, examples, diagnostics or global Python/NumPy RNGs.
-        LoRA saves full actor/reference weights, including frozen base weights;
-        adapter configuration and effective scaling are validated before restore.
+        Compact LoRA checkpoints share a verified frozen actor/reference file.
         """
         assert self._at_boundary and self._identity is not None, (
             "Checkpoint requires a completed training boundary"
@@ -815,8 +849,6 @@ class PPOTrainer:
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         state = {
-            "policy": self.policy.state_dict(),
-            "reference": self.reference_policy.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "optimizer_identity": self._optimizer_identity(self.policy, self.optimizer),
             "model_identity": self._model_identity(),
@@ -833,6 +865,25 @@ class PPOTrainer:
             if torch.backends.mps.is_available()
             else None,
         }
+        if self.compact_lora_checkpoints:
+            trainable, frozen, signature = self._separate_lora_state()
+            if self._frozen_checkpoint is None:
+                blob = (path.parent / "frozen-lora.pt").resolve()
+                publish_checkpoint(blob, frozen)
+                spec = {"path": str(blob), "sha256": file_sha256(blob)}
+                self._frozen_checkpoint = spec, file_identity(blob), signature
+            spec, identity, original = self._frozen_checkpoint
+            assert signature == original, "Frozen model parameters or buffers changed"
+            assert file_identity(Path(spec["path"])) == identity, (
+                "Frozen model file changed"
+            )
+            state.update(format_version=COMPACT_LORA, policy=trainable, frozen=spec)
+        else:
+            state.update(
+                format_version=FULL,
+                policy=self.policy.state_dict(),
+                reference=self.reference_policy.state_dict(),
+            )
         if self.critic is not None:
             state["critic"] = self.critic.state_dict()
             state["critic_optimizer"] = self.critic_optimizer.state_dict()
@@ -842,10 +893,7 @@ class PPOTrainer:
             state["critic_backbone_class"] = (
                 f"{type(self.critic.backbone).__module__}.{type(self.critic.backbone).__qualname__}"
             )
-        # Replace only after a complete write, preserving any previous checkpoint.
-        temporary = path.with_name(path.name + ".tmp")
-        torch.save(state, temporary)
-        temporary.replace(path)
+        publish_checkpoint(path, state)
         return path
 
     def load_checkpoint(
@@ -868,6 +916,8 @@ class PPOTrainer:
         """
         assert self._at_boundary, "Cannot load during an incomplete iteration"
         self._validate_training()
+        path = Path(path)
+        checkpoint_identity = file_identity(path)
         state = torch.load(path, map_location="cpu", weights_only=True)
         current = self._config_state()
         ignored = {"num_iterations", "checkpoint_every", "checkpoint_dir"}
@@ -889,11 +939,13 @@ class PPOTrainer:
             self._optimizer_identity(self.policy, self.optimizer)
             == state["optimizer_identity"]
         ), "Optimizer identity mismatch"
+        assert_fp32_optimizer_state(state["optimizer"]["state"])
         if self.critic is not None:
             assert (
                 self._optimizer_identity(self.critic, self.critic_optimizer)
                 == state["critic_optimizer_identity"]
             ), "Critic optimizer identity mismatch"
+            assert_fp32_optimizer_state(state["critic_optimizer"]["state"])
             assert state["critic_backbone_class"] == (
                 f"{type(self.critic.backbone).__module__}.{type(self.critic.backbone).__qualname__}"
             ), "Critic backbone identity mismatch"
@@ -903,9 +955,33 @@ class PPOTrainer:
         assert (state["mps_rng"] is not None) == torch.backends.mps.is_available(), (
             "MPS RNG availability mismatch"
         )
+        compact = state.get("format_version") == COMPACT_LORA
+        if compact:
+            assert state["policy"].keys() == trainable_state_keys(self.policy), (
+                "Compact policy does not contain exactly the trainable state"
+            )
+            spec = state["frozen"]
+            frozen_path = Path(spec["path"])
+            frozen_identity = file_identity(frozen_path)
+        policy, reference = checkpoint_models(state)
+        assert reference is not None, "Training requires a checkpoint reference model"
+        validate_tensor_state(self.policy, policy)
+        validate_tensor_state(self.reference_policy, reference)
+        if self.critic is not None:
+            validate_tensor_state(self.critic, state["critic"])
         self._at_boundary = False
-        self.policy.load_state_dict(state["policy"], strict=True)
-        self.reference_policy.load_state_dict(state["reference"], strict=True)
+        self.policy.load_state_dict(policy, strict=True)
+        self.reference_policy.load_state_dict(reference, strict=True)
+        assert file_identity(path) == checkpoint_identity, (
+            "Checkpoint changed while loading"
+        )
+        if compact:
+            assert file_identity(frozen_path) == frozen_identity, (
+                "Frozen model changed while loading"
+            )
+        if compact and self.compact_lora_checkpoints:
+            _, _, signature = self._separate_lora_state()
+            self._frozen_checkpoint = spec, frozen_identity, signature
         self.optimizer.load_state_dict(state["optimizer"])
         self.optimizer.zero_grad(set_to_none=True)
         if self.critic is not None:

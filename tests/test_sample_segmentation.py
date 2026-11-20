@@ -25,10 +25,8 @@ class Tokenizer:
     eos_token_id = 2
     all_special_ids = (1, 2, 3)
 
-    def __init__(self, *, prefixes=None, encoded=None, spans=None):
+    def __init__(self, *, prefixes=None):
         self.prefixes = prefixes
-        self.encoded = encoded
-        self.spans = spans
 
     def decode(self, ids, *, skip_special_tokens, clean_up_tokenization_spaces):
         assert not skip_special_tokens and not clean_up_tokenization_spaces
@@ -46,20 +44,12 @@ class Tokenizer:
         truncation,
         return_offsets_mapping=False,
     ):
-        assert not padding and not truncation
-        if isinstance(text, list):
-            assert add_special_tokens and not return_offsets_mapping
-            return {
-                "input_ids": self.prefixes
-                if self.prefixes is not None
-                else [[1] + tokens(t) for t in text]
-            }
-        assert not add_special_tokens and return_offsets_mapping
+        assert isinstance(text, list) and add_special_tokens
+        assert not padding and not truncation and not return_offsets_mapping
         return {
-            "input_ids": tokens(text) if self.encoded is None else self.encoded,
-            "offset_mapping": [(i, i + 1) for i in range(len(text))]
-            if self.spans is None
-            else self.spans,
+            "input_ids": self.prefixes
+            if self.prefixes is not None
+            else [[1] + tokens(t) for t in text]
         }
 
 
@@ -155,34 +145,13 @@ def test_assess_success_keeps_exact_ids(task, eos):
 @pytest.mark.parametrize(
     "ids,tokenizer,task,category,exception",
     [
-        ([5], Tokenizer(), "gsm8k", "roundtrip", "AssertionError"),
-        (
-            [4],
-            Tokenizer(encoded=[4], spans=[(0, 3)]),
-            "gsm8k",
-            "inside_token",
-            "AssertionError",
-        ),
+        ([4], Tokenizer(), "gsm8k", "inside_token", "AssertionError"),
         ([3, 5], Tokenizer(), "gsm8k", "special", "AssertionError"),
         ([2, 2], Tokenizer(), "gsm8k", "special", "AssertionError"),
         ([2], Tokenizer(), "gsm8k", "empty", "AssertionError"),
         ([], Tokenizer(), "gsm8k", "empty", "AssertionError"),
         (tokens("x"), Tokenizer(), "math", "upstream_or_span", "AssertionError"),
         (tokens("\n\n"), Tokenizer(), "gsm8k", "upstream_or_span", "AssertionError"),
-        (
-            tokens("a\n#### 1\n#### 2"),
-            Tokenizer(),
-            "gsm8k",
-            "upstream_or_span",
-            "ValueError",
-        ),
-        (
-            tokens("ab"),
-            Tokenizer(spans=[(0, 1), (2, 2)]),
-            "gsm8k",
-            "upstream_or_span",
-            "AssertionError",
-        ),
     ],
 )
 def test_observed_failure_categories(ids, tokenizer, task, category, exception):
@@ -204,17 +173,17 @@ def test_only_production_assertion_and_valueerror_are_caught(monkeypatch):
     )
 
 
+def test_generation_eos_ids_are_authoritative():
+    result = sampler.assess([5], Tokenizer(), task="gsm8k", eos_token_ids=[5])
+    assert result["category"] == "empty"
+
+
 def test_empty_does_not_override_an_earlier_production_failure():
     tokenizer = Tokenizer()
     tokenizer.is_fast = False
     result = sampler.assess([], tokenizer, task="gsm8k", eos_token_ids=[2])
     assert result["category"] == "upstream_or_span"
-    assert result["exception_message"] == "Exact offsets require a fast tokenizer"
-
-
-def test_generation_eos_ids_are_authoritative():
-    result = sampler.assess([5], Tokenizer(), task="gsm8k", eos_token_ids=[5])
-    assert result["category"] == "empty"
+    assert result["exception_message"] == "Segmentation requires a fast tokenizer"
 
 
 def read_records(path):
@@ -239,7 +208,7 @@ def test_batches_budgets_all_samples_and_metrics(tmp_path):
     def generate(prefixes, **kwargs):
         assert kwargs["temperature"] == 1.0 and kwargs["num_samples"] == 2
         return [
-            [Completion(tokens("ok") + [2], "stop"), Completion([5], "length")]
+            [Completion(tokens("ok") + [2], "stop"), Completion([4], "length")]
             for _ in prefixes
         ]
 
@@ -253,13 +222,13 @@ def test_batches_budgets_all_samples_and_metrics(tmp_path):
     for index, record in enumerate(records):
         assert record["index"] == index // 2 and record["sample_index"] == index % 2
         assert record["prompt_ids"] == prefixes[index // 2]
-        assert record["token_ids"] == (tokens("ok") + [2] if index % 2 == 0 else [5])
-        assert record["text"] == ("ok<eos>" if index % 2 == 0 else "ab")
+        assert record["token_ids"] == (tokens("ok") + [2] if index % 2 == 0 else [4])
+        assert record["text"] == ("ok<eos>" if index % 2 == 0 else "a\nb")
     assert metrics["complete"] and metrics["total_samples"] == 8
     assert metrics["success"] == metrics["failure"] == 4
     assert metrics["rejection_frequency"] == 0.5
     assert metrics["by_finish_reason"]["stop"]["success"] == 4
-    assert metrics["by_finish_reason"]["length"]["by_category"]["roundtrip"] == 4
+    assert metrics["by_finish_reason"]["length"]["by_category"]["inside_token"] == 4
     assert json.loads((tmp_path / "metrics.json").read_text()) == metrics
     assert not (tmp_path / "metrics.tmp").exists()
 

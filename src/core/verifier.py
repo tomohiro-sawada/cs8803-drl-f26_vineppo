@@ -11,7 +11,10 @@ vendor/vineppo/NOTICE.md for the precise relationship to upstream's full-solutio
 import json
 import subprocess
 import sys
-from dataclasses import dataclass
+from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -37,7 +40,8 @@ class VerificationResult:
     extracted_answers: tuple[str, ...] = ()
 
 
-def _math_correct(predictions: list[str], references: list[str]) -> bool:
+@lru_cache(maxsize=8192)
+def _math_correct(predictions: tuple[str, ...], references: tuple[str, ...]) -> bool:
     worker = Path(__file__).with_name("_verifier_worker.py")
     # run kills and reaps the worker on TimeoutExpired. Do not conflate resource
     # limits, startup delays or external termination with a mathematical nonmatch.
@@ -54,6 +58,81 @@ def _math_correct(predictions: list[str], references: list[str]) -> bool:
     correct = json.loads(result.stdout)
     assert type(correct) is bool, "Invalid verifier worker result"
     return correct
+
+
+def _validate_text(response, reference_answer, question):
+    if not all(
+        isinstance(value, str) for value in (response, reference_answer, question)
+    ):
+        raise TypeError("response, reference_answer and question must be strings")
+    if not reference_answer.strip():
+        raise ValueError("reference_answer must be a nonempty normalized final answer")
+    if max(len(response), len(reference_answer), len(question)) > MAX_INPUT_CHARS:
+        raise ValueError(
+            f"Verifier inputs must not exceed {MAX_INPUT_CHARS} characters"
+        )
+
+
+def _math_references(question, reference_answer, reference_is_solution):
+    if reference_is_solution:
+        references = extract_math_answer(question, reference_answer)
+        if not references or not all(references):
+            raise ValueError("MATH solution must contain nonempty reference answers")
+    else:
+        reference = strip_string(reference_answer)
+        if not reference:
+            raise ValueError("MATH reference normalizes to an empty answer")
+        references = split_math_answers(question, [reference])
+    return tuple(references)
+
+
+def _math_predictions(question, response, references):
+    predictions = tuple(extract_math_answer(question, response))
+    selected = tuple(dict.fromkeys(predictions))[-len(set(references)) :]
+    if not selected or selected == ("",):
+        return (), VerificationResult(None, False)
+    return predictions, VerificationResult(selected[-1] or None, False, selected)
+
+
+def verify_math_responses(
+    responses: Sequence[str],
+    reference_answer: str,
+    *,
+    question: str,
+    reference_is_solution: bool,
+    workers: int,
+) -> list[VerificationResult]:
+    """Grade an ordered group against one reference with bounded worker overlap."""
+    assert type(workers) is int and workers > 0
+    if not responses:
+        return []
+    for response in responses:
+        _validate_text(response, reference_answer, question)
+    references = _math_references(question, reference_answer, reference_is_solution)
+    prepared = [
+        _math_predictions(question, response, references) for response in responses
+    ]
+    indices = {}
+    for index, (predictions, _) in enumerate(prepared):
+        if predictions:
+            indices.setdefault(predictions, index)
+
+    def grade(predictions):
+        try:
+            return _math_correct(predictions, references)
+        except Exception as error:
+            error.add_note(
+                f"MATH sample {indices[predictions]}, predictions={predictions!r:.256}, "
+                f"references={references!r:.256}"
+            )
+            raise
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        correct = dict(zip(indices, executor.map(grade, indices), strict=True))
+    return [
+        replace(result, correct=correct[predictions]) if predictions else result
+        for predictions, result in prepared
+    ]
 
 
 def verify_response(
@@ -78,16 +157,7 @@ def verify_response(
         raise ValueError(f"Unsupported task: {task!r}")
     if reference_is_solution and task != "math":
         raise ValueError("reference_is_solution is supported only for MATH")
-    if not all(
-        isinstance(value, str) for value in (response, reference_answer, question)
-    ):
-        raise TypeError("response, reference_answer and question must be strings")
-    if not reference_answer.strip():
-        raise ValueError("reference_answer must be a nonempty normalized final answer")
-    if max(len(response), len(reference_answer), len(question)) > MAX_INPUT_CHARS:
-        raise ValueError(
-            f"Verifier inputs must not exceed {MAX_INPUT_CHARS} characters"
-        )
+    _validate_text(response, reference_answer, question)
     if task == "gsm8k":
         grader = GSM8K()
         answer = grader.extract_predicted_answer_from_text(response)
@@ -97,20 +167,10 @@ def verify_response(
             and grader.grade_answer(given_answer=answer, ground_truth=reference_answer),
             (answer,) if answer else (),
         )
-    if reference_is_solution:
-        references = extract_math_answer(question, reference_answer)
-        if not references or not all(references):
-            raise ValueError("MATH solution must contain nonempty reference answers")
-    else:
-        reference = strip_string(reference_answer)
-        if not reference:
-            raise ValueError("MATH reference normalizes to an empty answer")
-        references = split_math_answers(question, [reference])
-    predictions = extract_math_answer(question, response)
-    # Mirror eval_math's selection for reporting; send original lists for grading.
-    selected = tuple(dict.fromkeys(predictions))[-len(set(references)) :]
-    if not selected or selected == ("",):
-        return VerificationResult(None, False)
-    return VerificationResult(
-        selected[-1] or None, _math_correct(predictions, references), selected
+    references = _math_references(question, reference_answer, reference_is_solution)
+    predictions, result = _math_predictions(question, response, references)
+    return (
+        replace(result, correct=_math_correct(predictions, references))
+        if predictions
+        else result
     )

@@ -1,0 +1,47 @@
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights:   6%|▌         | 12/201 [00:00<00:02, 65.22it/s]Loading weights:  14%|█▍        | 29/201 [00:00<00:01, 96.00it/s]Loading weights:  21%|██        | 42/201 [00:00<00:01, 97.28it/s]Loading weights:  27%|██▋       | 54/201 [00:00<00:01, 99.44it/s]Loading weights:  32%|███▏      | 65/201 [00:00<00:01, 87.56it/s]Loading weights:  37%|███▋      | 74/201 [00:00<00:01, 85.18it/s]Loading weights:  44%|████▍     | 88/201 [00:00<00:01, 99.90it/s]Loading weights:  49%|████▉     | 99/201 [00:01<00:01, 84.35it/s]Loading weights:  54%|█████▍    | 109/201 [00:01<00:01, 70.29it/s]Loading weights:  58%|█████▊    | 117/201 [00:01<00:01, 69.45it/s]Loading weights:  63%|██████▎   | 127/201 [00:01<00:01, 54.94it/s]Loading weights:  67%|██████▋   | 134/201 [00:01<00:01, 51.53it/s]Loading weights:  70%|███████   | 141/201 [00:02<00:01, 52.03it/s]Loading weights:  81%|████████  | 162/201 [00:02<00:00, 81.35it/s]Loading weights:  87%|████████▋ | 174/201 [00:02<00:00, 87.56it/s]Loading weights:  93%|█████████▎| 186/201 [00:02<00:00, 94.94it/s]Loading weights:  98%|█████████▊| 197/201 [00:02<00:00, 94.50it/s]Loading weights: 100%|██████████| 201/201 [00:02<00:00, 81.80it/s]
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 18004.76it/s]
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from WANDB_API_KEY.
+wandb: Currently logged in as: tsawada to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: setting up run 028dcbe7769a4311b85e940246232edf
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/long-grpo-rhomath-gsm8k-seed42-vllm-h100-200iter-02/wandb/run-20261120_140636-028dcbe7769a4311b85e940246232edf
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run long-grpo-rhomath-seed42-h100-200iter-02
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/tsawada/vineppo/runs/028dcbe7769a4311b85e940246232edf
+wandb: updating run metadata
+wandb: uploading wandb-summary.json; uploading config.yaml
+wandb: 
+wandb: Run history:
+wandb:          actor_learning_rate ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:        actor_refresh_seconds █▁▁▁▃▁▁▁▁▂▁▂▂▂▁▁▁▁▁▂▁▁▁▂▅▂▁▂▂▁▁▁▁▁▁▁▁▂▁▁
+wandb:         actor_update_seconds ▆▂▆▂▆▁▂▁▁▃▅▂▂█▅▂▂▂▂▂▆▂▂▂▂▂█▂▂▃▂█▂▂▂▂▂▆▂▂
+wandb:          allocated_bytes_end ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                    approx_kl ▁▁▁▁▁▁▁▁▁▂▂▂▂▂▂▃▂▂▂▂▄▅▂█▂▂▃█▅▆▆▃▆▂▂▂▂▄▄▂
+wandb:     budget/iteration_seconds ▁▁▁▁▁▂▂▂▂▂▂▂▂▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▆▆▆▇▇▇▇█████
+wandb:      budget/mc_continuations ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         budget/mc_expansions ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:             budget/mc_tokens ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb: budget/primary_continuations ▁▁▁▁▂▂▂▃▃▃▃▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▆▆▆▆▆▆▇▇▇▇▇▇██
+wandb:                          +49 ...
+wandb: 
+wandb: Run summary:
+wandb:          actor_learning_rate 1e-05
+wandb:        actor_refresh_seconds 0.22079
+wandb:         actor_update_seconds 6.34218
+wandb:          allocated_bytes_end 4555778048
+wandb:                    approx_kl 0.00053
+wandb:     budget/iteration_seconds 2464.12721
+wandb:      budget/mc_continuations 0
+wandb:         budget/mc_expansions 0
+wandb:             budget/mc_tokens 0
+wandb: budget/primary_continuations 25600
+wandb:                          +67 ...
+wandb: 
+wandb: 🚀 View run long-grpo-rhomath-seed42-h100-200iter-02 at: https://forge.coreweave.com/wandb/tsawada/vineppo/runs/028dcbe7769a4311b85e940246232edf
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: Synced 3 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/long-grpo-rhomath-gsm8k-seed42-vllm-h100-200iter-02/wandb/run-20261120_140636-028dcbe7769a4311b85e940246232edf/logs
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+srun: error: atl1-1-03-013-3-0: task 0: Killed

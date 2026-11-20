@@ -19,7 +19,7 @@ from pathlib import Path
 os.environ["HF_HUB_OFFLINE"] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from core.vllm_inference import BASE_MODEL, gpu_identity
+from core.vllm_inference import BASE_MODEL, gpu_identity, slurm_attempt
 
 
 def main() -> None:
@@ -37,6 +37,7 @@ def main() -> None:
     host = socket.gethostname()
     port = 20000 + (int(os.environ["SLURM_JOB_ID"]) * 16 + rank) % 20000
     identity = {
+        **slurm_attempt(),
         "rank": rank,
         "url": f"http://{host}:{port}",
         "host": host,
