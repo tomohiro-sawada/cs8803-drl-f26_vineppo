@@ -1,18 +1,26 @@
 # Handoff 2: batched VinePPO and GRPO on PACE-ICE
 
-Written 20261119-225338 at commit `fefee7e` (working tree dirty, see "Uncommitted changes").
+Written 20261119-225338 at commit `fefee7e`; updated 20261119-230622 at commit `4050b3d` with Tom's decisions (see "Decisions from Tom"). Everything is committed and pushed to `origin/tom/work`.
 Continues `20261119T173853Z_vineppo_grpo_cluster_handoff.md`; read that for the full spec.
 Tom's target: RhoMath 1.1B results within about 12 hours. The small model (MobileLLM, SmolLM) is dropped.
 
 ## State in one paragraph
 
-The distributed sampler, the single-GPU colocated layout and evaluation through the replica all work end to end for **GRPO**. The 50-iteration GRPO pilot reached iteration 39 and then **failed** at its iteration-40 validation because of a bug in my retry code. **VinePPO cannot run a pilot yet**: 2.3% of sampled responses are rejected by the strict segmentation check, which aborts the run. That needs a policy decision from Tom, not a silent fix.
+The distributed sampler, the single-GPU colocated layout and evaluation through the replica all work end to end for **GRPO**. The 50-iteration GRPO pilot reached iteration 39 and then **failed** at its iteration-40 validation because of a bug in my retry code. **VinePPO cannot run a pilot yet**: 2.3% of sampled responses are rejected by the strict segmentation check, which aborts the run. Tom has now decided how to fix that (below); it is not implemented.
+
+## Decisions from Tom (20261119-230622)
+
+- **Segmentation: approved.** Keep the exact sampled token IDs and compute character spans by decoding them incrementally, instead of re-encoding the decoded text. Update the regression tests in `tests/core/test_segmentation.py` and the `AGENT INSTRUCTIONS` note in `src/core/segmentation.py` to record the new policy.
+- **Not approved yet:** what to do when a step boundary falls inside a token. Upstream assigns the token to the step containing its first character. Keep raising until Tom signs off; no such case occurred in 512 samples.
+- **Learning signal: approved order of work.** Before any hyperparameter tuning: (1) more validation rounds per checkpoint, (2) a longer run, (3) upstream's 512 episodes per iteration if still flat, (4) only then a learning-rate sweep.
 
 ## Do these first
 
-1. **Check job 7184580 (`smoke-resume-grpo`).** It was running when this was written. It is the first GPU test of resume on the vLLM backend (plain resume, no selection). Output: `$OUT/smoke-resume-grpo-01`. It should reach iteration 6 from `smoke-e2e-grpo-01/checkpoints/iteration-4.pt`.
-2. **Fix the retry bug, then resume the GRPO pilot** (details below).
-3. **Ask Tom for the segmentation decision** before touching the VinePPO arm.
+1. **Fix the retry bug, then resume the GRPO pilot** (details below).
+2. **Implement incremental-decoding segmentation**, rerun `scripts.diagnostics.sample_segmentation` to confirm the rejection rate, then run the VinePPO benchmark and pilot.
+3. **Rerun the pilots with a better measurement** (see "Learning signal").
+
+Job 7184580 (`smoke-resume-grpo`) **completed, exit 0**: plain resume on the vLLM backend works. I did not inspect its output beyond the exit status (`$OUT/smoke-resume-grpo-01`).
 
 Job 7184517 (`flash-attn-build`) is Tom's, not part of this work. Leave it alone.
 
@@ -51,13 +59,13 @@ Resume **with selection** on the vLLM backend has never run on a GPU. It should 
   - 10 are `roundtrip`: the sampled token IDs are not the tokenizer's canonical encoding of their own text (for example sampled `+`,`$` versus re-encoded `+$`).
   - 2 are `upstream_or_span`: length-truncated 1024-token responses, `ValueError: too many values to unpack`.
 - **Consequence:** a 128-episode iteration is clean with probability about 5%; a 50-iteration run essentially never. Job 7184402 (`smoke-e2e-vineppo`) died this way at iteration 4. The earlier 3-iteration VinePPO smoke passed by luck.
-- **Why I did not fix it:** `src/core/segmentation.py` carries `AGENT INSTRUCTIONS` forbidding silent recovery; changing the policy needs an explicit decision and updated tests in `tests/core/test_segmentation.py`.
-- **Options to put to Tom:**
-  1. Compute character spans by decoding the sampled tokens incrementally, so no re-encoding is needed. Keeps every sample and its exact tokens. Does not address the two truncated-response failures.
-  2. Treat a rejected response as a single step (one advantage for the whole response).
-  3. Drop or resample rejected episodes. Simple, but it biases the behaviour distribution and breaks the fixed 16x8 batch shape.
+- **Cause of the 10:** at T=1 the model sometimes emits a token sequence that is not the canonical encoding of its text. Both decode to the same string, but re-encoding gives different IDs, so the check fails.
+- **The 2 truncated-response failures are a separate bug** in the GSM8K step splitter on a 1024-token response. Incremental decoding will not fix them. Not diagnosed; the records are in `$OUT/segmentation-rate-01/records.jsonl`.
+- **What upstream does** (read at `9f716e6`, `episode_generator_with_reward_function.py` and `math_episode_generator_with_mc_advantages.py`): it keeps only text, re-tokenizes `query + response` with offsets, checks that the new IDs decode back to the same text, and assigns each token the advantage of the step containing its first character. Responses whose step splitting raises are logged, counted in `parse_failed`, and dropped.
+- **Why we do not copy that:** the training sequence would then be the canonical encoding and not the sampled one, so for about 2% of episodes the gradient is taken on a path the policy did not sample. Old log-probabilities are rescored on the training sequence, so the PPO ratio is unaffected; the bias is in which sequence is trained on, and is probably small (not measured). Re-tokenizing remains a defensible alternative if matching upstream matters more.
+- **Decided:** incremental decoding (see "Decisions from Tom"). The other options considered were treating a rejected response as one step, and dropping rejected episodes.
 
-Until this is decided, do not launch VinePPO benchmarks or the VinePPO pilot.
+Do not launch VinePPO benchmarks or the VinePPO pilot until the fix is in and the rejection rate is remeasured.
 
 ## Results so far
 
@@ -80,9 +88,31 @@ All outputs are under `OUT=/home/hice1/tsawada7/scratch/cs8803-drl-f26_vineppo/t
 - **Pilot learning signal: none yet.** Validation was 54.69% at iteration 0, then 53.89%, 54.16%, 54.16% at iterations 10, 20, 30. Two smoke runs with the same seed gave baselines of 53.89% and 54.42%, so run-to-run noise is at least half a point and these differences are inside it. `approx_kl` rounds to 0.000 and `clip_frac` is 0.001 throughout: at LR 1e-5 and 8 optimizer steps per iteration the policy is barely moving. Report this as it is; do not tune it without Tom.
 - **Validation is not reproducible across runs** even at a fixed seed, because requests are batched concurrently on the replica.
 
+## Learning signal
+
+The flat curve is expected at this scale and is not yet evidence of a problem.
+
+- **The pilot is small next to upstream's recipe** (`configs/trainers/ppo_MATH.jsonnet` and the Rho configs at `9f716e6`):
+
+| | Upstream | Our pilot |
+|---|---|---|
+| Episodes per iteration | 512 | 128 |
+| Iterations | 650 (GSM8K) | 50, reached 39 |
+| Batch per optimizer step | 64 | 32 |
+| Optimizer steps per iteration | 16 | 8 |
+| Learning rate | 1e-6, full fine-tune | 1e-5, LoRA rank 16 |
+| Sampling temperature | 0.6, top-p 0.9 | 1.0, no top-p |
+
+  That is about 3% of upstream's optimizer steps and 1.5% of its episodes.
+- **One validation round cannot resolve a small gain:** on 373 questions the standard error is about 2.6 points.
+- **The policy is moving slowly:** KL to the reference grew from 0.0002 to 0.016 over 39 iterations; gradient norm 0.35-0.47 (clip is 1.0); clip fraction 0.1-0.2%. Mean training reward was 0.39 over the first ten iterations and 0.45 over the last ten, which is noisy because each iteration draws different prompts.
+- **Approved next steps, in order:** raise `--validation-rounds` (each round costs about 45 s; four rounds halves the standard error), run longer (650 iterations at this batch size is roughly two hours plus validation), then try 512 episodes per iteration, and only then sweep the learning rate.
+- **Not verified:** how upstream uses its sampling temperature in the loss, and upstream's KL coefficient (the Rho configs import `refKl0.0001.jsonnet`, which I did not open; ours is 1e-4).
+
 ## Not done
 
-- VinePPO benchmark and pilot (blocked, above). Jobs 7184582 and 7184584 were cancelled before starting.
+- Incremental-decoding segmentation (approved, not implemented).
+- VinePPO benchmark and pilot (blocked on the above). Jobs 7184582 and 7184584 were cancelled before starting.
 - Frozen sampler replay (`scripts/diagnostics/benchmark_sampler_replay.py`): never executed.
 - 1 learner + 3 workers: never run. It needs `--ntasks=4 --nodes=2` for A40s; untested.
 - Budget-gate write-up and the matched benchmark table.
@@ -107,17 +137,12 @@ OUT=/home/hice1/tsawada7/scratch/cs8803-drl-f26_vineppo/training/pace_ice
 - **Disk:** `$OUT` is 52 GB against a 300 GB scratch quota; checkpoints are 4.55 GB each. Nothing has been deleted.
 - Do not run the test suite or GPU code on the login node; use `sbatch` on `ice-cpu` for tests.
 
-## Uncommitted changes
+## Commits from this session
 
-Mine, not yet committed:
+Both are on `origin/tom/work`; the working tree was clean at `4050b3d`.
 
-- `experiments/training/launch.sh`: `--worker-placement dedicated|colocated`, wider GPU allowlist, optional `--expected-gpu`.
-- `experiments/training/run.py`: the same option and the colocated GPU check.
-- `experiments/training/vllm_worker.py`: `--gpu-memory-utilization` is now required (0.4 colocated, 0.85 dedicated).
-- `experiments/training/pace_ice/{train,benchmark}.slurm`: constraint covers all five GPU types.
-- `tests/test_training_launchers.py`: tests for the above.
-
-Not mine (Tom's concurrent work; do not revert or commit on his behalf): `.gitignore`, `scripts/README.md`, `scripts/setup/flash_attention_installation.sh`, `scripts/setup/build_flash_attention_local.sh`, `scripts/diagnostics/log_pace_ice.py`, `tests/test_log_pace_ice.py`.
+- `0224577`: `--worker-placement dedicated|colocated` in `launch.sh` and `run.py`; wider PACE GPU allowlist with optional `--expected-gpu`; `--gpu-memory-utilization` required in `vllm_worker.py` (0.4 colocated, 0.85 dedicated); launcher tests; tonight's Slurm logs; this document.
+- `4050b3d`: Tom's concurrent work, committed at his request (PACE-ICE scheduler logger and test, FlashAttention build scripts, `.gitignore` and `scripts/README.md` edits).
 
 ## Design decisions made so far
 
