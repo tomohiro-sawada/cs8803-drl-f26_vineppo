@@ -104,15 +104,15 @@ def test_vine_metrics_stream_estimates_without_enabling_prefix_payloads(
     make, inputs = training_case
     run = make()
     estimates, logged = [], []
-    estimate = run.estimate_vineppo
+    estimate = run.estimate_vineppo_batch
 
     def capture(*args, **kwargs):
         assert kwargs["record_prefix_samples"] is None
         result = estimate(*args, **kwargs)
-        estimates.append(result)
+        estimates.extend(result)
         return result
 
-    monkeypatch.setattr(run, "estimate_vineppo", capture)
+    monkeypatch.setattr(run, "estimate_vineppo_batch", capture)
     metrics = run.train(**inputs, record_metrics=logged.append)[0]
     values = torch.tensor(
         [v for estimate in estimates for v in estimate.mc_prefix_values],

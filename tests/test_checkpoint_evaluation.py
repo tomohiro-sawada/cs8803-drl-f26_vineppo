@@ -452,6 +452,7 @@ def test_math_solution_and_ordered_digest(tmp_path, monkeypatch):
         "math",
         examples,
         generator,
+        {},
     )
     assert result["accuracy"] == 1.0
     other = tmp_path / "reordered"

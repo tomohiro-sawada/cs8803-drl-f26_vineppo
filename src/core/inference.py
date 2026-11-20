@@ -154,6 +154,36 @@ class HFInference:
     ) -> None:
         self.close()
 
+    def sync(self, version: int) -> None:
+        """The sampler is the live actor itself: there is nothing to publish."""
+
+    def generate_each(
+        self,
+        prefixes: Sequence[Sequence[int]],
+        budgets: Sequence[int],
+        *,
+        num_samples: int,
+        temperature: float,
+    ) -> list[list[Completion]]:
+        """One generate call per prefix, each with its own exact budget.
+
+        Sequential calls bound KV memory to one prefix's siblings and keep the
+        global RNG stream independent of how prefixes would be batched. A
+        malformed result fails before any further prefix is sampled.
+        """
+        results = []
+        for prefix, budget in zip(prefixes, budgets, strict=True):
+            groups = self.generate(
+                prefixes=[prefix],
+                num_samples=num_samples,
+                max_new_tokens=budget,
+                temperature=temperature,
+            )
+            if len(groups) != 1 or len(groups[0]) != num_samples:
+                raise ValueError("generation returned invalid completion cardinality")
+            results += groups
+        return results
+
     @torch.no_grad()
     def generate(
         self,

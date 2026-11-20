@@ -48,6 +48,7 @@ def test_group_advantages_order_lengths_and_fixed_updates(
     for name in (
         "step_boundaries_from_tokens",
         "estimate_vineppo",
+        "estimate_vineppo_batch",
         "token_values",
         "update_critic",
     ):

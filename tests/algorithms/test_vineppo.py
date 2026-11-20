@@ -11,7 +11,7 @@ from algorithms.vineppo import (
     vineppo_advantage_method,
 )
 from core.data import Episode, MCContinuation, PrefixSamples, VinePPOValueEstimate
-from core.inference import Completion
+from core.inference import Completion, HFInference
 
 BOUNDARIES = (0, 2, 5, 6)
 INVALID_BOUNDARIES = [
@@ -74,6 +74,8 @@ def test_compute_step_advantages_rejects_nonfinite_reward(reward):
 
 
 class FakeInference:
+    generate_each = HFInference.generate_each
+
     def __init__(self, groups):
         self.groups = groups
         self.calls = []

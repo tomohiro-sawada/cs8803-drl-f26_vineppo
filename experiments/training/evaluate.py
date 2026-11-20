@@ -1,4 +1,11 @@
-"""Offline checkpoint evaluation; validation selects, frozen selection gates test."""
+"""Offline checkpoint evaluation; validation selects, frozen selection gates test.
+
+--backend hf loads the actor on this process's GPU. --backend vllm publishes the
+checkpoint's LoRA adapter, under a name embedding its content hash, to the idle
+training replicas and samples there; the training actor stays loaded and is
+verified untouched afterwards. --baseline evaluates the unadapted base model
+(iteration 0), which is reported separately and is never a selection candidate.
+"""
 
 import argparse
 import hashlib
@@ -18,10 +25,18 @@ sys.path.insert(0, str(ROOT))
 
 import torch
 from datasets import DatasetDict, load_from_disk
-from transformers import set_seed
+from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 from core.data import Example
+from core.inference import TextCompletion
 from core.verifier import VERIFIER_POLICY, VERIFIER_PROVENANCE
+from core.vllm_inference import (
+    BASE_MODEL,
+    VLLMClient,
+    publish_adapter,
+    retire_adapter,
+    stream_seed,
+)
 from experiments.training.tracking import WandBTracker
 from runtime.checkpoint_actor import load_checkpoint_actor
 from runtime.evaluate import evaluate, inference_context
@@ -49,6 +64,69 @@ PROTOCOL = {
     "seed_policy": "seed + zero-based round index",
     "accuracy_policy": "mean Pass@1; no truncation penalty",
 }
+VLLM_PROTOCOL = PROTOCOL | {
+    "backend": "vllm",
+    "stop_policy": "server-side stop string",
+    "seed_policy": "sha256(seed, question counter across rounds) per request",
+}
+
+
+def protocol_for(backend):
+    return VLLM_PROTOCOL if backend == "vllm" else PROTOCOL
+
+
+class RemotePaperGenerator:
+    """Paper decoding on vLLM replicas serving `model`; one seeded request per prompt."""
+
+    def __init__(self, client, tokenizer, model, seed, release):
+        assert tokenizer.bos_token_id is not None and tokenizer.eos_token_id is not None
+        self.client, self.tokenizer, self.model = client, tokenizer, model
+        self.seed, self.release, self.count = seed, release, 0
+
+    def generate(self, prompts, *, num_samples, max_new_tokens, temperature):
+        assert num_samples == 1 and max_new_tokens == 1024 and temperature == 0.35
+        prefixes = self.tokenizer(prompts, add_special_tokens=True, padding=False)[
+            "input_ids"
+        ]
+        assert all(p[0] == self.tokenizer.bos_token_id for p in prefixes), (
+            "Expected BOS"
+        )
+        budgets = [min(max_new_tokens, 2047 - len(p)) for p in prefixes]
+        assert all(b > 0 for b in budgets), "Prompt exceeds paper context size"
+        results = self.client.complete(
+            [
+                {
+                    "model": self.model,
+                    "prompt": prefix,
+                    "n": 1,
+                    "seed": stream_seed(self.seed, self.count + index),
+                    "max_tokens": budget,
+                    "temperature": temperature,
+                    "top_p": 0.9,
+                    "top_k": 0,
+                    "min_p": 0.0,
+                    "repetition_penalty": 1.0,
+                    "presence_penalty": 0.0,
+                    "frequency_penalty": 0.0,
+                    "stop": [STOP],
+                    "add_special_tokens": False,
+                    "skip_special_tokens": True,
+                    "return_token_ids": True,
+                }
+                for index, (prefix, budget) in enumerate(
+                    zip(prefixes, budgets, strict=True)
+                )
+            ]
+        )
+        self.count += len(prompts)
+        return [
+            [TextCompletion(choice["text"], choice["finish_reason"])]
+            for (choice,) in results
+        ]
+
+    def close(self):
+        self.release()
+        self.client.close()
 
 
 def write_json(path, value):
@@ -87,6 +165,10 @@ def parse_args(argv=None):
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch-size", type=positive_int, default=4)
     parser.add_argument("--expected-gpu")
+    parser.add_argument("--baseline", action="store_true")
+    parser.add_argument("--backend", choices=("hf", "vllm"), default="hf")
+    parser.add_argument("--num-workers", type=positive_int)
+    parser.add_argument("--worker-dir", type=Path)
     parser.add_argument(
         "--wandb-mode", choices=("online", "offline", "disabled"), default="disabled"
     )
@@ -95,9 +177,19 @@ def parse_args(argv=None):
         parser.add_argument(f"--wandb-{name}")
     args = parser.parse_args(argv)
     if args.split == "validation" and (
-        args.checkpoint is None or args.selection is not None
+        (args.checkpoint is None) != args.baseline or args.selection is not None
     ):
-        parser.error("validation requires --checkpoint and forbids --selection")
+        parser.error(
+            "validation requires exactly one of --checkpoint/--baseline, no --selection"
+        )
+    if args.baseline and (args.split == "test" or args.checkpoint_source is not None):
+        parser.error("--baseline is a validation of the unadapted base model")
+    if (args.backend == "vllm") != (args.num_workers is not None) or (
+        args.backend == "vllm"
+    ) != (args.worker_dir is not None):
+        parser.error(
+            "--backend vllm requires --num-workers and --worker-dir, hf neither"
+        )
     if args.split == "test" and (
         args.selection is None or args.checkpoint is not None or args.rounds != 16
     ):
@@ -150,7 +242,10 @@ def validate_validation(result, task, training_output):
     assert result["task"] == task and result["split"] == "validation"
     assert result["training_run"]["path"] == str(training_output)
     protocol = result["protocol"]
-    assert all(protocol[key] == value for key, value in PROTOCOL.items())
+    assert all(
+        protocol[key] == value
+        for key, value in protocol_for(protocol.get("backend")).items()
+    )
     n = protocol["rounds"]
     assert type(n) is int and n > 0
     assert type(protocol["batch_size"]) is int and protocol["batch_size"] > 0
@@ -230,7 +325,7 @@ def selected_checkpoint(selection, task, training_output):
     return checkpoint
 
 
-def run_rounds(args, task, examples, generator):
+def run_rounds(args, task, examples, generator, identity):
     rounds = []
     for index in range(args.rounds):
         seed = args.seed + index
@@ -261,7 +356,9 @@ def run_rounds(args, task, examples, generator):
                 )
                 for record in records:
                     stream.write(
-                        json.dumps(asdict(record) | {"round": index, "seed": seed})
+                        json.dumps(
+                            asdict(record) | {"round": index, "seed": seed} | identity
+                        )
                         + "\n"
                     )
                 stream.flush()
@@ -314,7 +411,7 @@ def main(argv=None):
         model_path = Path(cli["model_path"]).resolve(strict=True)
         dataset_path = Path(cli["dataset_path"]).resolve(strict=True)
         assert model_path.is_dir() and dataset_path.is_dir(), "Local artifacts required"
-        protocol = PROTOCOL | {
+        protocol = protocol_for(args.backend) | {
             "rounds": args.rounds,
             "seed": args.seed,
             "batch_size": args.batch_size,
@@ -326,6 +423,8 @@ def main(argv=None):
                 "Test CLI protocol differs from frozen selection"
             )
             checkpoint = selected_checkpoint(selection, task, args.training_output)
+        elif args.baseline:
+            checkpoint = model_path / "model.safetensors"
         else:
             checkpoint = args.checkpoint.expanduser().resolve(strict=True)
         source = (
@@ -348,52 +447,126 @@ def main(argv=None):
         assert source_metadata["cli"]["task"] == task
         metadata = source_metadata
         cli = metadata["cli"]
-        assert torch.cuda.is_available(), "CUDA required; no CPU fallback"
-        assert torch.cuda.device_count() == 1, "Expose exactly one CUDA device"
-        gpu = torch.cuda.get_device_name(0)
-        assert (
-            args.expected_gpu is None or args.expected_gpu.casefold() in gpu.casefold()
-        ), "Expected GPU mismatch"
-        torch.cuda.set_device(0)
-        model, tokenizer, info = load_checkpoint_actor(
-            checkpoint, model_path, device="cuda:0"
-        )
-        if info["dtype"] == "bfloat16":
-            assert torch.cuda.is_bf16_supported(including_emulation=False), (
-                "Native BF16 CUDA support required"
+        client = workers = None
+        if args.backend == "vllm":
+            client, workers = VLLMClient.from_directory(
+                args.worker_dir,
+                count=args.num_workers,
+                api_key=os.environ["VLLM_API_KEY"],
+                model_path=model_path,
             )
-        assert info["tokenizer_sha256"] == metadata["tokenizer_sha256"], (
-            "Tokenizer hash mismatch"
-        )
-        expected_evaluation_provenance = {
-            "schema_version": 1,
-            "task": cli["task"],
-            "prompt": metadata["prompt"],
-            "tokenizer_sha256": metadata["tokenizer_sha256"],
-            "dataset": metadata["dataset"],
-        }
-        assert info["evaluation_provenance"] == expected_evaluation_provenance, (
-            "Checkpoint evaluation provenance mismatch"
-        )
-        config = dict(info["training_config"])
-        algorithm = config.pop("algorithm_type")
-        assert cli["algorithm"] in ("ppo", "vineppo", "grpo", "rloo")
-        assert (
-            algorithm
-            == f"algorithms.{cli['algorithm']}.{ {'ppo': 'PPOConfig', 'vineppo': 'VinePPOConfig', 'grpo': 'GRPOConfig', 'rloo': 'RLOOConfig'}[cli['algorithm']] }"
-        ), "Algorithm identity mismatch"
-        assert config == metadata["trainer_config"], "Training config mismatch"
-        for key in ("dtype", "finetuning"):
-            assert info[key] == cli[key], f"Training {key} mismatch"
-        assert info["lora"] == metadata["model"]["lora"], "Training LoRA mismatch"
-        assert file_sha256(checkpoint) == info["checkpoint_sha256"], (
-            "Checkpoint changed during loading"
-        )
-        checkpoint_info = {
-            "path": str(checkpoint),
-            "sha256": info["checkpoint_sha256"],
-            "iteration": info["iteration"],
-        }
+            gpu = [worker["gpu"] for worker in workers]
+        else:
+            assert torch.cuda.is_available(), "CUDA required; no CPU fallback"
+            assert torch.cuda.device_count() == 1, "Expose exactly one CUDA device"
+            gpu = torch.cuda.get_device_name(0)
+            assert (
+                args.expected_gpu is None
+                or args.expected_gpu.casefold() in gpu.casefold()
+            ), "Expected GPU mismatch"
+            torch.cuda.set_device(0)
+        device = "cpu" if args.backend == "vllm" else "cuda:0"
+        if args.baseline:
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_path, local_files_only=True, trust_remote_code=False
+            )
+            assert (
+                hashlib.sha256(
+                    tokenizer.backend_tokenizer.to_str().encode("utf-8")
+                ).hexdigest()
+                == metadata["tokenizer_sha256"]
+            ), "Tokenizer hash mismatch"
+            info = {"baseline": True, "dtype": cli["dtype"]}
+            checkpoint_info = {
+                "path": str(checkpoint),
+                "sha256": file_sha256(checkpoint),
+                "iteration": 0,
+            }
+            model = None
+            if args.backend == "hf":
+                model = (
+                    AutoModelForCausalLM.from_pretrained(
+                        model_path,
+                        local_files_only=True,
+                        trust_remote_code=False,
+                        dtype=getattr(torch, cli["dtype"]),
+                        attn_implementation="sdpa",
+                        use_safetensors=True,
+                    )
+                    .to(device)
+                    .eval()
+                )
+        else:
+            model, tokenizer, info = load_checkpoint_actor(
+                checkpoint, model_path, device=device
+            )
+            if info["dtype"] == "bfloat16":
+                assert torch.cuda.is_bf16_supported(including_emulation=False), (
+                    "Native BF16 CUDA support required"
+                )
+            assert info["tokenizer_sha256"] == metadata["tokenizer_sha256"], (
+                "Tokenizer hash mismatch"
+            )
+            expected_evaluation_provenance = {
+                "schema_version": 1,
+                "task": cli["task"],
+                "prompt": metadata["prompt"],
+                "tokenizer_sha256": metadata["tokenizer_sha256"],
+                "dataset": metadata["dataset"],
+            }
+            assert info["evaluation_provenance"] == expected_evaluation_provenance, (
+                "Checkpoint evaluation provenance mismatch"
+            )
+            config = dict(info["training_config"])
+            algorithm = config.pop("algorithm_type")
+            assert cli["algorithm"] in ("ppo", "vineppo", "grpo", "rloo")
+            assert (
+                algorithm
+                == f"algorithms.{cli['algorithm']}.{ {'ppo': 'PPOConfig', 'vineppo': 'VinePPOConfig', 'grpo': 'GRPOConfig', 'rloo': 'RLOOConfig'}[cli['algorithm']] }"
+            ), "Algorithm identity mismatch"
+            assert config == metadata["trainer_config"], "Training config mismatch"
+            for key in ("dtype", "finetuning"):
+                assert info[key] == cli[key], f"Training {key} mismatch"
+            assert info["lora"] == metadata["model"]["lora"], "Training LoRA mismatch"
+            assert file_sha256(checkpoint) == info["checkpoint_sha256"], (
+                "Checkpoint changed during loading"
+            )
+            checkpoint_info = {
+                "path": str(checkpoint),
+                "sha256": info["checkpoint_sha256"],
+                "iteration": info["iteration"],
+            }
+        identity = {}
+        if args.backend == "vllm":
+            served = client.served()
+            actor, release = BASE_MODEL, lambda: None
+            if not args.baseline:
+                assert info["lora"] is not None, "Replicas serve LoRA actors"
+                actor = publish_adapter(
+                    client,
+                    model,
+                    args.output / "actor",
+                    f"eval-{checkpoint_info['iteration']}",
+                    {"checkpoint": checkpoint_info},
+                )
+                release = lambda: retire_adapter(client, actor, args.output / "actor")
+            identity = {"actor": actor}
+
+            def make_generator():
+                def restore():
+                    release()
+                    assert client.served() == served, (
+                        "Evaluation changed the replicas' training actors"
+                    )
+
+                return RemotePaperGenerator(
+                    client, tokenizer, actor, args.seed, restore
+                )
+        else:
+
+            def make_generator():
+                return PaperGenerator(model, tokenizer)
+
         if selection is not None:
             assert checkpoint_info == selection["best"]["checkpoint"], (
                 "Selected checkpoint identity mismatch"
@@ -418,7 +591,7 @@ def main(argv=None):
             "training_run": training_run,
             "checkpoint_source": source,
             "evaluation_run": training_run,
-        }
+        } | identity
         write_json(
             args.output / "provenance.json",
             base
@@ -433,7 +606,8 @@ def main(argv=None):
                     name: version(name) for name in ("torch", "transformers", "peft")
                 },
                 "cuda": torch.version.cuda,
-                "attention": "sdpa",
+                "attention": "sdpa" if args.backend == "hf" else "vllm",
+                "workers": workers,
                 "evaluation_code_sha256": file_sha256(Path(__file__)),
                 "verifier_policy": VERIFIER_POLICY,
                 "verifier_provenance": VERIFIER_PROVENANCE,
@@ -454,10 +628,8 @@ def main(argv=None):
                 "checkpoint": checkpoint_info,
             },
         ) as tracker:
-            with inference_context(
-                lambda: PaperGenerator(model, tokenizer)
-            ) as generator:
-                result = base | run_rounds(args, task, examples, generator)
+            with inference_context(make_generator) as generator:
+                result = base | run_rounds(args, task, examples, generator, identity)
             tracker.log_evaluation(result, selection=selection)
         write_json(args.output / "result.json", result)
         return result

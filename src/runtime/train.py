@@ -38,6 +38,7 @@ from algorithms.vineppo import (
     VinePPOConfig,
     continuation_budget,
     estimate_vineppo,
+    estimate_vineppo_batch,
     vineppo_advantage_method,
 )
 from core.data import (
@@ -229,6 +230,25 @@ class PPOTrainer:
             score_response=score_response,
             num_samples=num_samples,
             max_new_tokens=self._generation_cap(max_new_tokens),
+            max_sequence_length=self.config.max_sequence_length,
+            temperature=self.config.temperature,
+            record_prefix_samples=record_prefix_samples,
+        )
+
+    def estimate_vineppo_batch(
+        self,
+        items: Sequence[
+            tuple[str, Episode, tuple[int, ...], Callable[[list[int], str], float]]
+        ],
+        *,
+        record_prefix_samples: Callable[[PrefixSamples], None] | None = None,
+    ) -> list[VinePPOValueEstimate]:
+        """Estimate every episode of an iteration from one batch of MC requests."""
+        return estimate_vineppo_batch(
+            items,
+            inference=self.inference,
+            num_samples=self.config.mc_num_samples,
+            max_new_tokens=self.config.max_new_tokens,
             max_sequence_length=self.config.max_sequence_length,
             temperature=self.config.temperature,
             record_prefix_samples=record_prefix_samples,
@@ -441,6 +461,8 @@ class PPOTrainer:
         history = []
         while self.iteration < self.config.num_iterations:
             self._at_boundary = False
+            # Freeze the behavior actor: every sampler serves this iteration's weights.
+            self.inference.sync(self.iteration)
             indices = torch.randperm(len(examples), generator=self._generator)[
                 : self.config.prompts_per_iteration
             ].tolist()
@@ -452,7 +474,7 @@ class PPOTrainer:
             episodes = []
             prefix_values = _Moments()
             step_counts = _Moments()
-            raw_episodes, episode_ids = [], []
+            raw_episodes, episode_ids, scorers = [], [], []
             for index, groups in zip(indices, completions, strict=True):
                 example = examples[index]
 
@@ -486,25 +508,32 @@ class PPOTrainer:
                         score_response(completion.token_ids, completion.finish_reason),
                         completion.finish_reason,
                     )
-                    episode_id = f"{self.iteration}:{example.id}:{sample_index}"
-                    if grouped or isinstance(algorithm, PPOConfig):
-                        raw_episodes.append(episode)
-                        episode_ids.append(episode_id)
-                        continue
-                    estimate = self.estimate_vineppo(
-                        episode_id,
-                        episode,
-                        step_boundaries=step_boundaries_from_tokens(
-                            episode.response_ids,
-                            tokenizer,
-                            dataset=task,
-                            eos_token_ids=eos_ids,
-                            context_ids=episode.prompt_ids,
-                        ),
-                        score_response=score_response,
-                        num_samples=self.config.mc_num_samples,
-                        record_prefix_samples=record_prefix_samples,
-                    )
+                    raw_episodes.append(episode)
+                    episode_ids.append(f"{self.iteration}:{example.id}:{sample_index}")
+                    scorers.append(score_response)
+            if isinstance(algorithm, VinePPOConfig):
+                # Segment every primary response, then queue all MC work at once.
+                estimates = self.estimate_vineppo_batch(
+                    [
+                        (
+                            episode_id,
+                            episode,
+                            step_boundaries_from_tokens(
+                                episode.response_ids,
+                                tokenizer,
+                                dataset=task,
+                                eos_token_ids=eos_ids,
+                                context_ids=episode.prompt_ids,
+                            ),
+                            scorer,
+                        )
+                        for episode_id, episode, scorer in zip(
+                            episode_ids, raw_episodes, scorers, strict=True
+                        )
+                    ],
+                    record_prefix_samples=record_prefix_samples,
+                )
+                for episode, estimate in zip(raw_episodes, estimates, strict=True):
                     prefix_values.add(estimate.mc_prefix_values)
                     step_counts.add([len(estimate.mc_prefix_values)])
                     if record_value_estimate is not None:

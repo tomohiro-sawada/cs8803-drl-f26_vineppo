@@ -34,6 +34,7 @@ def case(tmp_path, monkeypatch):
         expected_gpu="A40",
         wandb_entity=None,
         wandb_group=None,
+        backend="hf",
     )
     evaluation.write_json(
         tmp_path / "metadata.json",
