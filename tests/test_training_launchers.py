@@ -27,24 +27,33 @@ def launch(tmp_path):
     # Run only the stdlib containment preflight, never run.py or any model code.
     stub = (
         f"#!{sys.executable}\n"
-        + """import json, os, pathlib, sys
+        + """import json, os, pathlib, sys, time
 if pathlib.Path(sys.argv[0]).name == "srun":
     start = next(i for i, arg in enumerate(sys.argv) if i and not arg.startswith("--"))
     command = sys.argv[start:]
     with open(os.environ["SRUN_CAPTURE"] + "l", "a") as stream:
         stream.write(json.dumps(sys.argv[1:]) + chr(10))
     if command[1].endswith("vllm_worker.py"):
-        import time
         time.sleep(float(os.environ.get("WORKER_LIFETIME", "30")))
         sys.exit(3)
+    expected = int(os.environ.get("EXPECTED_SRUN_STEPS", "1"))
+    deadline = time.monotonic() + 5
+    capture = pathlib.Path(os.environ["SRUN_CAPTURE"] + "l")
+    while len(capture.read_text().splitlines()) < expected:
+        assert time.monotonic() < deadline, "Workers did not start"
+        time.sleep(0.01)
     pathlib.Path(os.environ["SRUN_CAPTURE"]).write_text(json.dumps(sys.argv[1:]))
     os.execv(command[0], command)
 elif sys.argv[1] == "-c":
     code = sys.argv[2]
     sys.argv = ["-c", *sys.argv[3:]]
     exec(compile(code, "<launcher-preflight>", "exec"))
+elif sys.argv[1:4] == ["-m", "experiments.training.finalize", "prepare"]:
+    print(os.environ["FINALIZE_STATUS"])
 else:
-    assert sys.argv[1] == "experiments/training/run.py"
+    assert sys.argv[1] == "experiments/training/run.py" or sys.argv[1:4] == [
+        "-m", "experiments.training.finalize", "run"
+    ]
     pathlib.Path(os.environ["PYTHON_CAPTURE"]).write_text(json.dumps({
         "argv": sys.argv[1:], "env": dict(os.environ), "cwd": os.getcwd(),
     }))
@@ -185,6 +194,7 @@ def test_wrapper_defaults_are_valid_runner_argv_and_offline(launch, cluster, gpu
 def test_explicit_lora_options_and_supported_algorithms(
     launch, cluster, algorithm, mode, learning_rate
 ):
+    dtype = "float32" if algorithm == "ppo" else "bfloat16"
     result = launch.run(
         cluster,
         mode,
@@ -206,7 +216,7 @@ def test_explicit_lora_options_and_supported_algorithms(
             "--warmup-iterations",
             "2",
             "--dtype",
-            "bfloat16",
+            dtype,
             "--checkpoint-every",
             "4",
         ]
@@ -221,7 +231,7 @@ def test_explicit_lora_options_and_supported_algorithms(
         args.warmup_iterations,
         args.dtype,
         args.checkpoint_every,
-    ) == (algorithm, 7, 2, "bfloat16", 4)
+    ) == (algorithm, 7, 2, dtype, 4)
     assert (args.finetuning, args.lora_rank, args.lora_alpha, args.num_samples) == (
         "lora",
         8,
@@ -477,9 +487,72 @@ def test_resumable_wrapper_resumes_latest_checkpoint_into_new_attempt(launch, tm
         assert rejected.returncode == 2 and "chosen by this wrapper" in rejected.stderr
 
 
+@pytest.mark.parametrize("backend", ["hf", "vllm"])
+@pytest.mark.parametrize("action", ["run", "complete"])
+def test_resumable_wrapper_dispatches_frozen_test(launch, tmp_path, backend, action):
+    root = tmp_path / "run"
+    manifest = root / "attempt-00/selection-frozen.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("{}")
+    launch.env.update(FINALIZE_STATUS=action)
+    flags = []
+    if backend == "vllm":
+        launch.env.update(
+            SLURM_NTASKS="1", SLURM_JOB_ID="77", VLLM_PYTHON=launch.env["PYTHON"]
+        )
+        flags = [
+            "--backend",
+            "vllm",
+            "--num-workers",
+            "1",
+            "--worker-placement",
+            "colocated",
+            "--finetuning",
+            "lora",
+        ]
+    result = subprocess.run(
+        [
+            "bash",
+            str(TRAINING / "skynet/train_resumable.slurm"),
+            str(root),
+            "--task",
+            "gsm8k",
+            "--model-path",
+            str(launch.model),
+            "--dataset-path",
+            str(launch.dataset),
+            "--evaluation",
+            "validation-test",
+            *flags,
+        ],
+        env=launch.env,
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    capture = Path(launch.env["PYTHON_CAPTURE"])
+    if action == "complete":
+        assert not capture.exists()
+        assert not (launch.cache / "workers").exists()
+        return
+    argv = json.loads(capture.read_text())["argv"]
+    assert argv[:3] == ["-m", "experiments.training.finalize", "run"]
+    args = runner.parse_args(argv[3:])
+    assert args.resume is None and args.resume_selection == manifest
+    assert args.mode == "evaluate" and args.output == root
+    if backend == "vllm":
+        assert args.worker_dir == launch.cache / "workers/77-0"
+
+
 def distributed(launch, workers, tasks):
     launch.env.update(
-        SLURM_NTASKS=str(tasks), SLURM_JOB_ID="77", VLLM_PYTHON=launch.env["PYTHON"]
+        SLURM_NTASKS=str(tasks),
+        SLURM_JOB_ID="77",
+        VLLM_PYTHON=launch.env["PYTHON"],
+        EXPECTED_SRUN_STEPS=str(workers + 1),
     )
     return launch.run(
         "pace_ice",
@@ -504,7 +577,7 @@ def test_distributed_layout_is_one_single_gpu_step_per_process(launch):
         == ["--nodes=1", "--ntasks=1", "--gpus=1", "--cpus-per-task=6", "--exact"]
         for step in steps
     )
-    worker_dir = launch.cache / "workers/77"
+    worker_dir = launch.cache / "workers/77-0"
     workers = sorted(
         (step for step in steps if "experiments/training/vllm_worker.py" in step),
         key=lambda step: step[step.index("--rank") + 1],
@@ -525,6 +598,41 @@ def test_worker_death_fails_the_job(launch):
     launch.env["WORKER_LIFETIME"] = "0"
     launch.env["PYTHON_CAPTURE"] = "/nonexistent/learner-never-finishes"
     assert distributed(launch, 1, 2).returncode != 0
+
+
+@pytest.mark.parametrize("placement,tasks", [("dedicated", "2"), ("colocated", "1")])
+def test_restart_separates_worker_attempts(launch, tmp_path, placement, tasks):
+    launch.env.update(
+        SLURM_NTASKS=tasks, SLURM_JOB_ID="77", VLLM_PYTHON=launch.env["PYTHON"]
+    )
+    flags = [
+        "--backend",
+        "vllm",
+        "--num-workers",
+        "1",
+        "--finetuning",
+        "lora",
+        "--worker-placement",
+        placement,
+    ]
+    first = launch.run("pace_ice", "train", flags)
+    assert first.returncode == 0, first.stderr
+    old = launch.cache / "workers/77-0/worker-0.json"
+    old.write_text("preserved")
+    flags += ["--output", str(tmp_path / "restart output")]
+    launch.env["SLURM_RESTART_COUNT"] = "1"
+    second = launch.run("pace_ice", "train", flags)
+    assert second.returncode == 0, second.stderr
+    captured = json.loads(Path(launch.env["PYTHON_CAPTURE"]).read_text())
+    assert (
+        runner.parse_args(captured["argv"][1:]).worker_dir
+        == launch.cache / "workers/77-1"
+    )
+    assert old.read_text() == "preserved"
+    assert launch.run("pace_ice", "train", flags).returncode != 0
+    launch.env["SLURM_RESTART_COUNT"] = "-1"
+    invalid = launch.run("pace_ice", "train", flags)
+    assert invalid.returncode == 2 and "Invalid SLURM_RESTART_COUNT" in invalid.stderr
 
 
 @pytest.mark.parametrize(

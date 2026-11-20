@@ -329,10 +329,12 @@ def test_resume_is_bitwise_exact_for_models_optimizers_rng_and_metrics(ppo_case)
     full, split = make("full", num_iterations=3), make("split")
     torch.manual_seed(101)
     expected_metrics = full.train(**inputs)
-    expected = torch.load(full.save_checkpoint(), weights_only=True)
+    expected = torch.load(
+        full.config.checkpoint_dir / "iteration-3.pt", weights_only=True
+    )
     torch.manual_seed(101)
     first_metrics = split.train(**inputs)
-    path = split.save_checkpoint()
+    path = split.config.checkpoint_dir / "iteration-1.pt"
     saved = torch.load(path, weights_only=True)
     assert_exact(saved["critic"], split.critic.state_dict())
     assert_exact(saved["critic_optimizer"], split.critic_optimizer.state_dict())
@@ -344,7 +346,9 @@ def test_resume_is_bitwise_exact_for_models_optimizers_rng_and_metrics(ppo_case)
     assert_exact(torch.get_rng_state(), saved["cpu_rng"])
     assert_exact(resumed._generator.get_state(), saved["generator"])
     assert_exact(first_metrics + resumed.train(**inputs), expected_metrics)
-    actual = torch.load(resumed.save_checkpoint(), weights_only=True)
+    actual = torch.load(
+        resumed.config.checkpoint_dir / "iteration-3.pt", weights_only=True
+    )
     for key in expected.keys() - {"config"}:
         assert_exact(actual[key], expected[key])
 
@@ -390,7 +394,7 @@ def test_resume_critic_identity_rejected_before_weights_mutate(ppo_case, mismatc
     make, inputs = ppo_case
     source = make("source")
     source.train(**inputs)
-    path = source.save_checkpoint()
+    path = source.config.checkpoint_dir / "iteration-1.pt"
     target = make("target")
     if mismatch == "model":
 
@@ -416,7 +420,12 @@ def test_resume_critic_identity_rejected_before_weights_mutate(ppo_case, mismatc
         )
     before = states(target)
     rng = torch.get_rng_state().clone()
-    with pytest.raises(AssertionError, match="identity mismatch"):
+    message = (
+        "Trainable parameter .* requires FP32"
+        if mismatch == "dtype"
+        else "identity mismatch"
+    )
+    with pytest.raises(AssertionError, match=message):
         target.load_checkpoint(path, **inputs)
     assert_exact(states(target), before)
     assert_exact(torch.get_rng_state(), rng)

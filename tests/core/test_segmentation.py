@@ -121,13 +121,27 @@ def test_unicode_overlaps_are_valid_away_from_step_cuts(segment):
 
 
 @pytest.mark.parametrize("spans", [[(0, 31), (31, 62)], [(0, 30), (29, 62)]])
-def test_straddling_or_overlapping_step_cut_is_rejected(spans):
+def test_math_straddling_or_overlapping_step_cut_keeps_the_original_tokens(spans):
+    text = "First sentence is long enough. Second sentence is long enough."
+    assert math_step_boundaries(text, [17, 18], spans) == (
+        (0, 1, 2) if spans[0][1] == spans[1][0] else (0, 2)
+    )
     with pytest.raises(AssertionError, match="inside a sampled token"):
-        math_step_boundaries(
-            "First sentence is long enough. Second sentence is long enough.",
-            [17, 18],
-            spans,
-        )
+        math_step_boundaries(text, [17, 18], spans, round_forward=False)
+
+
+def test_math_coincident_rounded_cuts_and_terminal_eos():
+    steps = [
+        "First sentence is long enough.",
+        " Second sentence is long enough.",
+        " Third sentence is long enough.",
+    ]
+    text = "".join(steps)
+    end = len(text)
+    assert math_step_boundaries(
+        text, [10, 11, 2], [(0, 65), (65, end), (end, end)]
+    ) == (0, 1, 3)
+    assert math_step_boundaries(text, [10, 2], [(0, end), (end, end)]) == (0, 2)
 
 
 @pytest.mark.parametrize(
@@ -222,7 +236,7 @@ def test_gsm8k_exact_token_boundaries_with_trailing_eos():
 
 
 def test_estimator_uses_exact_original_token_prefixes():
-    from algorithms.vineppo import estimate_vineppo, vineppo_advantage_method
+    from algorithms.vineppo import estimate_vineppo_batch, vineppo_advantage_method
     from core.data import Episode
     from core.inference import Completion, HFInference
 
@@ -242,17 +256,14 @@ def test_estimator_uses_exact_original_token_prefixes():
             seen_prefixes.extend(prefixes)
             return [[Completion([42, 2], "stop")]]
 
-    def score(ids, finish):
-        assert finish == "stop"
-        scored.append(ids)
-        return 0.5
+    def score(responses):
+        assert all(item.finish_reason == "stop" for item in responses)
+        scored.extend(item.token_ids for item in responses)
+        return [0.5] * len(responses)
 
-    estimate = estimate_vineppo(
-        "test",
-        episode,
-        step_boundaries=boundaries,
+    (estimate,) = estimate_vineppo_batch(
+        [("test", episode, boundaries, score)],
         inference=Inference(),
-        score_response=score,
         num_samples=1,
         max_new_tokens=2,
         temperature=1.0,
@@ -439,6 +450,20 @@ def test_real_tokenizer_token_straddling_newline_is_rejected(byte_tokenizer):
         step_boundaries_from_tokens(
             ids, byte_tokenizer, dataset="gsm8k", eos_token_ids=[]
         )
+
+
+def test_math_rounds_sampled_ids_that_would_reencode_differently(byte_tokenizer):
+    first = "First sentence is long enough. Second"
+    rest = " sentence is long enough."
+    byte_tokenizer.add_tokens([first])
+    sampled = byte_tokenizer.encode(first + rest, add_special_tokens=False)
+    byte_tokenizer.add_tokens([first + rest])
+    assert byte_tokenizer.encode(first + rest, add_special_tokens=False) != sampled
+    boundaries = step_boundaries_from_tokens(
+        sampled, byte_tokenizer, dataset="math", eos_token_ids=[]
+    )
+    assert boundaries == (0, 1, len(sampled))
+    assert byte_tokenizer.decode(sampled[:1]) == first
 
 
 @pytest.mark.parametrize("special", ["eos_token_id", "pad_token_id"])

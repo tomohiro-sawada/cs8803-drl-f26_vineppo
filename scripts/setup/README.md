@@ -121,5 +121,5 @@ HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 \
 Tests use tiny real saved Arrow datasets, nested ZIP fixtures, and mocked network
 boundaries. No model downloads, GPU, or credentials are required.
 
-The existing `flash_attention_installation.sh` and `vllm_installation.sh` scripts
-are separate environment setup helpers; this downloader does not invoke them.
+Use `scripts/setup/install.py --inference` for the pinned vLLM environment.
+Use `flash_attention_installation.sh` for the PACE FlashAttention build.

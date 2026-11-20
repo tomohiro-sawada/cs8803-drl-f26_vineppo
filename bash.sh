@@ -11,13 +11,6 @@ export TRASH="$WORKDIR/.trash"
 # https://github.com/nivekuil/rip
 export GRAVEYARD=$WORKDIR/.trash/
 
-
-# timestamp: current time in a compact, sortable format
-timestamp() {
-  local format='%Y%m%d-%H%M%S'
-  date "+$format"
-}
-
 # flatten repo for LLM context
 flatten_repo() {
     # Help

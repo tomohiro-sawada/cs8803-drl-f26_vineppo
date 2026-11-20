@@ -162,27 +162,40 @@ arguments are:
 --num-iterations --warmup-iterations --prompts-per-iteration
 --num-samples --mc-num-samples --update-epochs --minibatch-size
 --microbatch-size --max-sequence-length --max-new-tokens
---learning-rate --critic-learning-rate --seed
---checkpoint-every --keep-checkpoints --resume --dtype
+--learning-rate --critic-learning-rate --math-grader-workers --seed
+--checkpoint-every --checkpoint-format --keep-checkpoints --resume --dtype
 --finetuning --lora-rank --lora-alpha
 --wandb-mode --wandb-project --wandb-entity --wandb-group --wandb-name
 --evaluation --validation-rounds --eval-batch-size --eval-seed --eval-timeout-seconds
 ```
 
-`--dtype` accepts `float32` or `bfloat16`. FP32 is the conservative numerical
-baseline, not a promise of memory fit. Native BF16 is an explicit experimental
-option: in full tuning, weights, gradients and AdamW moments use BF16, with no AMP
-or FP32 master weights. With LoRA, the frozen actor base/reference use `--dtype`,
-but actor adapters, gradients and optimizer moments remain **FP32**. PPO's critic
-remains full-parameter/native dtype. Evaluation in BF16 does not validate BF16
-optimization at small learning rates. Learning rates default to `1e-6` (full actor),
+`--dtype float32` is required for full tuning and PPO. Critic-free LoRA also
+accepts `--dtype bfloat16` for the frozen base and reference. Trainable parameters,
+gradients, and AdamW moments use FP32 in both cases. Learning rates default to `1e-6` (full actor),
 `1e-5` (LoRA actor), and `1e-5` (critic); seed is `42`. Explicit learning rates win. Numeric ranges and shape consistency are
 validated by the runner; the launchers do not duplicate its validation logic.
 For example, append `--num-iterations 200 --checkpoint-every 20` to a training
 command. Resource/time overrides belong to `sbatch`, not the runner; requesting
 more time does not guarantee the cluster QoS allows it.
 
+MATH VinePPO assigns a token spanning a reasoning-step cut to the earlier
+step. It advances the cut to the next complete sampled-token boundary and
+merges coincident cuts. Both MC branching and PPO credit use those boundaries
+on the original token IDs. Invalid token alignment and MATH splitter errors
+still abort the run. GSM8K retains exact character cuts.
+
+`--math-grader-workers` defaults to 1. With more workers, training grades
+distinct answer tuples concurrently within a primary or Monte Carlo sample
+group and keeps the results in sample order. Reserve one CPU and up to 1 GiB
+per worker in addition to learner resources.
+
 ## Resume into a new output
+
+`--checkpoint-format compact-lora` stores the frozen actor and reference once
+in `checkpoints/frozen-lora.pt`. Each iteration checkpoint stores the adapter
+tensors, optimizer and RNG state, and the frozen file's absolute path and SHA256.
+Keep that file while any retained or selected checkpoint references it, including
+checkpoints written by later resume attempts. The default format remains `full`.
 
 Use an existing compatible checkpoint path, not its old run output as the new
 output. Keep task, algorithm, model, and other compatibility-sensitive options

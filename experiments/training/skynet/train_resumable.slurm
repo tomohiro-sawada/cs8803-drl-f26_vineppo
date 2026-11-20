@@ -17,7 +17,7 @@
 # Usage: sbatch train_resumable.slurm <run-root> <runner options>
 # Every start (first submission, preemption requeue, or resubmitting the same
 # command after the time limit) trains into a new <run-root>/attempt-NN and
-# resumes from the latest completed checkpoint of the earlier attempts.
+# resumes from the latest checkpoint until selection freezes.
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:?Submit from the repository root}"
 [[ $# -ge 1 && $1 != --* ]] || { echo 'Expected a run root directory first' >&2; exit 2; }
@@ -30,6 +30,15 @@ for option in "$@"; do
     esac
 done
 mkdir -p "$root"
+exec 9>"$root/.resume.lock"
+flock -n 9
+shopt -s nullglob
+frozen=("$root"/attempt-*/selection-frozen.json)
+if (( ${#frozen[@]} )); then
+    (( ${#frozen[@]} == 1 )) || { echo 'Multiple frozen selections for this run' >&2; exit 2; }
+    exec bash experiments/training/launch.sh skynet evaluate "$@" \
+        --output "$root" --resume-selection "${frozen[0]}"
+fi
 attempt=$(find "$root" -maxdepth 1 -type d -name 'attempt-*' | wc -l)
 output=$(printf '%s/attempt-%02d' "$root" "$attempt")
 # Highest completed iteration; the newest attempt wins a tie. *.pt.tmp never match.

@@ -1,4 +1,4 @@
-"""Evaluation-only restoration of full actor states from trainer checkpoints.
+"""Evaluation-only restoration of full and compact actor checkpoints.
 
 No trainer, examples, reference, critic, or optimizer is constructed. Requires
 modern torch ZIP checkpoints supporting weights_only=True and mmap=True; errors
@@ -14,6 +14,14 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from core.lora import apply_lora, lora_identity
+from runtime.checkpoints import (
+    COMPACT_LORA,
+    checkpoint_models,
+    file_identity,
+    file_sha256,
+    trainable_state_keys,
+    validate_tensor_state,
+)
 
 
 def _execution_config(config: dict) -> dict:
@@ -23,13 +31,18 @@ def _execution_config(config: dict) -> dict:
 
 
 def load_checkpoint_actor(
-    checkpoint: Path, model_path: Path, *, device: str = "cuda:0"
+    checkpoint: Path,
+    model_path: Path,
+    *,
+    device: str = "cuda:0",
+    expected_sha256: str | None = None,
 ) -> tuple[torch.nn.Module, object, dict]:
     """Return a frozen eval actor, local fast tokenizer, and JSON-safe metadata.
 
     Supports full FP32/BF16 actors and apply_lora actors with FP32 adapters over
-    FP32/BF16 bases. Reconstructs from local config, since trainer checkpoints
-    contain *all* actor weights. No merge, quantization, dtype coercion, remote
+    FP32/BF16 bases. Reconstructs from local config and checkpoint tensors.
+    Compact LoRA checkpoints reference a hash-verified frozen state file.
+    No merge, quantization, dtype coercion, remote
     code, or network access. Only config._name_or_path may differ; the saved
     origin is retained when recreating PEFT so its full identity matches exactly.
 
@@ -46,10 +59,11 @@ def load_checkpoint_actor(
     """
     assert checkpoint.is_file(), f"Checkpoint is not a file: {checkpoint}"
     assert model_path.is_dir(), f"Local model directory not found: {model_path}"
-    digest = sha256()
-    with checkpoint.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
+    checkpoint_identity = file_identity(checkpoint)
+    digest = file_sha256(checkpoint)
+    assert expected_sha256 is None or digest == expected_sha256, (
+        "Selected checkpoint hash mismatch"
+    )
     state = torch.load(checkpoint, weights_only=True, map_location="cpu", mmap=True)
     provenance = state.get("evaluation_provenance")
     assert isinstance(provenance, dict), (
@@ -81,7 +95,11 @@ def load_checkpoint_actor(
     # Dataset schema belongs to the runner; reject tensors/non-JSON payloads here.
     json.dumps(provenance, allow_nan=False)
     identity = state["model_identity"][0]
-    weights = state["policy"]
+    compact = state.get("format_version") == COMPACT_LORA
+    if compact:
+        frozen_path = Path(state["frozen"]["path"])
+        frozen_identity = file_identity(frozen_path)
+    weights, _ = checkpoint_models(state)
     assert isinstance(state["config"], dict), "Missing training config provenance"
     assert type(state["iteration"]) is int and state["iteration"] >= 0, (
         "Invalid checkpoint iteration"
@@ -125,11 +143,11 @@ def load_checkpoint_actor(
     assert (
         f"{type(model).__module__}.{type(model).__qualname__}" == identity["class"]
     ), "Actor class identity mismatch"
-    current = model.state_dict()
-    assert current.keys() == weights.keys(), "Actor state keys mismatch"
-    for name, value in current.items():
-        assert value.dtype == weights[name].dtype, f"Actor dtype mismatch: {name}"
-        assert value.shape == weights[name].shape, f"Actor shape mismatch: {name}"
+    if compact:
+        assert state["policy"].keys() == trainable_state_keys(model), (
+            "Compact policy does not contain exactly the trainable state"
+        )
+    validate_tensor_state(model, weights)
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_path, local_files_only=True, trust_remote_code=False, use_fast=True
@@ -158,11 +176,18 @@ def load_checkpoint_actor(
     )
     model.load_state_dict(weights, strict=True)
     model.requires_grad_(False).eval().to(device=device)
+    assert file_identity(checkpoint) == checkpoint_identity, (
+        "Checkpoint changed while loading"
+    )
+    if compact:
+        assert file_identity(frozen_path) == frozen_identity, (
+            "Frozen model changed while loading"
+        )
     return (
         model,
         tokenizer,
         {
-            "checkpoint_sha256": digest.hexdigest(),
+            "checkpoint_sha256": digest,
             "iteration": state["iteration"],
             "finetuning": "lora" if saved_lora is not None else "full",
             "dtype": str(dtype).removeprefix("torch."),

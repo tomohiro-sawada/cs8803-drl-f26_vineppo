@@ -3,6 +3,7 @@
 import copy
 import json
 import socket
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -12,6 +13,7 @@ from datasets import Dataset, DatasetDict
 
 from core.inference import TextCompletion
 from experiments.training import evaluate as runner
+from experiments.training import finalize as finalizer
 
 
 def read(path):
@@ -97,7 +99,12 @@ def setup(tmp_path, monkeypatch):
         "training_config": metadata["trainer_config"]
         | {"algorithm_type": "algorithms.ppo.PPOConfig"},
     }
-    loader = Mock(return_value=(object(), object(), info))
+
+    def load_actor(path, model_path, *, device, expected_sha256):
+        assert expected_sha256 is None or runner.file_sha256(path) == expected_sha256
+        return object(), object(), info
+
+    loader = Mock(side_effect=load_actor)
     monkeypatch.setattr(runner, "load_checkpoint_actor", loader)
     monkeypatch.setattr(runner.torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(runner.torch.cuda, "device_count", lambda: 1)
@@ -178,6 +185,125 @@ def freeze(s, result, *, eval_seed=42, eval_batch_size=4):
     return path, selection
 
 
+@pytest.fixture
+def frozen_run(setup):
+    s = setup
+    root = s.tmp_path / "resumable"
+    root.mkdir()
+    owner = root / "attempt-00"
+    checkpoint = owner / s.checkpoint.name
+    previous = s.training
+    previous.rename(owner)
+    s.argv = [
+        {str(previous): str(owner), str(s.checkpoint): str(checkpoint)}.get(arg, arg)
+        for arg in s.argv
+    ]
+    s.training, s.checkpoint = owner, checkpoint
+    manifest = owner / "selection-frozen.json"
+    manifest.touch()
+    args = finalizer.parse_args(
+        [
+            "--mode",
+            "evaluate",
+            "--algorithm",
+            "ppo",
+            "--task",
+            "gsm8k",
+            "--model-path",
+            str(s.model),
+            "--dataset-path",
+            str(s.dataset),
+            "--output",
+            str(root),
+            "--resume-selection",
+            str(manifest),
+            "--evaluation",
+            "validation-test",
+            "--num-iterations",
+            "1",
+            "--validation-rounds",
+            "2",
+            "--eval-batch-size",
+            "2",
+        ]
+    )
+    config = asdict(finalizer.trainer_config(args))
+    config["checkpoint_dir"] = str(owner / "checkpoints")
+    s.metadata["trainer_config"] = config
+    s.info["training_config"] = config | {"algorithm_type": "algorithms.ppo.PPOConfig"}
+    for key in ("lora_rank", "lora_alpha", "learning_rate", "critic_learning_rate"):
+        s.metadata["cli"][key] = getattr(args, key)
+    runner.write_json(owner / "metadata.json", s.metadata)
+    candidate = runner.main(s.argv)
+    _, selection = freeze(s, candidate, eval_batch_size=2)
+    selection["plan"].update(
+        trainer_config={
+            key: value for key, value in config.items() if key != "checkpoint_dir"
+        },
+        evaluation="validation-test",
+    )
+    selection["checkpoint_source"] = candidate["checkpoint_source"]
+    runner.write_json(manifest, selection)
+    return args, selection
+
+
+@pytest.mark.parametrize("interrupt", ["before", "during", "after_result"])
+def test_frozen_finalization_restarts_or_adopts_completed_test(
+    frozen_run, monkeypatch, interrupt
+):
+    args, selection = frozen_run
+    original = args.resume_selection.read_bytes()
+    marker = args.output / "test-complete.json"
+    failed = args.output / "test-attempt-00"
+    if interrupt == "during":
+        failed.mkdir()
+        (failed / "progress.json").write_text('{"rounds_completed": 3}')
+    calls = []
+
+    def run_test(command, *, check, timeout):
+        calls.append(command)
+        assert check and timeout == args.eval_timeout_seconds
+        runner.main(command[3:])
+
+    monkeypatch.setattr(finalizer.subprocess, "run", run_test)
+    if interrupt == "after_result":
+        with monkeypatch.context() as patch:
+            saved_writer = runner.write_json
+
+            def preempt(path, data, **options):
+                if path == marker:
+                    raise RuntimeError("preempted before completion marker")
+                saved_writer(path, data, **options)
+
+            patch.setattr(finalizer.evaluate, "write_json", preempt)
+            with pytest.raises(RuntimeError, match="preempted"):
+                finalizer.finalize(args, prepare=False)
+        assert not marker.exists()
+        assert finalizer.finalize(args, prepare=True) == "complete"
+    else:
+        assert finalizer.finalize(args, prepare=True) == "run"
+        assert finalizer.finalize(args, prepare=False) == "complete"
+    assert len(calls) == 1
+    assert finalizer.finalize(args, prepare=True) == "complete"
+    assert len(calls) == 1
+    record = read(marker)
+    assert record["checkpoint_sha256"] == selection["best"]["checkpoint"]["sha256"]
+    assert read(Path(record["result"]))["rounds_completed"] == 16
+    assert args.resume_selection.read_bytes() == original
+    if interrupt == "during":
+        assert read(failed / "progress.json") == {"rounds_completed": 3}
+    Path(selection["best"]["checkpoint"]["path"]).write_bytes(b"changed")
+    with pytest.raises(AssertionError, match="Selected checkpoint hash mismatch"):
+        finalizer.finalize(args, prepare=True)
+
+
+def test_finalization_rejects_changed_frozen_protocol(frozen_run):
+    args, _ = frozen_run
+    args.eval_seed += 1
+    with pytest.raises(AssertionError):
+        finalizer.finalize(args, prepare=True)
+
+
 def test_full_validation_contract(setup):
     s = setup
     result = runner.main(s.argv)
@@ -216,17 +342,73 @@ def test_full_validation_contract(setup):
     assert "private rationale" not in json.dumps(config)
     provenance = read(s.tmp_path / "evaluation/provenance.json")
     assert provenance["actor"]["dtype"] == "float32"
+    assert (
+        provenance["evaluation_run"]
+        == result["evaluation_run"]
+        == {
+            "path": str(s.tmp_path / "evaluation"),
+            "wandb": None,
+        }
+    )
     deviations = " ".join(provenance["deviations"])
     for detail in (
         "HF",
-        "vLLM",
-        "Stop string trimmed",
+        "trims the stop string",
         "Sequential seeded rounds",
         "dtype preserved",
     ):
         assert detail in deviations
+    assert "server-side" not in deviations
     with pytest.raises(FileExistsError):
         runner.main(s.argv)
+
+
+def test_tracked_remote_evaluation_records_the_child_identity(setup, monkeypatch):
+    s = setup
+    s.info["lora"] = s.metadata["model"]["lora"] = {"rank": 8}
+    s.info["finetuning"] = s.metadata["cli"]["finetuning"] = "lora"
+    runner.write_json(s.training / "metadata.json", s.metadata)
+    workers = [{"gpu": {"name": "Mock GPU"}, "software": {"vllm": "test-version"}}]
+    monkeypatch.setenv("VLLM_API_KEY", "placeholder")
+    monkeypatch.setattr(
+        runner.VLLMClient, "from_directory", lambda *a, **kw: (Mock(), workers)
+    )
+    monkeypatch.setattr(runner, "RemotePaperGenerator", lambda *a: s.generator)
+    monkeypatch.setattr(runner, "publish_adapter", lambda *a: "checkpoint-actor")
+    child = {"id": "evaluation-id", "url": None, "mode": "offline"}
+
+    def enter():
+        runner.write_json(s.tmp_path / "evaluation/wandb.json", child)
+        return s.tracker
+
+    s.tracker.__enter__.side_effect = enter
+    result = runner.main(
+        s.argv
+        + [
+            "--backend",
+            "vllm",
+            "--num-workers",
+            "1",
+            "--worker-dir",
+            str(s.tmp_path),
+            "--wandb-mode",
+            "offline",
+        ]
+    )
+    provenance = read(s.tmp_path / "evaluation/provenance.json")
+    assert provenance["workers"] == workers
+    assert (
+        provenance["evaluation_run"]
+        == result["evaluation_run"]
+        == {
+            "path": str(s.tmp_path / "evaluation"),
+            "wandb": child,
+        }
+    )
+    assert result["training_run"]["wandb"]["id"] == "training-id"
+    deviations = " ".join(provenance["deviations"])
+    assert "server-side stopping and per-request hashed seeds" in deviations
+    assert "trims the stop string" not in deviations
 
 
 def test_frozen_test_uses_only_test_and_does_not_modify_selection(setup):

@@ -125,6 +125,12 @@ def test_ties_choose_earliest_freeze_then_test_cannot_change_best(case, monkeypa
     for path, i in zip(paths, (2, 4, 5)):
         controller.validate(path, i)
     assert controller.best_path == paths[1]
+    with monkeypatch.context() as patch:
+        patch.setattr("os.link", Mock(side_effect=OSError("interrupted publication")))
+        with pytest.raises(OSError, match="interrupted publication"):
+            controller.freeze()
+        assert not controller.frozen_path.exists()
+        assert not controller.state["frozen"]
     frozen = controller.freeze()
     assert frozen["best"] == outcomes[1] and frozen["frozen"]
     original = controller.frozen_path.read_bytes()
@@ -250,7 +256,12 @@ def test_resume_recovers_interrupted_validation_and_keeps_prior_best(case, monke
     evaluate = Mock(return_value=evidence)
     monkeypatch.setattr(new, "_evaluate", evaluate)
     new.recover(4)
-    evaluate.assert_called_once_with("validation", checkpoint=interrupted, iteration=4)
+    evaluate.assert_called_once_with(
+        "validation",
+        checkpoint=interrupted,
+        iteration=4,
+        checkpoint_sha256=selection.file_sha256(interrupted),
+    )
     new.recover(4)
     assert evaluate.call_count == 1
     last = args.output / "iteration-5.pt"

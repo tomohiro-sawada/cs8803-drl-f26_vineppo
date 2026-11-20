@@ -19,6 +19,7 @@ from experiments.training.evaluate import (
     validate_validation,
     write_json,
 )
+from runtime.checkpoints import file_identity
 
 ROOT = Path(__file__).resolve().parents[2]
 TIE_RULE = "highest_validation_accuracy_then_earliest_iteration"
@@ -180,7 +181,9 @@ class CheckpointSelection:
         best = self.state["best"]
         return None if best is None else Path(best["checkpoint"]["path"])
 
-    def _evaluate(self, split, *, checkpoint=None, iteration=None):
+    def _evaluate(
+        self, split, *, checkpoint=None, iteration=None, checkpoint_sha256=None
+    ):
         name = f"validation-{iteration}" if split == "validation" else "test-selected"
         output = self.directory / name
         args = self.args
@@ -219,7 +222,12 @@ class CheckpointSelection:
         if split == "validation" and checkpoint is None:
             command += ["--baseline"]
         elif split == "validation":
-            command += ["--checkpoint", str(checkpoint)]
+            command += [
+                "--checkpoint",
+                str(checkpoint),
+                "--checkpoint-sha256",
+                checkpoint_sha256,
+            ]
             if checkpoint == self.pending_checkpoint:
                 command += [
                     "--checkpoint-source",
@@ -270,13 +278,19 @@ class CheckpointSelection:
             "Missing, duplicate or out-of-order validation candidate"
         )
         checkpoint = checkpoint.resolve(strict=True)
+        identity = file_identity(checkpoint)
+        digest = file_sha256(checkpoint)
         result = self._evaluate(
-            "validation", checkpoint=checkpoint, iteration=iteration
+            "validation",
+            checkpoint=checkpoint,
+            iteration=iteration,
+            checkpoint_sha256=digest,
         )
         validate_validation(result, self.args.task, self.args.output)
+        assert file_identity(checkpoint) == identity, "Validation checkpoint changed"
         assert result["checkpoint"] == {
             "path": str(checkpoint),
-            "sha256": file_sha256(checkpoint),
+            "sha256": digest,
             "iteration": iteration,
         }, "Validation checkpoint identity mismatch"
         assert result["protocol"] == self.state["validation_protocol"]
@@ -316,10 +330,7 @@ class CheckpointSelection:
         )
         frozen = self.state | {"frozen": True}
         selected_checkpoint(frozen, self.args.task, self.args.output)
-        # Refuse replacement: final test can never rewrite the selection manifest.
-        with self.frozen_path.open("x") as stream:
-            json.dump(frozen, stream, indent=2, allow_nan=False)
-            stream.write("\n")
+        write_json(self.frozen_path, frozen, exclusive=True)
         self.state = frozen
         write_json(self.path, self.state)
         return frozen

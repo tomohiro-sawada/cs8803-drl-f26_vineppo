@@ -1,19 +1,10 @@
-# README.
+# Source layout
 
-We assume everything in `scripts/setup` has been run correctly. 
+- `core` contains shared training and evaluation primitives.
+- `algorithms` contains advantage estimators and optimizer updates.
+- `runtime` orchestrates training, checkpoint restore, and evaluation.
 
-## Directories.
-- `core`: logic shared between training and evaluation. 
-- `baselines`: Implementation of baselines.
-- `benchmarking`: Infra for benchmarking trained policies on MATH and GSM8K. 
-
-We only have two scripts at the root of `src` because there are only two types of experiments we run: training or evaluation.
-This corresponds to `src/treetune/runtime` in [the original implementation](https://github.com/McGill-NLP/VinePPO/tree/9f716e68bb934e71da86c226c1699c36b5553faf/src/treetune/runtime). 
-
-
-
-
-
+Application entry points live under `experiments/training`.
 ## Policy-gradient training
 
 `runtime.train.PPOTrainer` runs single-device PPO, VinePPO, GRPO or RLOO using caller-supplied models,
@@ -117,8 +108,9 @@ optimizer = torch.optim.AdamW(
 
 The base can be BF16, but adapters remain FP32. Attention and MLP linear layers
 are targeted, not the LM output head. Keep a separately loaded unadapted reference;
-no shared storage or adapter-disable reference trick is used. Checkpoints retain
-full model weights and validate adapter configuration/effective scaling on resume.
+the actor and reference have distinct storage. Checkpoints preserve frozen
+weights inline or in a hash-verified compact checkpoint dependency. Restore
+validates adapter configuration and effective scaling.
 The PPO critic is not converted to LoRA by the experiment runner.
 
 Select `algorithms.grpo.GRPOConfig()` or `algorithms.rloo.RLOOConfig()` with

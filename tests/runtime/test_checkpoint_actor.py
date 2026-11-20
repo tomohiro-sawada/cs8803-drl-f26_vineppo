@@ -16,6 +16,12 @@ from transformers import (
 from core.inference import token_logprobs
 from core.lora import apply_lora, lora_identity
 from runtime.checkpoint_actor import load_checkpoint_actor
+from runtime.checkpoints import (
+    COMPACT_LORA,
+    file_sha256,
+    publish_checkpoint,
+    trainable_state_keys,
+)
 
 
 @pytest.fixture
@@ -169,6 +175,49 @@ def test_exact_scores_and_state(local_actor, lora, dtype, monkeypatch):
         "evaluation_provenance": state["evaluation_provenance"],
     }
     json.dumps(info)
+
+
+def test_compact_actor_matches_legacy_and_verifies_both_digests(local_actor):
+    path, make = local_actor
+    original, state, checkpoint = make(lora=True, dtype=torch.bfloat16)
+    keys = trainable_state_keys(original)
+    frozen = checkpoint.with_name("frozen-lora.pt")
+    publish_checkpoint(
+        frozen,
+        {
+            "policy": {
+                name: value
+                for name, value in state["policy"].items()
+                if name not in keys
+            },
+            "reference": {},
+        },
+    )
+    compact = checkpoint.with_name("compact.pt")
+    publish_checkpoint(
+        compact,
+        state
+        | {
+            "format_version": COMPACT_LORA,
+            "policy": {name: state["policy"][name] for name in keys},
+            "frozen": {"path": str(frozen), "sha256": file_sha256(frozen)},
+        },
+    )
+    legacy, _, _ = load_checkpoint_actor(checkpoint, path, device="cpu")
+    restored, _, provenance = load_checkpoint_actor(
+        compact, path, device="cpu", expected_sha256=file_sha256(compact)
+    )
+    assert provenance["checkpoint_sha256"] == file_sha256(compact)
+    ids = torch.tensor([[1, 4, 5, 6, 2], [1, 7, 8, 9, 2]])
+    mask = torch.ones_like(ids, dtype=torch.bool)
+    torch.testing.assert_close(
+        token_logprobs(restored, ids, mask),
+        token_logprobs(legacy, ids, mask),
+        rtol=0,
+        atol=0,
+    )
+    with pytest.raises(AssertionError, match="Selected checkpoint hash mismatch"):
+        load_checkpoint_actor(compact, path, device="cpu", expected_sha256="0" * 64)
 
 
 @pytest.mark.parametrize("lora", [False, True])

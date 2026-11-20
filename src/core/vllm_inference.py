@@ -14,6 +14,8 @@ agree only up to that rounding, which the sampler acceptance check measures.
 
 import json
 import logging
+import os
+import re
 import shutil
 import subprocess
 from collections import deque
@@ -35,6 +37,15 @@ from core.lora import lora_identity
 
 BASE_MODEL = "base"  # Served name of the unadapted model on every replica.
 logger = logging.getLogger(__name__)
+
+
+def slurm_attempt() -> dict:
+    restart = os.environ.get("SLURM_RESTART_COUNT", "0")
+    assert re.fullmatch(r"0|[1-9][0-9]*", restart), "Invalid SLURM_RESTART_COUNT"
+    return {
+        "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+        "slurm_restart_count": int(restart),
+    }
 
 
 def file_sha256(path: Path) -> str:
@@ -114,11 +125,16 @@ class VLLMClient:
         Every process must own a distinct physical GPU and serve `model_path`.
         """
         deadline = monotonic() + timeout
+        attempt = slurm_attempt()
         while True:
             assert monotonic() < deadline, f"Workers not ready within {timeout}s"
             files = sorted(directory.glob("worker-*.json"))
             assert len(files) <= count, "More workers than requested"
             workers = [json.loads(path.read_text()) for path in files]
+            assert all(
+                all(worker[key] == value for key, value in attempt.items())
+                for worker in workers
+            ), "Worker belongs to a different Slurm attempt"
             if len(files) == count and all(_healthy(w["url"]) for w in workers):
                 break
             sleep(5)

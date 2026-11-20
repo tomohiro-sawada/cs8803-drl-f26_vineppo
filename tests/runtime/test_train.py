@@ -73,13 +73,15 @@ def test_collection_mc_and_cached_scores_use_one_unchanged_policy(trainer, monke
             [prompt], num_samples=1, max_new_tokens=3
         )[0][0]
         episode = Episode(prompt, completion.token_ids, 1.0, completion.finish_reason)
-        estimate = trainer.estimate_vineppo(
-            "example-0",
-            episode,
-            step_boundaries=(0, len(episode.response_ids)),
-            score_response=lambda response, reason: 0.25,
-            num_samples=2,
-            max_new_tokens=3,
+        (estimate,) = trainer.estimate_vineppo_batch(
+            [
+                (
+                    "example-0",
+                    episode,
+                    (0, len(episode.response_ids)),
+                    lambda responses: [0.25] * len(responses),
+                )
+            ]
         )
         assert estimate.mc_prefix_values == (0.25,)
         assert estimate.raw_step_advantages == (0.75,)
@@ -162,20 +164,9 @@ def test_invalid_primary_prefix_lengths_fail_before_generation(
 
 
 @pytest.mark.parametrize("cap", [0, -1, True, 1.5, 4])
-@pytest.mark.parametrize("mc", [False, True])
-def test_invalid_or_excessive_generation_override(trainer, cap, mc):
+def test_invalid_or_excessive_generation_override(trainer, cap):
     with pytest.raises(ValueError, match="configured cap"):
-        if mc:
-            trainer.estimate_vineppo(
-                "invalid",
-                Episode([4], [5], 1.0, "stop"),
-                step_boundaries=(0, 1),
-                score_response=lambda ids, reason: 1.0,
-                num_samples=1,
-                max_new_tokens=cap,
-            )
-        else:
-            trainer.collect_completions([[4]], num_samples=1, max_new_tokens=cap)
+        trainer.collect_completions([[4]], num_samples=1, max_new_tokens=cap)
 
 
 @pytest.mark.parametrize("capacity", [0, True, 24.0])
@@ -203,12 +194,15 @@ def test_real_mc_late_prefix_uses_last_available_token(trainer, monkeypatch):
         return generate(**kwargs)
 
     monkeypatch.setattr(trainer.inference, "generate", record)
-    result = trainer.estimate_vineppo(
-        "late",
-        Episode([4] * 20, [5, 6, 7, 8], 1.0, "length"),
-        step_boundaries=(0, 2, 3, 4),
-        score_response=lambda ids, reason: 0.5,
-        num_samples=1,
+    (result,) = trainer.estimate_vineppo_batch(
+        [
+            (
+                "late",
+                Episode([4] * 20, [5, 6, 7, 8], 1.0, "length"),
+                (0, 2, 3, 4),
+                lambda responses: [0.5] * len(responses),
+            )
+        ]
     )
     assert calls == [3, 2, 1]
     assert result.mc_prefix_values == (0.5, 0.5, 0.5)
@@ -559,6 +553,21 @@ def test_valid_minibatch_plans_still_perform_real_updates(
     )
 
 
+def test_resume_rejects_bf16_optimizer_moments_before_casting(training_case):
+    make, inputs = training_case
+    original = make("original")
+    original.train(**inputs)
+    path = original.config.checkpoint_dir / "iteration-1.pt"
+    saved = torch.load(path, weights_only=True)
+    slot = next(iter(saved["optimizer"]["state"].values()))
+    slot["exp_avg"] = slot["exp_avg"].bfloat16()
+    torch.save(saved, path)
+    resumed = make("resumed")
+    with pytest.raises(AssertionError, match="Optimizer state exp_avg requires FP32"):
+        resumed.load_checkpoint(path, **inputs)
+    assert resumed.iteration == 0 and not resumed.optimizer.state
+
+
 @pytest.mark.parametrize("target", ["policy", "reference_policy"])
 @pytest.mark.parametrize("mismatch", ["config", "dtype", "class"])
 def test_resume_rejects_shape_compatible_model_identity_before_restore(
@@ -616,7 +625,12 @@ def test_resume_rejects_shape_compatible_model_identity_before_restore(
 
     for owner in (other.policy, other.reference_policy, other.optimizer):
         monkeypatch.setattr(owner, "load_state_dict", unexpected)
-    with pytest.raises(AssertionError, match="Model execution identity mismatch"):
+    message = (
+        "Trainable parameter .* requires FP32"
+        if (target, mismatch) == ("policy", "dtype")
+        else "Model execution identity mismatch"
+    )
+    with pytest.raises(AssertionError, match=message):
         other.load_checkpoint(path, **inputs)
     assert_exact(other.policy.state_dict(), before[0])
     assert_exact(other.reference_policy.state_dict(), before[1])

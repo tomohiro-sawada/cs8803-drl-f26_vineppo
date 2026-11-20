@@ -7,15 +7,16 @@ constructs them by incrementally decoding the sampled IDs. For both adapters,
 must establish this correspondence. Decoding tokens in isolation loses context
 needed for whitespace and multi-token Unicode characters.
 
-Spans must cover text without gaps in monotone order. Overlap is allowed
-(e.g. byte-fallback tokens sharing a Unicode character), but a step cannot
-split overlapping tokens. Zero-width tokens are allowed only as a trailing
+Spans must cover text without gaps in monotone order. Overlapping tokens
+(e.g. byte-fallback tokens sharing a Unicode character) stay together.
+Zero-width tokens are allowed only as a trailing
 suffix at len(text), e.g. sampled EOS, and belong to the final step. No prompt,
 padding, normalization, tokenization or decoding is performed by those adapters.
 
-Character boundaries are preserved exactly: a boundary inside a token raises,
-rather than snapping, merging steps, or changing token IDs. Empty/degenerate
-partitions and upstream segmentation failures also raise.
+MATH assigns a token spanning a character cut to the earlier step and advances
+the cut to the next complete sampled-token boundary. Cuts that coincide are
+merged. GSM8K requires exact character cuts. Both preserve the sampled IDs.
+Empty/degenerate partitions and upstream segmentation failures raise.
 
 GSM8K logic condensed from McGill-NLP/VinePPO, revision
 9f716e68bb934e71da86c226c1699c36b5553faf, src/treetune/tasks/gsm8k.py,
@@ -34,6 +35,8 @@ if TYPE_CHECKING:
 
 from core.vendor.vineppo.math_extract_steps_inplace import split_solution_inplace
 
+MATH_SEGMENTATION_POLICY = "first_character_sampled_tokens_v1"
+
 
 def step_boundaries_from_tokens(
     response_ids: Sequence[int],
@@ -51,7 +54,7 @@ def step_boundaries_from_tokens(
 
     Supply EOS IDs from the generation configuration, not tokenizer defaults.
     One terminal EOS is excluded from text and assigned to the final step;
-    other special tokens, empty text, and character cuts inside tokens raise.
+    other special tokens and empty text raise.
     Returns response-relative token boundaries including 0 and len(response_ids).
     Adjacent boundaries delimit nonempty slices of the original sampled IDs.
     The lower-level adapters accept externally established spans when needed.
@@ -63,12 +66,10 @@ def step_boundaries_from_tokens(
         treats everything from the first answer marker onward as one suffix,
         including repeated markers. MATH splitter errors and degenerate GSM8K
         whitespace-only partitions propagate.
-        A valid character split may fall inside one sampled token. That also
-        raises AssertionError: rounding the cut, merging steps, or re-encoding
-        each step would change the trajectory/advantage assignment.
-        Do not add silent recovery for these cases; changing this policy requires
-        an explicit compatibility decision and updated regression tests in
-        tests/core/test_segmentation.py.
+        For MATH, advance cuts inside tokens and merge coincident cuts. The same
+        resulting sampled-token boundaries define MC states and PPO credit.
+        For GSM8K, a cut inside a token still raises. Alignment and upstream
+        partition failures raise for both tasks.
     """
     assert dataset in ("math", "gsm8k"), "Unsupported segmentation dataset"
     assert tokenizer.is_fast, "Segmentation requires a fast tokenizer"
@@ -123,17 +124,23 @@ def math_step_boundaries(
     text: str,
     response_ids: Sequence[int],
     token_spans: Sequence[tuple[int, int]],
+    *,
+    round_forward: bool = True,
 ) -> tuple[int, ...]:
-    """Return exact MATH token offsets for ``estimate_vineppo``.
+    """Return exact MATH token offsets for ``estimate_vineppo_batch``.
 
     Implements MATH's answer_prefix=None path. See the module's token-span
     contract; the same validation and exact-token mapping apply to GSM8K.
     Upstream failures (including short inputs such as "x" and "Short.")
     propagate as AssertionError. No single-step fallback is substituted.
-    See step_boundaries_from_tokens for the compatibility policy.
+    Pass round_forward=False only to replay historical strict diagnostics.
     """
     return _token_step_boundaries(
-        text, response_ids, token_spans, split_solution_inplace
+        text,
+        response_ids,
+        token_spans,
+        split_solution_inplace,
+        round_forward=round_forward,
     )
 
 
@@ -176,12 +183,13 @@ def _token_step_boundaries(
     response_ids: Sequence[int],
     token_spans: Sequence[tuple[int, int]],
     split_characters: Callable[[str], Sequence[int]],
+    *,
+    round_forward: bool = False,
 ) -> tuple[int, ...]:
     assert text and response_ids, "Text and sampled response must be nonempty"
     assert len(response_ids) == len(token_spans), "One span per sampled token required"
     assert all(type(token) is int and token >= 0 for token in response_ids)
     previous_start = covered = 0
-    starts = []
     for start, end in token_spans:
         assert type(start) is int and type(end) is int
         assert 0 <= start <= end <= len(text), "Invalid character span"
@@ -189,7 +197,6 @@ def _token_step_boundaries(
         assert start < end or start == len(text), (
             "Only trailing zero-width tokens allowed"
         )
-        starts.append(start)
         previous_start, covered = start, end
     assert covered == len(text), "Token spans must cover all response text"
 
@@ -198,13 +205,22 @@ def _token_step_boundaries(
         "Upstream did not produce a complete nonempty partition"
     )
     assert all(a < b for a, b in pairwise(chars)), "Degenerate upstream partition"
+    cuts = {
+        end: i
+        for i, ((_, end), (start, _)) in enumerate(pairwise(token_spans), 1)
+        if end == start < len(text)
+    }
+    cuts[len(text)] = len(response_ids)
+    positions = list(cuts)
     boundaries = [0]
     for char in chars[1:-1]:
-        token = bisect_left(starts, char)
-        assert (
-            0 < token < len(token_spans)
-            and token_spans[token - 1][1] == char == starts[token]
-        ), f"Step boundary at character {char} falls inside a sampled token"
+        position = positions[bisect_left(positions, char)]
+        assert round_forward or position == char, (
+            f"Step boundary at character {char} falls inside a sampled token"
+        )
+        token = cuts[position]
+        if token == boundaries[-1] or token == len(response_ids):
+            continue
         boundaries.append(token)
     boundaries.append(len(response_ids))
     assert all(a < b for a, b in pairwise(boundaries))

@@ -7,11 +7,12 @@ import pytest
 
 from algorithms.vineppo import (
     compute_step_advantages,
-    estimate_vineppo,
+    estimate_vineppo_batch,
     vineppo_advantage_method,
 )
 from core.data import Episode, MCContinuation, PrefixSamples, VinePPOValueEstimate
 from core.inference import Completion, HFInference
+from core.segmentation import math_step_boundaries
 
 BOUNDARIES = (0, 2, 5, 6)
 INVALID_BOUNDARIES = [
@@ -117,6 +118,40 @@ def score_response(response_ids, finish_reason):
     return {20: 0.0, 21: 0.5, 22: 0.5, 23: 1.0, 24: 1.0, 25: 0.0}[response_ids[-1]]
 
 
+def score_responses(responses):
+    return [score_response(item.token_ids, item.finish_reason) for item in responses]
+
+
+def test_rounded_math_cut_controls_mc_branch_and_ppo_credit():
+    episode = Episode([90, 91], [721, 37, 82, 2], 1.0, "stop")
+    text = "First sentence is long enough. Second sentence is long enough."
+    boundaries = math_step_boundaries(
+        text, episode.response_ids, [(0, 8), (8, 37), (37, 62), (62, 62)]
+    )
+    inference = FakeInference(
+        {
+            (90, 91): [Completion([20], "stop")],
+            (90, 91, 721, 37): [Completion([23], "stop")],
+        }
+    )
+    continuations = []
+
+    def score(responses):
+        continuations.extend(response.token_ids for response in responses)
+        return score_responses(responses)
+
+    (estimate,) = estimate_vineppo_batch(
+        [("math", episode, boundaries, score)],
+        inference=inference,
+        num_samples=1,
+        temperature=1.0,
+    )
+    assert estimate.step_boundaries == (0, 2, 4)
+    assert continuations == [[20], [721, 37, 23]]
+    assert estimate.mc_prefix_values == (0.0, 1.0)
+    assert vineppo_advantage_method(estimate) == [1.0, 1.0, 0.0, 0.0]
+
+
 def estimate(episode, inference, **overrides):
     options = {
         "step_boundaries": BOUNDARIES,
@@ -126,7 +161,23 @@ def estimate(episode, inference, **overrides):
         "temperature": 0.7,
     }
     options.update(overrides)
-    return estimate_vineppo("episode-1", episode, inference=inference, **options)
+    boundaries = options.pop("step_boundaries")
+    scorer = options.pop("score_response")
+    (result,) = estimate_vineppo_batch(
+        [
+            (
+                "episode-1",
+                episode,
+                boundaries,
+                lambda responses: [
+                    scorer(item.token_ids, item.finish_reason) for item in responses
+                ],
+            )
+        ],
+        inference=inference,
+        **options,
+    )
+    return result
 
 
 @pytest.fixture
@@ -322,12 +373,9 @@ def test_overlong_episode_rejected_before_generation(episode, inference):
 
 
 def test_mc_default_generation_cap(episode, inference):
-    estimate_vineppo(
-        "default",
-        episode,
+    estimate_vineppo_batch(
+        [("default", episode, BOUNDARIES, score_responses)],
         inference=inference,
-        step_boundaries=BOUNDARIES,
-        score_response=score_response,
         num_samples=2,
         temperature=1.0,
     )

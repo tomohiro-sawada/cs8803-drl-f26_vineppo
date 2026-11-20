@@ -7,12 +7,12 @@ prose/workflow/*
 !prose/workflow/tasks
 prose/workflow/tasks/*
 !prose/workflow/tasks/agent-tasks
-prose/conventions
-prose/agent-reports
-prose/knowledge-bases
+/prose/agent-reports/20261118-215930_openrouter-segmentation-results.md
+/prose/agent-reports/20261119-111940_launch-blockers.md
+/prose/agent-reports/20261119-210013_time-estimate.md
+/prose/knowledge-bases/gpu-cluster-info/
 AGENTS.template.md
-bash.sh
-.trash
+/.trash/
 data
 tmp
 *.pt

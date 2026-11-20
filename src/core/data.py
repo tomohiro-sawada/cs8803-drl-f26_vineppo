@@ -19,7 +19,6 @@ of the evaluation input contract.
 # typing
 from collections.abc import Sequence
 from dataclasses import dataclass
-from itertools import pairwise
 
 import torch
 from jaxtyping import Bool, Float32, Int64
@@ -74,14 +73,7 @@ class Episode:
 
 @dataclass(frozen=True)
 class EpisodeWithAdvantages(Episode):
-    """
-    Represents a single episode of the agent-environment interaction with advantages.
-    Derived from `Episode`.
-
-    Fields:
-        step_boundaries: contains response-relative token offsets, including 0 and len(response_ids); length K+1
-        mc_prefix_values[i]: estimates the value of the prefix before step i; length K
-    """
+    """A scored episode with one raw advantage per response token."""
 
     advantages: list[float]
 
@@ -139,10 +131,10 @@ class VinePPOValueEstimate(ValueEstimate):
     Represents the estimated value of a state under a given policy for VinePPO.
 
     Diagnostics:
-        def estimate_vineppo(
+        def estimate_vineppo_batch(
             ...,
             record_prefix_samples: Callable[[PrefixSamples], None] | None = None,
-        ) -> VinePPOEstimate:
+        ) -> list[VinePPOValueEstimate]:
             ...
     """
 

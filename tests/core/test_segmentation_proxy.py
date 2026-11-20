@@ -24,19 +24,20 @@ def test_recorded_proxy_boundaries(case):
     ids, spans = case["reencoded_token_ids"], case["character_spans"]
     original = ids.copy()
     expected = case["segmentation"]
+    boundaries = segment(case["text"], ids, spans)
     if expected["success"]:
-        boundaries = segment(case["text"], ids, spans)
         assert list(boundaries) == expected["boundaries"]
-        assert boundaries[0] == 0 and boundaries[-1] == len(ids)
-        assert all(a < b for a, b in pairwise(boundaries))
-        assert [token for a, b in pairwise(boundaries) for token in ids[a:b]] == ids
     else:
         assert expected["category"] == "inside_token"
+        assert case["task"] == "math"
         # Independently establish why the recorded cut cannot be an exact token cut.
         cut = int(re.search(r"character (\d+)", expected["exception_message"])[1])
         assert any(start < cut < end for start, end in spans)
         with pytest.raises(
             AssertionError, match=re.escape(expected["exception_message"])
         ):
-            segment(case["text"], ids, spans)
+            segment(case["text"], ids, spans, round_forward=False)
+    assert boundaries[0] == 0 and boundaries[-1] == len(ids)
+    assert all(a < b for a, b in pairwise(boundaries))
+    assert [token for a, b in pairwise(boundaries) for token in ids[a:b]] == ids
     assert ids == original

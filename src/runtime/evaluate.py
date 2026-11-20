@@ -6,17 +6,15 @@ available text, without a training truncation penalty. Backend/verifier failures
 abort evaluation. This module neither loads models/datasets nor selects splits.
 """
 
-import json
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from math import isfinite
-from pathlib import Path
 from typing import Literal, Protocol
 
 from core.data import Example
 from core.inference import TextGenerator
-from core.verifier import VERIFIER_POLICY, VERIFIER_PROVENANCE, verify_response
+from core.verifier import verify_response
 
 
 @dataclass(frozen=True)
@@ -32,17 +30,6 @@ class EvaluationRecord:
     extracted_answers: tuple[str, ...]
     reference_answer: str
     correct: bool
-
-
-@dataclass(frozen=True)
-class EvaluatorConfig:
-    """Application-owned evaluation settings, not backend/loading configuration."""
-
-    task: Literal["math", "gsm8k"]
-    batch_size: int = 1
-    num_samples: int = 1
-    max_new_tokens: int = 100
-    temperature: float = 0.0
 
 
 def evaluate(
@@ -159,51 +146,3 @@ def inference_context(
         yield generator
     finally:
         generator.close()
-
-
-def main(
-    config: EvaluatorConfig,
-    *,
-    examples: Sequence[Example],
-    generator_factory: Callable[[], ClosableTextGenerator],
-    output_dir: str | Path,
-    formatter: Callable[[str], str] | None = None,
-) -> tuple[list[EvaluationRecord], dict[str, int | float]]:
-    """Evaluate ready inputs and write artifacts to a new run directory.
-
-    The caller owns dataset/model selection and the factory's backend settings.
-    Config captures only evaluation settings; actual prompts are in records.
-    Verifier provenance is not model/dataset provenance or a paper-reproduction
-    claim. Existing output directories are rejected to avoid mixing runs.
-    Write errors propagate and may leave an incomplete directory, never a
-    fabricated successful result. Generator cleanup precedes persistence.
-    """
-    with inference_context(generator_factory) as generator:
-        records, metrics = evaluate(
-            examples, generator, **asdict(config), formatter=formatter
-        )
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=False)
-    with (output_dir / "records.jsonl").open("w", encoding="utf-8") as stream:
-        for record in records:
-            stream.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")
-    for name, data in (
-        ("config", asdict(config)),
-        ("metrics", metrics),
-        (
-            "provenance",
-            {
-                "verifier_policy": VERIFIER_POLICY,
-                "verifier_provenance": VERIFIER_PROVENANCE,
-                "prompt_policy": "bare-question-smoke-test"
-                if formatter is None
-                else "caller-supplied; see records for exact prompts",
-                "accuracy_policy": "sample accuracy; no truncation penalty",
-            },
-        ),
-    ):
-        (output_dir / f"{name}.json").write_text(
-            json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-        )
-    return records, metrics

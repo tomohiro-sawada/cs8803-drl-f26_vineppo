@@ -11,7 +11,9 @@ from math import isfinite
 
 from algorithms.base import AlgorithmConfig
 from core.data import Episode, MCContinuation, PrefixSamples, VinePPOValueEstimate
-from core.inference import HFInference
+from core.inference import Completion, HFInference
+
+ScoreResponses = Callable[[Sequence[Completion]], Sequence[float]]
 
 
 @dataclass
@@ -87,50 +89,8 @@ def compute_step_advantages(
     ) + (reward - prefix_values[-1],)
 
 
-def estimate_vineppo(
-    episode_id: str,
-    episode: Episode,
-    *,
-    step_boundaries: tuple[int, ...],
-    inference: HFInference,
-    score_response: Callable[[list[int], str], float],
-    num_samples: int,
-    max_new_tokens: int = 1024,
-    max_sequence_length: int = 2048,
-    temperature: float,
-    record_prefix_samples: Callable[[PrefixSamples], None] | None = None,
-) -> VinePPOValueEstimate:
-    """Estimate pre-step values and raw advantages using sampled continuations.
-
-    Rewards are terminal-only, gamma is 1, and terminal value is zero. Both
-    stopped and length-truncated episodes are treated as terminal with their
-    supplied reward; sampled truncations are scored by score_response.
-
-    The scorer receives response-prefix plus continuation tokens (no prompt),
-    and the sampled finish reason. Each continuation receives
-    min(max_new_tokens, max_sequence_length - len(full_prefix)); see
-    continuation_budget for special-token and response-prefix semantics.
-    Model capacity is enforced by HFInference; the trainer also validates its
-    configured total limit against the actor before collection.
-    Optional diagnostics retain every scored sample; omitting the callback
-    retains only aggregate values. Generation, scoring, and recording errors
-    propagate. The caller owns the inference model and its lifetime.
-    """
-    return estimate_vineppo_batch(
-        [(episode_id, episode, step_boundaries, score_response)],
-        inference=inference,
-        num_samples=num_samples,
-        max_new_tokens=max_new_tokens,
-        max_sequence_length=max_sequence_length,
-        temperature=temperature,
-        record_prefix_samples=record_prefix_samples,
-    )[0]
-
-
 def estimate_vineppo_batch(
-    items: Sequence[
-        tuple[str, Episode, tuple[int, ...], Callable[[list[int], str], float]]
-    ],
+    items: Sequence[tuple[str, Episode, tuple[int, ...], ScoreResponses]],
     *,
     inference: HFInference,
     num_samples: int,
@@ -139,13 +99,16 @@ def estimate_vineppo_batch(
     temperature: float,
     record_prefix_samples: Callable[[PrefixSamples], None] | None = None,
 ) -> list[VinePPOValueEstimate]:
-    """estimate_vineppo for (episode_id, episode, step_boundaries, scorer) items.
+    """Estimate pre-step values and raw advantages for sampled episodes.
 
     Every item is validated and every nonterminal prefix of every episode is
     submitted in one generate_each call before any result is awaited, so a
     concurrent sampler sees the whole iteration's work. Results are reduced in
     submission order: sampler arrival order cannot change an estimate. Each
-    scorer is bound to its own episode's reference answer.
+    scorer is bound to its episode's reference answer and sees only response
+    prefix plus continuation tokens and the finish reason. Each branch uses
+    its remaining context budget. Stopped and truncated episodes use their
+    supplied terminal reward and zero terminal value.
     """
     if type(num_samples) is not int or num_samples <= 0:
         raise ValueError("num_samples must be a positive integer")
@@ -184,34 +147,42 @@ def estimate_vineppo_batch(
 
     groups = iter(groups)
     estimates = []
-    for episode_id, episode, step_boundaries, score_response in items:
+    for episode_id, episode, step_boundaries, score_responses in items:
         prefix_values = []
         for boundary in step_boundaries[:-1]:
-            rewards = []
-            samples = []
-            for continuation in next(groups):
-                response_tokens = (
-                    episode.response_ids[:boundary] + continuation.token_ids
+            group = next(groups)
+            responses = [
+                Completion(
+                    episode.response_ids[:boundary] + continuation.token_ids,
+                    continuation.finish_reason,
                 )
-                reward = score_response(response_tokens, continuation.finish_reason)
-                if not isfinite(reward):
-                    raise ValueError("sample reward must be finite")
-                rewards.append(reward)
-                if record_prefix_samples is not None:
-                    samples.append(
-                        MCContinuation(
-                            response_ids=tuple(continuation.token_ids),
-                            finish_reason=continuation.finish_reason,
-                            reward=reward,
-                        )
-                    )
+                for continuation in group
+            ]
+            try:
+                rewards = score_responses(responses)
+            except Exception as error:
+                error.add_note(
+                    f"MC episode {episode_id}, response prefix length {boundary}"
+                )
+                raise
+            if len(rewards) != len(group) or not all(
+                isfinite(reward) for reward in rewards
+            ):
+                raise ValueError("Expected one finite reward per MC sample")
             prefix_values.append(sum(rewards) / len(rewards))
             if record_prefix_samples is not None:
                 record_prefix_samples(
                     PrefixSamples(
                         episode_id=episode_id,
                         response_prefix_length=boundary,
-                        continuations=tuple(samples),
+                        continuations=tuple(
+                            MCContinuation(
+                                tuple(continuation.token_ids),
+                                continuation.finish_reason,
+                                reward,
+                            )
+                            for continuation, reward in zip(group, rewards, strict=True)
+                        ),
                     )
                 )
         estimates.append(

@@ -56,6 +56,14 @@ records its parent run. Checkpoints are written only at the checkpoint cadence:
 work after the last checkpoint is lost when a job hits its time limit, and no
 walltime signal handling is implemented.
 
+Submitting the same Skynet `train_resumable.slurm` command after selection freezes
+validates the original plan. A validation-only run returns success. For
+`validation-test`, the wrapper either verifies the complete test already on disk
+or starts all 16 rounds in a new `test-attempt-NN` directory under the run root.
+It writes `test-complete.json` atomically with the frozen selection, checkpoint,
+protocol, and result digests. Interrupted attempts remain available for diagnosis.
+No new training or checkpoint selection occurs during finalization.
+
 ## Separate process and resource costs
 
 Evaluation runs as a child Python process in the same Slurm allocation, using
@@ -75,7 +83,7 @@ in iteration wall time; final-test time is recorded in `final-evaluation.json`.
 Thus throughput with evaluation enabled is not pure training throughput.
 
 Retention keeps the **latest N plus the best** checkpoint if it is older.
-Peak storage can reach **N+2 full checkpoints** during a save (four for N=2),
+Peak storage can reach **N+2 iteration checkpoints** during a save (four for N=2),
 plus evaluation records. Older losing checkpoints can be deleted; their complete
 validation evidence and hashes remain in the selection manifest.
 
