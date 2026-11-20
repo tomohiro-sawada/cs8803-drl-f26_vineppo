@@ -11,7 +11,7 @@ case "$mode" in train|benchmark) ;; *) fail "Unknown mode: $mode" ;; esac
 cd "${SLURM_SUBMIT_DIR:?Submit with sbatch from the repository root}"
 
 args=("$@")
-task= model= dataset= output= resume= expected_gpu= backend=hf workers=0 context=2048 rank=16
+task= model= dataset= output= resume= expected_gpu= backend=hf workers=0 placement=dedicated context=2048 rank=16
 while (( $# )); do
     [[ $# -ge 2 && -n $2 && $2 != --* ]] || fail "Missing value for $1"
     case "$1" in
@@ -32,6 +32,7 @@ while (( $# )); do
         --expected-gpu) expected_gpu=$2 ;;
         --backend) backend=$2 ;;
         --num-workers) workers=$2 ;;
+        --worker-placement) placement=$2 ;;
         --max-sequence-length) context=$2 ;;
         --lora-rank) rank=$2 ;;
         --num-iterations|--warmup-iterations|--prompts-per-iteration|--num-samples|--mc-num-samples|--update-epochs|--minibatch-size|--microbatch-size|--max-new-tokens|--learning-rate|--critic-learning-rate|--seed|--checkpoint-every|--keep-checkpoints|--dtype|--finetuning|--lora-alpha) ;;
@@ -50,13 +51,19 @@ case "$cluster" in
         expected_gpu=${expected_gpu:-A40}
         [[ $expected_gpu == A40 ]] || fail 'Skynet requests A40; --expected-gpu must be A40' ;;
     pace_ice)
-        case "$expected_gpu" in A40|H100|H200) ;; *) fail 'PACE requires --expected-gpu A40, H100 or H200 and a matching sbatch --constraint' ;; esac ;;
+        # Omitted: any GPU type the sbatch --constraint admits; the runner records it.
+        case "$expected_gpu" in ''|A40|L40S|A100|H100|H200) ;; *) fail 'PACE --expected-gpu must be A40, L40S, A100, H100 or H200 (omit it to accept any of them)' ;; esac ;;
 esac
 case "$backend" in
     hf) [[ $workers == 0 ]] || fail '--num-workers requires --backend vllm' ;;
     vllm)
         [[ $workers =~ ^[1-9][0-9]*$ ]] || fail '--backend vllm requires --num-workers N'
-        [[ ${SLURM_NTASKS:-} == $((workers + 1)) ]] || fail "Allocate one task and GPU for the learner and each worker: sbatch --ntasks=$((workers + 1))"
+        case "$placement" in
+            dedicated) tasks=$((workers + 1)) ;;
+            colocated) tasks=1; [[ $workers == 1 ]] || fail 'A colocated learner shares its GPU with exactly one worker' ;;
+            *) fail "Unknown worker placement: $placement" ;;
+        esac
+        [[ ${SLURM_NTASKS:-} == "$tasks" ]] || fail "$placement workers need one task and GPU per GPU-owning process: sbatch --ntasks=$tasks"
         [[ -x ${VLLM_PYTHON:-} ]] || fail 'Set VLLM_PYTHON to the inference environment python' ;;
     *) fail "Unknown backend: $backend" ;;
 esac
@@ -78,7 +85,7 @@ export PYTHONUNBUFFERED=1 TOKENIZERS_PARALLELISM=false
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:?Expected a SLURM allocation}"
 mkdir -p "$HF_HOME" "$XDG_CACHE_HOME" "$TORCH_HOME" "$TRITON_CACHE_DIR"
 
-defaults=(--mode "$mode" --algorithm vineppo --expected-gpu "$expected_gpu"
+defaults=(--mode "$mode" --algorithm vineppo ${expected_gpu:+--expected-gpu "$expected_gpu"}
     --prompts-per-iteration 2 --num-samples 2 --mc-num-samples 2
     --update-epochs 1 --minibatch-size 2 --microbatch-size 1
     --max-sequence-length 2048 --max-new-tokens 1024
@@ -91,19 +98,27 @@ esac
 run=("$python" "$entry" "${defaults[@]}" "${args[@]}")
 [[ $backend == vllm ]] || exec srun --ntasks=1 "${run[@]}"
 
-# One Slurm step per process, each with exactly one scheduler-assigned GPU; steps
-# may land on different nodes. The first process to exit ends the job: a worker
-# never exits normally, so its death fails the learner instead of hanging it.
+# One Slurm step per process. Dedicated: each step gets exactly one
+# scheduler-assigned GPU and steps may land on different nodes. Colocated: the
+# learner and its one worker overlap on the job's single GPU; they alternate
+# (sampling, then scoring/updating), so the worker's memory share is capped.
+# The first process to exit ends the job: a worker never exits normally, so its
+# death fails the learner instead of hanging it.
 worker_dir=$TRAINING_CACHE/workers/$SLURM_JOB_ID
 mkdir -p "$TRAINING_CACHE/workers" && mkdir "$worker_dir"
 read -r VLLM_API_KEY < /proc/sys/kernel/random/uuid
 export VLLM_API_KEY
-step=(srun --nodes=1 --ntasks=1 --gpus=1 --cpus-per-task="$SLURM_CPUS_PER_TASK" --exact)
+if [[ $placement == colocated ]]; then
+    step=(srun --ntasks=1 --overlap) worker_memory=0.4
+else
+    step=(srun --nodes=1 --ntasks=1 --gpus=1 --cpus-per-task="$SLURM_CPUS_PER_TASK" --exact) worker_memory=0.85
+fi
 trap 'kill $(jobs -p) 2>/dev/null' EXIT
 for ((worker = 0; worker < workers; worker++)); do
     "${step[@]}" --output="$worker_dir/worker-$worker.log" "$VLLM_PYTHON" experiments/training/vllm_worker.py \
         --rank "$worker" --model-path "$model" --worker-dir "$worker_dir" \
-        --max-sequence-length "$context" --max-lora-rank "$rank" &
+        --max-sequence-length "$context" --max-lora-rank "$rank" \
+        --gpu-memory-utilization "$worker_memory" &
 done
 "${step[@]}" "${run[@]}" --worker-dir "$worker_dir" &
 wait -n

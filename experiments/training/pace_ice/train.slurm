@@ -3,7 +3,7 @@
 #SBATCH --partition=ice-gpu
 #SBATCH --account=math
 #SBATCH --qos=coc-ice
-#SBATCH --constraint=gpu-a40|gpu-h100|gpu-h200
+#SBATCH --constraint=gpu-a40|gpu-l40s|gpu-a100|gpu-h100|gpu-h200
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=6

@@ -29,7 +29,7 @@ def main() -> None:
     parser.add_argument("--worker-dir", type=Path, required=True)
     parser.add_argument("--max-sequence-length", type=int, required=True)
     parser.add_argument("--max-lora-rank", type=int, required=True)
-    parser.add_argument("--gpu-memory-utilization", type=float, default=0.85)
+    parser.add_argument("--gpu-memory-utilization", type=float, required=True)
     parser.add_argument("--max-num-seqs", type=int, default=256)
     args = parser.parse_args()
     assert os.environ["VLLM_API_KEY"], "Workers require an API key"

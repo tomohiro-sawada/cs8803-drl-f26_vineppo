@@ -1,0 +1,67 @@
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights:   4%|▍         | 8/201 [00:00<00:05, 34.35it/s]Loading weights:  10%|▉         | 20/201 [00:00<00:02, 66.20it/s]Loading weights:  17%|█▋        | 35/201 [00:00<00:02, 68.78it/s]Loading weights:  22%|██▏       | 44/201 [00:00<00:02, 74.28it/s]Loading weights:  32%|███▏      | 65/201 [00:00<00:01, 109.87it/s]Loading weights:  43%|████▎     | 87/201 [00:00<00:00, 127.11it/s]Loading weights:  52%|█████▏    | 104/201 [00:01<00:00, 119.10it/s]Loading weights:  58%|█████▊    | 117/201 [00:01<00:00, 114.20it/s]Loading weights:  64%|██████▍   | 129/201 [00:01<00:00, 94.82it/s] Loading weights:  70%|██████▉   | 140/201 [00:01<00:00, 93.77it/s]Loading weights:  76%|███████▌  | 152/201 [00:01<00:00, 97.64it/s]Loading weights:  81%|████████  | 163/201 [00:01<00:00, 81.29it/s]Loading weights:  89%|████████▉ | 179/201 [00:01<00:00, 98.12it/s]Loading weights:  95%|█████████▍| 190/201 [00:02<00:00, 90.34it/s]Loading weights: 100%|██████████| 201/201 [00:02<00:00, 98.11it/s]
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|██████████| 201/201 [00:00<00:00, 12629.47it/s]
+wandb: [wandb.login()] Loaded credentials for https://api.forge.coreweave.com from WANDB_API_KEY.
+wandb: Currently logged in as: tsawada to https://api.forge.coreweave.com. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.31.0
+wandb: Run data is saved locally in /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/smoke-e2e-vineppo-01/wandb/run-20261119_222602-917fe97464ae45b994cc9dfecbdfb8cf
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run smoke-e2e-vineppo-01
+wandb: ⭐️ View project at https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: 🚀 View run at https://forge.coreweave.com/wandb/tsawada/vineppo/runs/917fe97464ae45b994cc9dfecbdfb8cf
+wandb: updating run metadata
+wandb: uploading wandb-summary.json; uploading config.yaml
+wandb: 
+wandb: Run history:
+wandb:          actor_learning_rate ▁▁▁
+wandb:        actor_refresh_seconds ▃▁█
+wandb:         actor_update_seconds █▁▄
+wandb:          allocated_bytes_end ▁▁▁
+wandb:                    approx_kl █▁▄
+wandb:     budget/iteration_seconds ▁▇█
+wandb:      budget/mc_continuations ▁▄█
+wandb:         budget/mc_expansions ▁▄█
+wandb:             budget/mc_tokens ▁▄█
+wandb: budget/primary_continuations ▁▅█
+wandb:                          +53 ...
+wandb: 
+wandb: Run summary:
+wandb:          actor_learning_rate 1e-05
+wandb:        actor_refresh_seconds 0.47437
+wandb:         actor_update_seconds 1.51159
+wandb:          allocated_bytes_end 4555778048
+wandb:                    approx_kl 0.00024
+wandb:     budget/iteration_seconds 75.07861
+wandb:      budget/mc_continuations 608
+wandb:         budget/mc_expansions 152
+wandb:             budget/mc_tokens 39553
+wandb: budget/primary_continuations 48
+wandb:                          +55 ...
+wandb: 
+wandb: 🚀 View run smoke-e2e-vineppo-01 at: https://forge.coreweave.com/wandb/tsawada/vineppo/runs/917fe97464ae45b994cc9dfecbdfb8cf
+wandb: ⭐️ View project at: https://forge.coreweave.com/wandb/tsawada/vineppo
+wandb: Synced 3 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/smoke-e2e-vineppo-01/wandb/run-20261119_222602-917fe97464ae45b994cc9dfecbdfb8cf/logs
+Traceback (most recent call last):
+  File "/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/experiments/training/run.py", line 828, in <module>
+    main()
+    ~~~~^^
+  File "/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/experiments/training/run.py", line 753, in main
+    trainer.train(**inputs, record_metrics=trainer.record_metrics)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/src/runtime/train.py", line 521, in train
+    step_boundaries_from_tokens(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        episode.response_ids,
+        ^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+        context_ids=episode.prompt_ids,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "/home/hice1/tsawada7/Files/projects/cs8803-drl-f26_vineppo/src/core/segmentation.py", line 108, in step_boundaries_from_tokens
+    assert encoded["input_ids"] == context + content_ids, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Decoded text does not roundtrip to the exact sampled token IDs
+srun: error: atl1-1-01-005-9-0: task 0: Exited with exit code 1
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.

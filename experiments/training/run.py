@@ -2,8 +2,10 @@
 
 --backend hf samples from the live actor on the learner GPU. --backend vllm keeps
 scoring, the frozen reference and updates on the learner and samples from
---num-workers persistent vLLM replicas (experiments/training/vllm_worker.py), each
-on its own GPU, which are republished the LoRA actor before every iteration.
+--num-workers persistent vLLM replicas (experiments/training/vllm_worker.py), which
+are republished the LoRA actor before every iteration. --worker-placement
+dedicated gives every replica its own GPU; colocated runs the single replica on
+the learner's GPU, where the two alternate rather than compete.
 
 Both modes perform real updates; --num-iterations (default 3) is the TOTAL target,
 including resumed iterations. Set it explicitly for longer training. Benchmark
@@ -182,6 +184,9 @@ def parse_args(argv=None):
     parser.add_argument(
         "--worker-dir", type=Path, help="Set by launch.sh: worker identity files"
     )
+    parser.add_argument(
+        "--worker-placement", choices=("dedicated", "colocated"), default="dedicated"
+    )
     args = parser.parse_args(argv)
     if (args.backend == "vllm") != (args.num_workers is not None) or (
         args.backend == "vllm"
@@ -189,6 +194,8 @@ def parse_args(argv=None):
         parser.error(
             "--backend vllm requires --num-workers and --worker-dir, hf neither"
         )
+    if args.worker_placement == "colocated" and args.num_workers != 1:
+        parser.error("--worker-placement colocated requires --num-workers 1")
     if args.backend == "vllm" and (
         args.finetuning != "lora" or args.algorithm == "ppo"
     ):
@@ -579,8 +586,13 @@ def main(argv=None):
             count=args.num_workers,
             api_key=os.environ["VLLM_API_KEY"],
             model_path=args.model_path,
-            other_gpu_uuids=[learner_gpu["uuid"]],
+            other_gpu_uuids=[learner_gpu["uuid"]]
+            if args.worker_placement == "dedicated"
+            else [],
         )
+        assert args.worker_placement == "dedicated" or (
+            workers[0]["gpu"]["uuid"] == learner_gpu["uuid"]
+        ), "A colocated worker must share the learner's GPU"
         assert all(
             args.expected_gpu is None
             or args.expected_gpu.casefold() in worker["gpu"]["name"].casefold()

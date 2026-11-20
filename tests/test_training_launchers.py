@@ -240,8 +240,7 @@ def test_explicit_lora_options_and_supported_algorithms(
         ("skynet", ["--algorithm", "ppo"], "PPO is not supported on Skynet"),
         ("skynet", ["--algorithm", "unknown"], "Unsupported algorithm"),
         ("skynet", ["--expected-gpu", "H100"], "must be A40"),
-        ("pace_ice", [], "PACE requires --expected-gpu"),
-        ("pace_ice", ["--expected-gpu", "A100"], "PACE requires --expected-gpu"),
+        ("pace_ice", ["--expected-gpu", "V100"], "PACE --expected-gpu must be"),
         ("skynet", ["--mode", "train"], "Unsupported option"),
         ("skynet", ["--num-iterations"], "Missing value"),
         ("skynet", ["--task", "unknown"], "--task gsm8k|math is required"),
@@ -335,7 +334,7 @@ def test_wrapper_resource_directives(cluster, mode):
             "--account=math",
             "--qos=coc-ice",
             "--gpus-per-task=1",
-            "--constraint=gpu-a40|gpu-h100|gpu-h200",
+            "--constraint=gpu-a40|gpu-l40s|gpu-a100|gpu-h100|gpu-h200",
         } <= directives
 
 
@@ -534,13 +533,42 @@ def test_worker_death_fails_the_job(launch):
         (["--num-workers", "1"], 2, "requires --backend vllm"),
         (["--backend", "vllm"], 2, "requires --num-workers"),
         (["--backend", "vllm", "--num-workers", "3"], 2, "sbatch --ntasks=4"),
+        (
+            [
+                "--backend",
+                "vllm",
+                "--num-workers",
+                "1",
+                "--worker-placement",
+                "colocated",
+            ],
+            2,
+            "sbatch --ntasks=1",
+        ),
+        (
+            [
+                "--backend",
+                "vllm",
+                "--num-workers",
+                "2",
+                "--worker-placement",
+                "colocated",
+            ],
+            1,
+            "exactly one worker",
+        ),
+        (
+            ["--backend", "vllm", "--num-workers", "1", "--worker-placement", "shared"],
+            1,
+            "Unknown worker placement",
+        ),
         (["--backend", "sglang", "--num-workers", "1"], 2, "Unknown backend"),
     ],
 )
 def test_backend_and_allocation_must_agree(launch, extra, tasks, message):
     launch.env.update(SLURM_NTASKS=str(tasks), VLLM_PYTHON=launch.env["PYTHON"])
     result = launch.run("pace_ice", "benchmark", ["--expected-gpu", "A40", *extra])
-    assert result.returncode == 2 and message in result.stderr
+    assert result.returncode == 2 and message in result.stderr, result.stderr
     assert not Path(launch.env["SRUN_CAPTURE"]).exists()
 
 
@@ -552,3 +580,38 @@ def test_distributed_requires_inference_python(launch):
         ["--expected-gpu", "A40", "--backend", "vllm", "--num-workers", "1"],
     )
     assert result.returncode == 2 and "VLLM_PYTHON" in result.stderr
+
+
+def test_colocated_worker_overlaps_the_learner_on_one_gpu(launch):
+    launch.env.update(
+        SLURM_NTASKS="1", SLURM_JOB_ID="78", VLLM_PYTHON=launch.env["PYTHON"]
+    )
+    result = launch.run(
+        "pace_ice",
+        "train",
+        [
+            "--backend", "vllm", "--num-workers", "1", "--finetuning", "lora",
+            "--worker-placement", "colocated",
+        ],
+    )  # fmt: skip
+    assert result.returncode == 0, result.stderr
+    steps = [
+        json.loads(line)
+        for line in Path(launch.env["SRUN_CAPTURE"] + "l").read_text().splitlines()
+    ]
+    assert len(steps) == 2 and all(
+        step[:2] == ["--ntasks=1", "--overlap"] and "--gpus=1" not in step
+        for step in steps
+    )
+    worker = next(s for s in steps if "experiments/training/vllm_worker.py" in s)
+    assert worker[worker.index("--gpu-memory-utilization") + 1] == "0.4"
+    captured = json.loads(Path(launch.env["PYTHON_CAPTURE"]).read_text())
+    args = runner.parse_args(captured["argv"][1:])
+    assert (args.worker_placement, args.expected_gpu) == ("colocated", None)
+
+
+def test_dedicated_workers_keep_most_of_their_gpu(launch):
+    assert distributed(launch, 1, 2).returncode == 0
+    steps = Path(launch.env["SRUN_CAPTURE"] + "l").read_text().splitlines()
+    worker = next(s for s in map(json.loads, steps) if "--rank" in s)
+    assert worker[worker.index("--gpu-memory-utilization") + 1] == "0.85"

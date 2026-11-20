@@ -1,0 +1,22 @@
+---------------------------------------
+Begin Slurm Prolog: Nov-19-2026 21:45:44
+Job ID:    7179619
+User ID:   tsawada7
+Account:   math
+Job name:  smoke-vllm-1p1-vineppo
+Partition: ice-gpu
+QOS:       coc-ice
+---------------------------------------
+Completed iteration 3; metrics and summary: /storage/ice1/2/9/tsawada7/cs8803-drl-f26_vineppo/training/pace_ice/smoke-vllm-1p1-vineppo-a40-01
+---------------------------------------
+Begin Slurm Epilog: Nov-19-2026 21:53:18
+Job ID:        7179619
+User ID:       tsawada7
+Account:       math
+Job name:      smoke-vllm-1p1-vineppo
+Resources:     cpu=12,gres/gpu:a40=2,mem=144G,node=1
+Rsrc Used:     cput=01:30:48,vmem=0,walltime=00:07:34,mem=27144K,energy_used=0
+Partition:     ice-gpu
+QOS:           coc-ice
+Nodes:         atl1-1-01-005-9-0
+---------------------------------------
