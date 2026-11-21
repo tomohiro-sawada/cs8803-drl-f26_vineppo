@@ -196,15 +196,18 @@ def generate(args):
         archive(key, root)
         return root
 
-    long = {"steps": 650, "prompts": 64, "batch": 64}
+    long = {"steps": 650, "prompts": 64, "batch": 64, "limit": "08:00:00"}
     for seed in (42, 43, 44):
         train(f"rho-rloo-200-s{seed}", "rloo", seed=seed)
-    rehearsal = train("rho-vineppo-650-s42", "vineppo", **long, limit="08:00:00")
-    for method in ("rloo", "grpo", "ppo"):
-        gates = [rehearsal / "ROLLOVER"]
-        if method == "ppo":
-            gates.append(args.ppo_smoke / "COMPLETE")
-        train(f"rho-{method}-650-s42", method, **long, limit="16:00:00", gates=gates)
+    rehearsal = train("rho-vineppo-650-s42", "vineppo", **long)
+    for seed in (42, *args.extra_long_seed):
+        for method in ("vineppo", "rloo", "grpo", "ppo"):
+            if (seed, method) == (42, "vineppo"):
+                continue
+            gates = [rehearsal / "ROLLOVER"]
+            if method == "ppo":
+                gates.append(args.ppo_smoke / "COMPLETE")
+            train(f"rho-{method}-650-s{seed}", method, seed=seed, **long, gates=gates)
     for method in ("grpo", "vineppo", "ppo"):
         for seed in (42, 43, 44):
             gates = [args.ppo_smoke / "COMPLETE"] if method == "ppo" else []
@@ -230,7 +233,7 @@ def generate(args):
         period=1,
         resume=1,
         epochs=8,
-        limit="16:00:00",
+        limit="03:00:00",
         gates=[restem_budget / "COMPLETE"],
     )
 
@@ -319,4 +322,7 @@ if __name__ == "__main__":
     parser.add_argument("--deadline", type=float, required=True)
     parser.add_argument("--cpu-job", required=True)
     parser.add_argument("--suffix", default="03")
+    parser.add_argument(
+        "--extra-long-seed", type=int, choices=(43, 44), action="append", default=[]
+    )
     generate(parser.parse_args())
