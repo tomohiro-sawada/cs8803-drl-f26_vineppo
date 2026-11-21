@@ -35,6 +35,7 @@ import json
 import math
 import os
 import platform
+import signal
 import subprocess
 import sys
 from collections import defaultdict
@@ -44,7 +45,7 @@ from datetime import UTC, datetime
 from functools import wraps
 from importlib.metadata import version
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, time
 
 # Must precede all HF imports, including transitive runtime imports.
 os.environ["HF_HUB_OFFLINE"] = "1"
@@ -67,6 +68,8 @@ from core.inference import HFInference
 from core.lora import apply_lora, lora_identity
 from core.segmentation import MATH_SEGMENTATION_POLICY
 from core.vllm_inference import VLLMClient, VLLMInference, gpu_identity, slurm_attempt
+from experiments.training.archive import archive_checkpoint
+from experiments.training.resume import BoundaryDeadline, ResumeSlot, atomic_record
 from experiments.training.selection import CheckpointSelection
 from experiments.training.tracking import WandBTracker
 from runtime.config import PPOTrainerConfig
@@ -146,6 +149,7 @@ def parse_args(argv=None):
         help="Default: 1e-6 full tuning, 1e-5 LoRA; tune independently",
     )
     parser.add_argument("--critic-learning-rate", type=positive_float, default=1e-5)
+    parser.add_argument("--kl-coef", type=float, default=1e-4)
     parser.add_argument("--math-grader-workers", type=positive_int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -159,6 +163,8 @@ def parse_args(argv=None):
     parser.add_argument(
         "--resume", type=Path, help="Core iteration-N.pt; output must still be new"
     )
+    parser.add_argument("--resume-checkpoint-every", type=positive_int)
+    parser.add_argument("--archive-checkpoints", choices=("yes", "no"), default="no")
     parser.add_argument(
         "--resume-selection",
         type=Path,
@@ -248,6 +254,8 @@ def parse_args(argv=None):
         parser.error("GRPO/RLOO require --num-samples >= 2 per prompt")
     if args.warmup_iterations < 0 or not 0 <= args.seed < 2**64:
         parser.error("warmup must be nonnegative; seed must be in [0, 2**64)")
+    if not math.isfinite(args.kl_coef) or args.kl_coef < 0:
+        parser.error("--kl-coef must be finite and nonnegative")
     if args.mode == "benchmark" and args.warmup_iterations >= args.num_iterations:
         parser.error("benchmark needs at least one non-warmup iteration")
     for name in ("model_path", "dataset_path"):
@@ -383,7 +391,16 @@ class MeasuredTrainer(PPOTrainer):
     """Thin wrappers around core hooks; checkpoint-aware metric finalization."""
 
     def __init__(
-        self, *args, meter, stream, warmup_iterations, keep_checkpoints, **kwargs
+        self,
+        *args,
+        meter,
+        stream,
+        warmup_iterations,
+        keep_checkpoints,
+        resume_checkpoint_every=None,
+        deadline=None,
+        archive=False,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.meter = meter
@@ -395,6 +412,14 @@ class MeasuredTrainer(PPOTrainer):
         self.saved = []
         self.tracker = None
         self.selection = None
+        self.resume_every = resume_checkpoint_every
+        self.resume_slot = ResumeSlot(self.config.checkpoint_dir)
+        self.deadline = deadline
+        self.archive = archive
+        self.archived_frozen = False
+        self.chain_status = (
+            Path(os.environ["PACE_CHAIN_STATUS_FILE"]) if deadline is not None else None
+        )
 
     def _prepare_inputs(self, *args, **kwargs):
         result = super()._prepare_inputs(*args, **kwargs)
@@ -435,7 +460,26 @@ class MeasuredTrainer(PPOTrainer):
             self.iteration % self.config.checkpoint_every
             and self.iteration != self.config.num_iterations
         ):
+            if self.resume_every and self.iteration % self.resume_every == 0:
+                self.save_resume()
             self.finish_iteration()
+
+    def save_resume(self):
+        # The last candidate is already a complete resume boundary.
+        if self.iteration > 0 and self.iteration % self.config.checkpoint_every:
+            with self.meter.phase("checkpoint"):
+                path = self.resume_slot.save(self.iteration, super().save_checkpoint)
+                self.meter.counts["checkpoint_bytes"] = path.stat().st_size
+
+    def stop_at_boundary(self):
+        if self.deadline is None or not self.deadline.should_stop():
+            return False
+        if self.rows:
+            self.save_resume()
+        print(
+            f"Stopping at completed iteration {self.iteration} for the allocation deadline"
+        )
+        return True
 
     def save_checkpoint(self, path=None):
         assert path is None, "Runner checkpoints must stay in this run's directory"
@@ -448,6 +492,7 @@ class MeasuredTrainer(PPOTrainer):
             with self.meter.phase("validation"):
                 torch.cuda.empty_cache()
                 self.pending.update(self.selection.validate(saved, self.iteration))
+        self.archive_candidate(saved)
         with self.meter.phase("checkpoint"):
             retained = set(self.saved[-self.keep_checkpoints :])
             if self.selection is not None:
@@ -455,10 +500,22 @@ class MeasuredTrainer(PPOTrainer):
             # Only prune this invocation's files, after validation has succeeded.
             for old in self.saved:
                 if old not in retained:
+                    if self.archive:
+                        assert old.with_suffix(".archive.json").is_file()
                     old.unlink()
             self.saved = [path for path in self.saved if path in retained]
         self.finish_iteration()
         return saved
+
+    def archive_candidate(self, path):
+        if not self.archive:
+            return
+        assert path.name == f"iteration-{self.iteration}.pt"
+        with self.meter.phase("checkpoint"):
+            if self._frozen_checkpoint is not None and not self.archived_frozen:
+                archive_checkpoint(Path(self._frozen_checkpoint[0]["path"]))
+                self.archived_frozen = True
+            archive_checkpoint(path)
 
     def finish_iteration(self):
         torch.cuda.synchronize()
@@ -502,6 +559,10 @@ class MeasuredTrainer(PPOTrainer):
         self.stream.write(json.dumps(row, allow_nan=False) + "\n")
         self.stream.flush()
         self.rows.append(row)
+        if self.deadline is not None:
+            self.deadline.observe(elapsed, phases["checkpoint_seconds"])
+            status = json.loads(self.chain_status.read_text())
+            atomic_record(self.chain_status, status | {"iteration": self.iteration})
         if self.tracker is not None:
             self.tracker.log_iteration(row)
         self.pending = None
@@ -545,6 +606,7 @@ def trainer_config(args):
                 "microbatch_size",
                 "max_sequence_length",
                 "max_new_tokens",
+                "kl_coef",
                 "seed",
             )
         },
@@ -572,6 +634,12 @@ def validate_grading_resources(workers):
 
 def main(argv=None):
     args = parse_args(argv)
+    deadline = None
+    if deadline_file := os.environ.get("PACE_CHAIN_STOP_FILE"):
+        deadline = BoundaryDeadline(
+            int(os.environ["SLURM_JOB_END_TIME"]), Path(deadline_file), clock=time
+        )
+        signal.signal(signal.SIGUSR1, deadline.request_stop)
     validate_grading_resources(args.math_grader_workers)
     assert args.mode in ("train", "benchmark"), (
         "Dispatch final testing through the launcher"
@@ -694,6 +762,9 @@ def main(argv=None):
             stream=stream,
             warmup_iterations=warmup,
             keep_checkpoints=args.keep_checkpoints,
+            resume_checkpoint_every=args.resume_checkpoint_every,
+            deadline=deadline,
+            archive=args.archive_checkpoints == "yes",
         )
         inputs = {
             "examples": examples,
@@ -812,8 +883,14 @@ def main(argv=None):
             if args.resume is None:
                 with meter.phase("validation"):
                     trainer.selection.baseline()
+        if args.resume is not None and args.resume.name.startswith("iteration-"):
+            trainer.archive_candidate(args.resume)
         if trainer.iteration < args.num_iterations:
-            trainer.train(**inputs, record_metrics=trainer.record_metrics)
+            trainer.train(
+                **inputs,
+                record_metrics=trainer.record_metrics,
+                stop_at_boundary=trainer.stop_at_boundary,
+            )
         assert trainer.pending is None
         measured = [row for row in trainer.rows if not row["warmup"]]
         seconds = sum(row["iteration_seconds"] for row in measured)

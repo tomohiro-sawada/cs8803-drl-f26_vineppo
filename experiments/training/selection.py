@@ -137,13 +137,16 @@ class CheckpointSelection:
                 file_sha256(Path(best["checkpoint"]["path"]))
                 == best["checkpoint"]["sha256"]
             )
+        is_candidate = args.resume.name == f"iteration-{iteration}.pt"
         if iteration in completed:
+            assert is_candidate, "Resume slot cannot replace a selection candidate"
             assert candidates[-1]["checkpoint"] == {
                 "path": str(args.resume),
                 "iteration": iteration,
                 "sha256": file_sha256(args.resume),
             }, "Resume checkpoint differs from completed candidate"
         elif iteration in expected:
+            assert is_candidate, "Selection needs the original candidate checkpoint"
             self.pending_checkpoint = args.resume
         # Re-home selection ownership, not actor/evaluation provenance or files.
         wandb = args.output / "wandb.json"

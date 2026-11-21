@@ -45,9 +45,11 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def hf(*args: str) -> str:
+def hf(*args: str, online: bool = False) -> str:
     """Run the hf CLI of this environment; fail loudly, never echo the token."""
     env = dict(os.environ)
+    if online:
+        env["HF_HUB_OFFLINE"] = "0"
     if "HF_TOKEN" not in env:
         env["HF_TOKEN"] = dotenv_values(ROOT / ".env", interpolate=False)["HF_TOKEN"]
     assert env["HF_TOKEN"].strip(), "HF_TOKEN is empty"

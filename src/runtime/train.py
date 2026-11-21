@@ -409,6 +409,7 @@ class PPOTrainer:
         record_value_estimate: Callable[[VinePPOValueEstimate | PPOValueEstimate], None]
         | None = None,
         record_metrics: Callable[[dict[str, float]], None] | None = None,
+        stop_at_boundary: Callable[[], bool] | None = None,
     ) -> list[dict[str, float]]:
         """Run to num_iterations total; return only this call's iteration metrics.
 
@@ -449,6 +450,8 @@ class PPOTrainer:
         )
         history = []
         while self.iteration < self.config.num_iterations:
+            if stop_at_boundary is not None and stop_at_boundary():
+                break
             self._at_boundary = False
             # Freeze the behavior actor: every sampler serves this iteration's weights.
             self.inference.sync(self.iteration)

@@ -22,7 +22,7 @@ while (( $# )); do
                 *) fail "Unsupported algorithm: $2 (choose vineppo, ppo, grpo, or rloo)" ;;
             esac ;;
         --resume-selection) [[ -e $2 ]] || fail "Resume selection does not exist: $2" ;;
-        --evaluation|--validation-rounds|--eval-batch-size|--eval-seed|--eval-timeout-seconds) ;;
+        --evaluation|--validation-rounds|--eval-batch-size|--eval-seed|--eval-timeout-seconds|--archive-checkpoints) ;;
         --wandb-mode|--wandb-project|--wandb-entity|--wandb-group|--wandb-name) ;;
         --task) task=$2 ;;
         --model-path) model=$2 ;;
@@ -35,7 +35,7 @@ while (( $# )); do
         --worker-placement) placement=$2 ;;
         --max-sequence-length) context=$2 ;;
         --lora-rank) rank=$2 ;;
-        --num-iterations|--warmup-iterations|--prompts-per-iteration|--num-samples|--mc-num-samples|--update-epochs|--minibatch-size|--microbatch-size|--max-new-tokens|--learning-rate|--critic-learning-rate|--math-grader-workers|--seed|--checkpoint-every|--checkpoint-format|--keep-checkpoints|--dtype|--finetuning|--lora-alpha) ;;
+        --num-iterations|--warmup-iterations|--prompts-per-iteration|--num-samples|--mc-num-samples|--update-epochs|--minibatch-size|--microbatch-size|--max-new-tokens|--learning-rate|--critic-learning-rate|--kl-coef|--math-grader-workers|--seed|--checkpoint-every|--resume-checkpoint-every|--checkpoint-format|--keep-checkpoints|--dtype|--finetuning|--lora-alpha) ;;
         *) fail "Unsupported option: $1 (mode is fixed by the SLURM wrapper; use --option value)" ;;
     esac
     shift 2
