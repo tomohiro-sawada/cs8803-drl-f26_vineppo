@@ -61,7 +61,7 @@ from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 from algorithms.grpo import GRPOConfig
 from algorithms.ppo import PPOConfig, TokenCritic
 from algorithms.rloo import RLOOConfig
-from algorithms.vineppo import VinePPOConfig
+from algorithms.vineppo import MC_PREFIX_POLICY, VinePPOConfig
 from core.data import Example
 from core.inference import HFInference
 from core.lora import apply_lora, lora_identity
@@ -740,6 +740,9 @@ def main(argv=None):
             "dataset": {"path": str(args.dataset_path), **dataset_info},
             "math_segmentation_policy": MATH_SEGMENTATION_POLICY
             if args.task == "math" and args.algorithm == "vineppo"
+            else None,
+            "mc_prefix_policy": MC_PREFIX_POLICY
+            if args.algorithm == "vineppo"
             else None,
             "prompt": PROMPT,
             "tokenizer_sha256": tokenizer_sha256,

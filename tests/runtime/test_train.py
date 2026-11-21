@@ -419,7 +419,9 @@ def test_real_loop_orders_phases_binds_references_and_reuses_old_cache(
         record_metrics=recorded_metrics.append,
     )
     assert events[0] == "generate"
-    assert events.count("generate") == 9
+    # One primary call, then one per distinct MC prefix: each prompt's two
+    # responses share its bare prompt and their first step.
+    assert events.count("generate") == 5
     assert events[-8:] == ["cache"] * 4 + ["step"] * 4
     assert old_rows == Counter({i: 2 for i in range(4)})
     assert {e.episode_id for e in estimates} == {

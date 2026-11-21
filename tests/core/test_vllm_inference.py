@@ -220,7 +220,9 @@ def test_arrival_order_and_layout_cannot_change_samples_or_advantages(actor, tmp
             record_prefix_samples=records.append,
         )
         outcomes.append(([e.raw_step_advantages for e in estimates], records))
-        assert sum(len(r.requests) for r in replicas) == 5
+        # a's bare prompt [1, 5] is also b's prompt plus its first step: the
+        # five prefixes are four distinct token sequences, each sampled once.
+        assert sum(len(r.requests) for r in replicas) == 4
         if len(replicas) == 3:
             assert all(replica.requests for replica in replicas), "Idle worker"
     assert outcomes[0] == outcomes[1]

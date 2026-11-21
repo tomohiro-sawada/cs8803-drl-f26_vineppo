@@ -4,7 +4,8 @@
 checkpoint's LoRA adapter, under a name embedding its content hash, to the idle
 training replicas and samples there; the training actor stays loaded and is
 verified untouched afterwards. --baseline evaluates the unadapted base model
-(iteration 0), which is reported separately and is never a selection candidate.
+(iteration 0) on either split; it is reported separately, needs no selection
+and is never a selection candidate.
 """
 
 import argparse
@@ -182,8 +183,8 @@ def parse_args(argv=None):
         parser.error(
             "validation requires exactly one of --checkpoint/--baseline, no --selection"
         )
-    if args.baseline and (args.split == "test" or args.checkpoint_source is not None):
-        parser.error("--baseline is a validation of the unadapted base model")
+    if args.baseline and args.checkpoint_source is not None:
+        parser.error("--baseline evaluates the unadapted base model itself")
     if (args.backend == "vllm") != (args.num_workers is not None) or (
         args.backend == "vllm"
     ) != (args.worker_dir is not None):
@@ -191,9 +192,14 @@ def parse_args(argv=None):
             "--backend vllm requires --num-workers and --worker-dir, hf neither"
         )
     if args.split == "test" and (
-        args.selection is None or args.checkpoint is not None or args.rounds != 16
+        (args.selection is None) != args.baseline
+        or args.checkpoint is not None
+        or args.rounds != 16
     ):
-        parser.error("test requires --selection, --rounds 16, and forbids --checkpoint")
+        parser.error(
+            "test requires exactly one of --selection/--baseline, --rounds 16, "
+            "and forbids --checkpoint"
+        )
     if args.checkpoint_sha256 is not None and (
         args.checkpoint is None
         or len(args.checkpoint_sha256) != 64
@@ -429,7 +435,7 @@ def main(argv=None):
             "batch_size": args.batch_size,
         }
         selection = None
-        if args.split == "test":
+        if args.selection is not None:
             selection = json.loads(args.selection.read_text())
             assert selection["test_protocol"] == protocol, (
                 "Test CLI protocol differs from frozen selection"

@@ -126,7 +126,9 @@ and a **new** evaluation output directory; seed/batch-size must match its manife
 accept a direct `--checkpoint`. For diagnostic validation of an existing new-format
 checkpoint, the same command uses `--split validation --checkpoint <path>` instead
 of `--selection`. Standalone validation does not mutate or select a training run's
-winner. No reduced test subsets or partial-round "final" scores are supported.
+winner. `--split test --baseline` scores the unadapted base model instead of a
+frozen winner; it takes no `--selection` because nothing is selected.
+No reduced test subsets or partial-round "final" scores are supported.
 
 ## Provenance and output
 

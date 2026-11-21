@@ -14,6 +14,7 @@ from core.data import Episode, MCContinuation, PrefixSamples, VinePPOValueEstima
 from core.inference import Completion, HFInference
 
 ScoreResponses = Callable[[Sequence[Completion]], Sequence[float]]
+MC_PREFIX_POLICY = "distinct_token_prefix_sampled_once_v1"
 
 
 @dataclass
@@ -101,14 +102,24 @@ def estimate_vineppo_batch(
 ) -> list[VinePPOValueEstimate]:
     """Estimate pre-step values and raw advantages for sampled episodes.
 
-    Every item is validated and every nonterminal prefix of every episode is
-    submitted in one generate_each call before any result is awaited, so a
-    concurrent sampler sees the whole iteration's work. Results are reduced in
-    submission order: sampler arrival order cannot change an estimate. Each
-    scorer is bound to its episode's reference answer and sees only response
-    prefix plus continuation tokens and the finish reason. Each branch uses
-    its remaining context budget. Stopped and truncated episodes use their
-    supplied terminal reward and zero terminal value.
+    Every item is validated and every distinct nonterminal prefix is submitted
+    in one generate_each call before any result is awaited, so a concurrent
+    sampler sees the whole iteration's work. Results are reduced in submission
+    order: sampler arrival order cannot change an estimate. Each scorer is
+    bound to its episode's reference answer and sees only response prefix plus
+    continuation tokens and the finish reason. Each branch uses its remaining
+    context budget. Stopped and truncated episodes use their supplied terminal
+    reward and zero terminal value.
+
+    Compatibility caveats (AGENT INSTRUCTIONS):
+        A state is its exact token prefix. Identical prefixes (the bare prompt
+        of every response to one prompt, or responses sharing their first
+        steps) are sampled ONCE and share those continuations, so they share
+        one value estimate. Upstream deduplicates on prefix text
+        (_create_value_estimation_requests at 9f716e6); we match token IDs,
+        consistent with training on exact sampled tokens. Do not sample
+        duplicates again or pool their samples without an explicit decision;
+        either changes value-estimate variance and MC cost.
     """
     if type(num_samples) is not int or num_samples <= 0:
         raise ValueError("num_samples must be a positive integer")
@@ -139,13 +150,19 @@ def estimate_vineppo_batch(
         prefixes += episode_prefixes
         if len(episode.prompt_ids) + len(episode.response_ids) > max_sequence_length:
             raise ValueError("episode exceeds max_sequence_length")
-    groups = inference.generate_each(
-        prefixes, budgets, num_samples=num_samples, temperature=temperature
+    # The budget is a function of prefix length, so the prefix alone is the key.
+    distinct = {tuple(prefix): budget for prefix, budget in zip(prefixes, budgets)}
+    sampled = inference.generate_each(
+        [list(prefix) for prefix in distinct],
+        list(distinct.values()),
+        num_samples=num_samples,
+        temperature=temperature,
     )
-    if len(groups) != len(prefixes) or any(len(g) != num_samples for g in groups):
+    if len(sampled) != len(distinct) or any(len(g) != num_samples for g in sampled):
         raise ValueError("generation returned invalid completion cardinality")
+    by_prefix = dict(zip(distinct, sampled, strict=True))
 
-    groups = iter(groups)
+    groups = (by_prefix[tuple(prefix)] for prefix in prefixes)
     estimates = []
     for episode_id, episode, step_boundaries, score_responses in items:
         prefix_values = []

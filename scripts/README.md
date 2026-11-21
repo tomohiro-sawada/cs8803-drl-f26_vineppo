@@ -21,6 +21,9 @@ These are sequential scheduler observations, not an atomic snapshot, GPU compute
 
 - `setup` installs the training and inference environments and stages the paper assets.
 - `codebase_hygiene` checks the repository's Git file-size policy.
+- `remote_sync` mirrors training run directories to the private Hugging Face
+  bucket `tsawada/cs8803-drl-f26_vineppo` and verifies them by SHA256. It never
+  deletes anything; see `remote_sync/hf_bucket_sync.py`.
 - `paper_artifact_replications` reproduces the paper's evaluation artifacts.
 
 Run `python3 scripts/codebase_hygiene/check_file_sizes.py` to audit every

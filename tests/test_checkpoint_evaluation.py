@@ -1,6 +1,7 @@
 """CPU contract tests: real local DatasetDict and verifier, no model/network/W&B."""
 
 import copy
+import hashlib
 import json
 import socket
 from dataclasses import asdict
@@ -438,6 +439,43 @@ def test_frozen_test_uses_only_test_and_does_not_modify_selection(setup):
     s.tracker.log_evaluation.assert_called_with(result, selection=selection)
 
 
+def test_baseline_test_needs_no_selection_or_checkpoint(setup, monkeypatch):
+    s = setup
+    weights = (s.model / "model.safetensors").resolve()
+    weights.write_bytes(b"base")
+    serialized = "tokenizer-json"
+    s.metadata["tokenizer_sha256"] = hashlib.sha256(serialized.encode()).hexdigest()
+    runner.write_json(s.training / "metadata.json", s.metadata)
+    tokenizer = Mock()
+    tokenizer.backend_tokenizer.to_str.return_value = serialized
+    monkeypatch.setattr(
+        runner, "AutoTokenizer", Mock(from_pretrained=Mock(return_value=tokenizer))
+    )
+    monkeypatch.setattr(runner, "AutoModelForCausalLM", Mock())
+    result = runner.main(
+        [
+            "--split",
+            "test",
+            "--baseline",
+            "--training-output",
+            str(s.training),
+            "--output",
+            str(s.tmp_path / "baseline-test"),
+        ]
+    )
+    assert result["split"] == "test" and result["total_count"] == 48
+    assert result["rounds_completed"] == 16 and result["accuracy"] == 0.5
+    assert result["checkpoint"] == {
+        "path": str(weights),
+        "sha256": runner.file_sha256(weights),
+        "iteration": 0,
+    }
+    assert s.seeds == list(range(42, 58))
+    assert all("test Q" in prompt for prompt in s.prompts)
+    s.loader.assert_not_called()
+    s.tracker.log_evaluation.assert_called_once_with(result, selection=None)
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
@@ -681,6 +719,9 @@ def test_invalid_validation_cli(tmp_path, extra):
         ["--checkpoint", "x"],
         ["--selection", "x", "--rounds", "2"],
         ["--selection", "x", "--checkpoint", "y"],
+        ["--baseline", "--selection", "x"],
+        ["--baseline", "--rounds", "2"],
+        ["--baseline", "--checkpoint", "x"],
     ],
 )
 def test_invalid_test_cli(tmp_path, extra):

@@ -396,6 +396,11 @@ Cumulative `budget/primary_tokens`, `budget/mc_tokens`, `budget/sampled_tokens`,
 `budget/primary_continuations`, `budget/mc_continuations`,
 `budget/mc_expansions`, and `budget/iteration_seconds` support cost comparisons.
 MC generation timing is nested inside MC estimation, not additive.
+VinePPO samples each distinct token prefix once per iteration and shares the
+continuations among every episode with that prefix (`mc_prefix_policy` in
+`metadata.json`). `mc_expansions`, `mc_continuations` and `mc_tokens` count what
+was sampled; `vineppo/step_count` still counts one value per episode and step.
+Runs without `mc_prefix_policy` sampled every repeated prefix separately.
 
 Additional cheap diagnostics use existing rollouts only:
 - `response_length_mean/max` include generated special tokens;

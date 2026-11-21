@@ -152,6 +152,73 @@ def test_rounded_math_cut_controls_mc_branch_and_ppo_credit():
     assert vineppo_advantage_method(estimate) == [1.0, 1.0, 0.0, 0.0]
 
 
+def test_identical_token_prefixes_are_sampled_once_and_share_continuations():
+    # Two responses to one prompt share its bare prefix and their first step;
+    # a third episode has another prompt. Scorers stay bound to their episode.
+    first = Episode([90, 91], [10, 11, 12], 1.0, "stop")
+    second = Episode([90, 91], [10, 11, 13], 0.0, "stop")
+    other = Episode([92], [10, 11], 1.0, "stop")
+    inference = FakeInference(
+        {
+            (90, 91): [Completion([20], "stop"), Completion([21], "stop")],
+            (90, 91, 10, 11): [Completion([22], "stop"), Completion([23], "stop")],
+            (92,): [Completion([24], "stop"), Completion([25], "stop")],
+        }
+    )
+    records, scored = [], {}
+
+    def scorer(name, rewards):
+        def score(responses):
+            scored.setdefault(name, []).append([r.token_ids for r in responses])
+            return [rewards[r.token_ids[-1]] for r in responses]
+
+        return score
+
+    estimates = estimate_vineppo_batch(
+        [
+            ("first", first, (0, 2, 3), scorer("first", {20: 1, 21: 0, 22: 1, 23: 1})),
+            (
+                "second",
+                second,
+                (0, 2, 3),
+                scorer("second", {20: 0, 21: 0, 22: 0, 23: 1}),
+            ),
+            ("other", other, (0, 2), scorer("other", {24: 1, 25: 1})),
+        ],
+        inference=inference,
+        num_samples=2,
+        temperature=1.0,
+        record_prefix_samples=records.append,
+    )
+    assert [prefix for prefixes, *_ in inference.calls for prefix in prefixes] == [
+        [90, 91],
+        [90, 91, 10, 11],
+        [92],
+    ]
+    # Shared continuations, graded against each episode's own reference.
+    assert (
+        scored["first"]
+        == scored["second"]
+        == [[[20], [21]], [[10, 11, 22], [10, 11, 23]]]
+    )
+    assert [e.mc_prefix_values for e in estimates] == [(0.5, 1.0), (0.0, 0.5), (1.0,)]
+    assert [e.raw_step_advantages for e in estimates] == [
+        (0.5, 0.0),
+        (0.5, -0.5),
+        (0.0,),
+    ]
+    assert [(r.episode_id, r.response_prefix_length) for r in records] == [
+        ("first", 0),
+        ("first", 2),
+        ("second", 0),
+        ("second", 2),
+        ("other", 0),
+    ]
+    assert [c.response_ids for c in records[0].continuations] == [
+        c.response_ids for c in records[2].continuations
+    ]
+
+
 def estimate(episode, inference, **overrides):
     options = {
         "step_boundaries": BOUNDARIES,
