@@ -48,12 +48,17 @@ def file_sha256(path: Path) -> str:
 
 def node_local_tmpdir() -> Path:
     path = Path(os.environ.get("TMPDIR", "/tmp")).resolve(strict=True)
-    fs = subprocess.check_output(
+    filesystems = subprocess.check_output(
         ["findmnt", "-n", "-o", "FSTYPE", "-T", str(path)], text=True
-    ).strip()
-    assert fs in {"xfs", "ext4", "tmpfs", "ramfs", "btrfs", "overlay"}, (
-        f"Verification requires node-local TMPDIR, got {fs} at {path}"
-    )
+    ).split()
+    assert filesystems and set(filesystems) <= {
+        "xfs",
+        "ext4",
+        "tmpfs",
+        "ramfs",
+        "btrfs",
+        "overlay",
+    }, f"Verification requires node-local TMPDIR, got {filesystems} at {path}"
     return path
 
 
