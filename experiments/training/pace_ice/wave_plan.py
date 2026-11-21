@@ -33,6 +33,7 @@ def generate(args):
         "TRAINING_CACHE": str(scratch / "training-cache"),
         "PACE_CHAIN_LOG_DIR": str(logs),
         "TMPDIR": "/tmp",
+        "WANDB_BASE_URL": "https://api.forge.coreweave.com",
     }
     jobs, archives = [], []
     suffix = args.suffix
@@ -110,6 +111,8 @@ def generate(args):
             256,
             "--wandb-mode",
             "online",
+            "--wandb-entity",
+            "tsawada",
             "--wandb-group",
             "handoff-20261120",
         ]
