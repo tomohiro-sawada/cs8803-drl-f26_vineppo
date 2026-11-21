@@ -118,6 +118,35 @@ def free_scratch_gib(mount):
     return (hard_limit - used) / 1024**2
 
 
+def dependency_blockers(dependencies, receipts, accounting):
+    """Require durable success before submitting a job whose evidence gates opened."""
+    missing = {
+        name: "awaiting submission" for name in dependencies if name not in receipts
+    }
+    ids = {name: receipts[name] for name in dependencies if name in receipts}
+    unknown = sorted(set(ids.values()) - accounting.keys())
+    if unknown:
+        rows = slurm(
+            "sacct",
+            "-X",
+            "-n",
+            "-P",
+            "--jobs",
+            ",".join(unknown),
+            "--format=JobIDRaw,State,ExitCode",
+        ).splitlines()
+        accounting.update(dict.fromkeys(unknown, "awaiting accounting"))
+        for row in rows:
+            job, state, code = row.split("|")
+            assert job in unknown, f"Unexpected dependency accounting row: {row}"
+            accounting[job] = f"{state.strip()} {code}"
+    return missing | {
+        name: accounting.get(job, "awaiting accounting")
+        for name, job in ids.items()
+        if accounting.get(job) != "COMPLETED 0:0"
+    }
+
+
 def watch(plan_path):
     directory = plan_path.parent
     state_path = directory / "watch-state.json"
@@ -128,7 +157,12 @@ def watch(plan_path):
         else {"jobs": {}, "faults": {}}
     )
     jobs = plan["jobs"]
-    assert len({job["name"] for job in jobs}) == len(jobs)
+    names = {job["name"] for job in jobs}
+    assert len(names) == len(jobs)
+    assert all(
+        set(job.get("afterok", [])) <= names | state["jobs"].keys() for job in jobs
+    ), "Unknown wave dependency"
+    retry_at = {}
     while time() < plan["deadline"]:
         disk_active = any(
             job["name"] in state["jobs"]
@@ -140,12 +174,33 @@ def watch(plan_path):
             if "disk_root" in job
         )
         disk_wait = {}
+        evidence_wait = {}
+        dependency_wait = {}
+        submission_errors = {}
+        accounting = {}
         for job in jobs:
             name = job["name"]
             gates = job.get("gates", [])
-            if name not in state["jobs"] and all(
-                Path(path).is_file() for path in gates
-            ):
+            if name not in state["jobs"]:
+                missing = next(
+                    (path for path in gates if not Path(path).is_file()), None
+                )
+                if missing is not None:
+                    evidence_wait[name] = missing
+                    continue
+            if name not in state["jobs"]:
+                try:
+                    blockers = dependency_blockers(
+                        job.get("afterok", []), state["jobs"], accounting
+                    )
+                except subprocess.CalledProcessError as error:
+                    dependency_wait[name] = {
+                        "accounting": f"sacct exit {error.returncode}"
+                    }
+                    continue
+                if blockers:
+                    dependency_wait[name] = blockers
+                    continue
                 if "disk_root" in job:
                     free = free_scratch_gib(plan["scratch_mount"])
                     if disk_active or free < job["space_gib"]:
@@ -154,18 +209,19 @@ def watch(plan_path):
                             "required_gib": job["space_gib"],
                         }
                         continue
-                options = job
-                if dependencies := job.get("afterok"):
-                    assert all(dep in state["jobs"] for dep in dependencies)
-                    job_ids = ":".join(state["jobs"][dep] for dep in dependencies)
-                    options = job | {
-                        "submit": [
-                            f"--dependency=afterok:{job_ids}",
-                            "--kill-on-invalid-dep=yes",
-                            *job["submit"],
-                        ]
-                    }
-                state["jobs"][name] = submit(options, plan["since"])
+                if time() < retry_at.get(name, 0):
+                    submission_errors[name] = "waiting to retry scheduler submission"
+                    continue
+                try:
+                    state["jobs"][name] = submit(job, plan["since"])
+                except subprocess.CalledProcessError as error:
+                    submission_errors[name] = f"{error.cmd[0]} exit {error.returncode}"
+                    print(
+                        f"submission of {name} failed: {submission_errors[name]}",
+                        flush=True,
+                    )
+                    retry_at[name] = time() + 60
+                    continue
                 atomic_record(state_path, state)
                 disk_active |= "disk_root" in job
         outstanding = False
@@ -181,7 +237,14 @@ def watch(plan_path):
         pending = [job["name"] for job in jobs if job["name"] not in state["jobs"]]
         atomic_record(
             directory / "watch-status.json",
-            {"pending": pending, "disk_wait": disk_wait, "updated": time()},
+            {
+                "pending": pending,
+                "evidence_wait": evidence_wait,
+                "dependency_wait": dependency_wait,
+                "disk_wait": disk_wait,
+                "submission_errors": submission_errors,
+                "updated": time(),
+            },
         )
         if not pending and len(state["faults"]) == len(plan.get("faults", [])):
             return
