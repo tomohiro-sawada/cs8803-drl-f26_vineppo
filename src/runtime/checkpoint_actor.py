@@ -14,6 +14,7 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from core.lora import apply_lora, lora_identity
+from core.prompt_protocol import OLMO3
 from runtime.checkpoints import (
     COMPACT_LORA,
     checkpoint_models,
@@ -50,7 +51,8 @@ def load_checkpoint_actor(
     dtype (float32/bfloat16, base dtype), lora (exact identity dict or None),
     tokenizer_sha256 (SHA256 of backend_tokenizer.to_str() UTF-8), and
     training_config (checkpoint config dict), and evaluation_provenance (required
-    schema-v1 dict with task, prompt, tokenizer_sha256 and dataset). Legacy
+    schema-v1 dict with task, prompt, tokenizer_sha256, dataset, and the OLMo
+    protocol tag for OLMo checkpoints). Legacy
     checkpoints without embedded provenance are rejected. The local tokenizer
     must match its embedded hash. The caller MUST compare evaluation_provenance
     exactly with independently constructed task/prompt/tokenizer/dataset metadata.
@@ -69,13 +71,20 @@ def load_checkpoint_actor(
     assert isinstance(provenance, dict), (
         "Checkpoint requires embedded evaluation_provenance; legacy checkpoints are unsupported"
     )
-    assert set(provenance) == {
+    fields = {
         "schema_version",
         "task",
         "prompt",
         "tokenizer_sha256",
         "dataset",
-    }, "Invalid evaluation_provenance fields"
+    }
+    olmo = "model_protocol" in provenance
+    if olmo:
+        assert provenance["model_protocol"] == OLMO3, (
+            "Invalid evaluation_provenance protocol"
+        )
+        fields.add("model_protocol")
+    assert set(provenance) == fields, "Invalid evaluation_provenance fields"
     assert (
         type(provenance["schema_version"]) is int and provenance["schema_version"] == 1
     ), "Unsupported evaluation_provenance schema_version"
@@ -123,6 +132,8 @@ def load_checkpoint_actor(
     config = AutoConfig.from_pretrained(
         model_path, local_files_only=True, trust_remote_code=False
     )
+    if olmo:
+        assert config.model_type == "olmo3", "OLMo checkpoint requires an Olmo3 config"
     # from_pretrained training can override the on-disk dtype. Constructing with
     # the checkpoint's actual dtype reproduces that same runtime config change.
     config._name_or_path = identity["config"].get("_name_or_path", "")
@@ -162,7 +173,15 @@ def load_checkpoint_actor(
     assert all(index in vocab.values() for index in tokenizer.all_special_ids), (
         "Tokenizer special IDs are outside vocabulary"
     )
-    for name in ("bos_token_id", "eos_token_id", "pad_token_id"):
+    special = ("bos_token_id", "eos_token_id", "pad_token_id")
+    if olmo:
+        # OLMo's chat template defines the prefix. Its tokenizer aliases BOS to EOS.
+        assert (
+            config.bos_token_id is None
+            and tokenizer.bos_token_id == tokenizer.eos_token_id
+        )
+        special = special[1:]
+    for name in special:
         expected = getattr(config, name)
         actual = getattr(tokenizer, name)
         assert actual == expected or (
