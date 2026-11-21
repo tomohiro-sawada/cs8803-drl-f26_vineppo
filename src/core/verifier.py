@@ -54,7 +54,14 @@ def _math_correct(predictions: tuple[str, ...], references: tuple[str, ...]) -> 
         timeout=GRADING_TIMEOUT_SECONDS,
         env={},
     )
-    result.check_returncode()  # Missing dependencies / broken workers are not wrong answers.
+    try:
+        result.check_returncode()
+    except subprocess.CalledProcessError as error:
+        error.add_note(f"MATH grader stderr:\n{result.stderr[-4096:]}")
+        error.add_note(
+            f"Predictions={predictions!r:.512}, references={references!r:.512}"
+        )
+        raise
     correct = json.loads(result.stdout)
     assert type(correct) is bool, "Invalid verifier worker result"
     return correct

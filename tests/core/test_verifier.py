@@ -251,8 +251,10 @@ def test_infrastructure_errors_are_not_scored(monkeypatch):
         return subprocess.CompletedProcess(args[0], 1, "", "missing dependency")
 
     monkeypatch.setattr(subprocess, "run", failed)
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(subprocess.CalledProcessError) as failure:
         verify_response(r"\boxed{2}", "2", task="math")
+    assert "missing dependency" in failure.value.__notes__[0]
+    assert "Predictions=('2',), references=('2',)" in failure.value.__notes__[1]
 
 
 def test_worker_bootstrap_is_independent_of_cwd(monkeypatch, tmp_path):
