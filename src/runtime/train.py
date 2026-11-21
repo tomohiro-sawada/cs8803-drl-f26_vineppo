@@ -67,6 +67,7 @@ from runtime.checkpoints import (
     checkpoint_models,
     file_identity,
     file_sha256,
+    load_verified_blob,
     publish_checkpoint,
     trainable_state_keys,
     validate_tensor_state,
@@ -199,6 +200,7 @@ class PPOTrainer:
                 self.steps_per_iteration * config.num_iterations,
             )
         self._frozen_checkpoint = None
+        self.critic_checkpoint = None
         self.iteration = 0  # Number of fully completed iterations.
         self._generator: torch.Generator | None = None
         self._identity: str | None = None
@@ -902,7 +904,9 @@ class PPOTrainer:
         }
         return {key: policy[key] for key in sorted(trainable)}, frozen, signature
 
-    def save_checkpoint(self, path: str | Path | None = None) -> Path:
+    def save_checkpoint(
+        self, path: str | Path | None = None, *, split_critic=False
+    ) -> Path:
         """Save a completed boundary; default checkpoint_dir/iteration-N.pt.
 
         Tensor/state-dict payloads plus primitive metadata only; no model objects,
@@ -911,6 +915,9 @@ class PPOTrainer:
         """
         assert self._at_boundary and self._identity is not None, (
             "Checkpoint requires a completed training boundary"
+        )
+        assert not split_critic or (
+            self.critic is not None and self.compact_lora_checkpoints
         )
         self._validate_training()
         path = (
@@ -956,8 +963,20 @@ class PPOTrainer:
                 reference=self.reference_policy.state_dict(),
             )
         if self.critic is not None:
-            state["critic"] = self.critic.state_dict()
-            state["critic_optimizer"] = self.critic_optimizer.state_dict()
+            critic_state = {
+                "critic": self.critic.state_dict(),
+                "critic_optimizer": self.critic_optimizer.state_dict(),
+            }
+            if split_critic:
+                assert self.compact_lora_checkpoints
+                critic_path = (path.parent / f"critic-{self.iteration}.pt").resolve()
+                publish_checkpoint(critic_path, critic_state)
+                state["critic_blob"] = {
+                    "path": str(critic_path),
+                    "sha256": file_sha256(critic_path),
+                }
+            else:
+                state.update(critic_state)
             state["critic_optimizer_identity"] = self._optimizer_identity(
                 self.critic, self.critic_optimizer
             )
@@ -969,6 +988,8 @@ class PPOTrainer:
         if self.restem_initial is not None:
             state["restem_initial"] = self.restem_initial
         publish_checkpoint(path, state)
+        if split_critic:
+            self.critic_checkpoint = critic_path
         return path
 
     def load_checkpoint(
@@ -1031,6 +1052,14 @@ class PPOTrainer:
             ), "RestEM initial adapters changed on resume"
         assert_fp32_optimizer_state(state["optimizer"]["state"])
         if self.critic is not None:
+            if "critic_blob" in state:
+                spec = state["critic_blob"]
+                self.critic_checkpoint = Path(spec["path"])
+                assert self.critic_checkpoint == path.resolve().with_name(
+                    f"critic-{state['iteration']}.pt"
+                )
+                assert not {"critic", "critic_optimizer"} & state.keys()
+                state.update(load_verified_blob(spec, {"critic", "critic_optimizer"}))
             assert (
                 self._optimizer_identity(self.critic, self.critic_optimizer)
                 == state["critic_optimizer_identity"]

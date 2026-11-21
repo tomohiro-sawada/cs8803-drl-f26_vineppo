@@ -436,6 +436,7 @@ class MeasuredTrainer(PPOTrainer):
         self.deadline = deadline
         self.archive = archive
         self.archived_frozen = False
+        self.split_critic = archive and self.critic is not None
         self.chain_status = (
             Path(os.environ["PACE_CHAIN_STATUS_FILE"]) if deadline is not None else None
         )
@@ -487,7 +488,7 @@ class MeasuredTrainer(PPOTrainer):
         # The last candidate is already a complete resume boundary.
         if self.iteration > 0 and self.iteration % self.config.checkpoint_every:
             with self.meter.phase("checkpoint"):
-                path = self.resume_slot.save(self.iteration, super().save_checkpoint)
+                path = self.resume_slot.save(self.iteration, self.save_boundary)
                 self.meter.counts["checkpoint_bytes"] = path.stat().st_size
 
     def stop_at_boundary(self):
@@ -503,7 +504,7 @@ class MeasuredTrainer(PPOTrainer):
     def save_checkpoint(self, path=None):
         assert path is None, "Runner checkpoints must stay in this run's directory"
         with self.meter.phase("checkpoint"):
-            saved = super().save_checkpoint()
+            saved = self.save_boundary()
             self.meter.counts["checkpoint_bytes"] = saved.stat().st_size
             self.saved.append(saved)
         assert self.pending is not None
@@ -516,6 +517,34 @@ class MeasuredTrainer(PPOTrainer):
             self.prune_candidates()
         self.finish_iteration()
         return saved
+
+    def save_boundary(self, path=None):
+        if not self.split_critic:
+            return (
+                super().save_checkpoint()
+                if path is None
+                else super().save_checkpoint(path)
+            )
+        self.prune_critic_blobs()
+        saved = super().save_checkpoint(path, split_critic=True)
+        self.prune_critic_blobs()
+        return saved
+
+    def prune_critic_blobs(self):
+        directory = self.config.checkpoint_dir
+        directories = (
+            directory.parent.parent.glob("attempt-*/checkpoints")
+            if self.chain_status is not None
+            else (directory,)
+        )
+        for folder in directories:
+            for blob in folder.glob("critic-*.pt"):
+                if blob == self.critic_checkpoint:
+                    continue
+                iteration = int(blob.stem.removeprefix("critic-"))
+                if (folder / f"iteration-{iteration}.pt").is_file():
+                    assert blob.with_suffix(".archive.json").is_file(), blob
+                blob.unlink()
 
     def prune_candidates(self):
         own = self.saved
@@ -554,6 +583,8 @@ class MeasuredTrainer(PPOTrainer):
             if self._frozen_checkpoint is not None and not self.archived_frozen:
                 archive_checkpoint(Path(self._frozen_checkpoint[0]["path"]))
                 self.archived_frozen = True
+            if self.critic_checkpoint is not None:
+                archive_checkpoint(self.critic_checkpoint)
             archive_checkpoint(path)
 
     def finish_iteration(self):

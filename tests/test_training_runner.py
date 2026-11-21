@@ -412,7 +412,29 @@ def measured_trainer():
     trainer.deadline = None
     trainer.schedule = None
     trainer.resume_every = None
+    trainer.split_critic = False
     return trainer
+
+
+def test_ppo_prune_keeps_current_blob_and_requires_older_candidate_receipt(tmp_path):
+    trainer = measured_trainer()
+    observed = tmp_path / "attempt-0000/checkpoints"
+    current = tmp_path / "attempt-0001/checkpoints"
+    for folder in observed, current:
+        folder.mkdir(parents=True)
+    old = observed / "critic-1.pt"
+    new = current / "critic-2.pt"
+    for file in old, new, observed / "iteration-1.pt":
+        file.touch()
+    trainer.config = SimpleNamespace(checkpoint_dir=current)
+    trainer.chain_status = tmp_path / "status.json"
+    trainer.critic_checkpoint = new
+    with pytest.raises(AssertionError):
+        trainer.prune_critic_blobs()
+    old.with_suffix(".archive.json").touch()
+    trainer.prune_critic_blobs()
+    assert new.is_file() and not old.exists()
+    assert (observed / "iteration-1.pt").is_file()
 
 
 def test_retention_only_prunes_owned_files_after_success(monkeypatch, tmp_path, clock):

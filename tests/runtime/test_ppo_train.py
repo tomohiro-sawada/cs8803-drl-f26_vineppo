@@ -14,6 +14,7 @@ import runtime.train as train_module
 from algorithms.ppo import PPOConfig, TokenCritic
 from core.data import Episode, EpisodeWithAdvantages, Example, PPOValueEstimate
 from core.inference import Completion, HFInference
+from core.lora import apply_lora
 from runtime.config import PPOTrainerConfig
 from runtime.train import PPOTrainer
 
@@ -70,7 +71,7 @@ def ppo_case(tmp_path, monkeypatch):
         "formatter": str,
     }
 
-    def make(name="run", *, polynomial_schedule=False, **overrides):
+    def make(name="run", *, polynomial_schedule=False, compact_lora=False, **overrides):
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(17)
             config = GPT2Config(
@@ -88,6 +89,9 @@ def ppo_case(tmp_path, monkeypatch):
             )
             actor = GPT2LMHeadModel(deepcopy(config)).cpu()
             critic = TokenCritic(GPT2Model(deepcopy(config))).cpu()
+            reference = deepcopy(actor)
+            if compact_lora:
+                actor = apply_lora(actor, rank=2, alpha=4)
         settings = {
             "checkpoint_dir": tmp_path / name,
             "algorithm_config": PPOConfig(gamma=1, lam=0.95),
@@ -107,11 +111,14 @@ def ppo_case(tmp_path, monkeypatch):
             PPOTrainerConfig(**settings),
             actor,
             HFInference(actor, pad_token_id=tokenizer.pad_token_id),
-            optimizer=torch.optim.AdamW(actor.parameters(), lr=0.003),
-            reference_policy=deepcopy(actor),
+            optimizer=torch.optim.AdamW(
+                [p for p in actor.parameters() if p.requires_grad], lr=0.003
+            ),
+            reference_policy=reference,
             critic=critic,
             critic_optimizer=torch.optim.AdamW(critic.parameters(), lr=0.003),
             polynomial_schedule=polynomial_schedule,
+            compact_lora_checkpoints=compact_lora,
         )
 
         def generate(prefixes, *, num_samples, max_new_tokens, temperature):
@@ -370,6 +377,22 @@ def test_resume_is_bitwise_exact_for_models_optimizers_rng_and_metrics(
     )
     for key in expected.keys() - {"config"}:
         assert_exact(actual[key], expected[key])
+
+
+def test_split_critic_round_trip(ppo_case):
+    make, inputs = ppo_case
+    settings = {"compact_lora": True, "num_iterations": 2, "checkpoint_every": 2}
+    source = make(**settings)
+    source.train(**inputs, stop_at_boundary=lambda: source.iteration == 1)
+    path = source.save_checkpoint(
+        source.config.checkpoint_dir / "resume-1.pt", split_critic=True
+    )
+    saved = torch.load(path, weights_only=True)
+    assert {"critic", "critic_optimizer"}.isdisjoint(saved)
+    resumed = make("resumed", **settings)
+    resumed.load_checkpoint(path, **inputs, audit=True)
+    assert_exact(states(resumed), states(source))
+    assert resumed.critic_checkpoint == source.critic_checkpoint
 
 
 @pytest.mark.parametrize(

@@ -11,7 +11,7 @@ only after `verify` has passed for that run:
     python scripts/remote_sync/hf_bucket_sync.py push RUN_DIR [RUN_DIR ...]
     python scripts/remote_sync/hf_bucket_sync.py verify RUN_DIR [RUN_DIR ...]
 
-`verify` re-downloads every file into --scratch and compares SHA256 with the
+`verify` re-downloads every file into node-local TMPDIR and compares SHA256 with the
 local copy, so it needs free space for the largest single file. HF_TOKEN is read
 from the environment or the repository's .env. Login and compute nodes both
 reach huggingface.co; long transfers belong in an ice-cpu job, not on a login
@@ -28,6 +28,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from dotenv import dotenv_values
 
@@ -43,6 +44,17 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1 << 24), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def node_local_tmpdir() -> Path:
+    path = Path(os.environ.get("TMPDIR", "/tmp")).resolve(strict=True)
+    fs = subprocess.check_output(
+        ["findmnt", "-n", "-o", "FSTYPE", "-T", str(path)], text=True
+    ).strip()
+    assert fs in {"xfs", "ext4", "tmpfs", "ramfs", "btrfs", "overlay"}, (
+        f"Verification requires node-local TMPDIR, got {fs} at {path}"
+    )
+    return path
 
 
 def hf(*args: str, online: bool = False) -> str:
@@ -111,21 +123,26 @@ def push(args) -> None:
 
 
 def verify(args) -> None:
-    args.scratch.mkdir(parents=True, exist_ok=False)
-    for run, prefix in targets(args):
-        expected = local_files(run)
-        assert remote_files(prefix) == expected, f"Bucket listing differs: {prefix}"
-        for relative in expected:
-            copy = args.scratch / "download"
-            hf("buckets", "cp", f"hf://buckets/{BUCKET}/{prefix}/{relative}", str(copy))
-            assert file_sha256(copy) == file_sha256(run / relative), (
-                f"Content mismatch: {prefix}/{relative}"
+    with TemporaryDirectory(dir=node_local_tmpdir(), prefix="bucket-verify-") as tmp:
+        copy = Path(tmp) / "download"
+        for run, prefix in targets(args):
+            expected = local_files(run)
+            assert remote_files(prefix) == expected, f"Bucket listing differs: {prefix}"
+            for relative in expected:
+                hf(
+                    "buckets",
+                    "cp",
+                    f"hf://buckets/{BUCKET}/{prefix}/{relative}",
+                    str(copy),
+                )
+                assert file_sha256(copy) == file_sha256(run / relative), (
+                    f"Content mismatch: {prefix}/{relative}"
+                )
+                copy.unlink()
+            print(
+                f"verified {prefix}: {len(expected)} files, {sum(expected.values())} bytes",
+                flush=True,
             )
-            copy.unlink()
-        print(
-            f"verified {prefix}: {len(expected)} files, {sum(expected.values())} bytes"
-        )
-    args.scratch.rmdir()
 
 
 def main() -> None:
@@ -135,9 +152,6 @@ def main() -> None:
     parser.add_argument("action", choices=("push", "verify"))
     parser.add_argument("runs", nargs="+", type=Path, help="Run directories")
     parser.add_argument("--root", type=Path, default=RUNS, help="Bucket path origin")
-    parser.add_argument(
-        "--scratch", type=Path, default=RUNS / "bucket-verify", help="New, verify only"
-    )
     args = parser.parse_args()
     {"push": push, "verify": verify}[args.action](args)
 

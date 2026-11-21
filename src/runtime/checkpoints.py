@@ -36,16 +36,20 @@ def publish_checkpoint(path: Path, state: dict) -> None:
         os.link(stream.name, path)
 
 
-def load_frozen(spec: dict) -> dict:
-    assert set(spec) == {"path", "sha256"}, "Invalid frozen model reference"
+def load_verified_blob(spec: dict, keys: set[str], label="Checkpoint blob") -> dict:
+    assert set(spec) == {"path", "sha256"}, "Invalid checkpoint blob reference"
     path = Path(spec["path"]).resolve(strict=True)
-    assert str(path) == spec["path"], "Frozen model path must be canonical"
+    assert str(path) == spec["path"], "Checkpoint blob path must be canonical"
     before = file_identity(path)
-    assert file_sha256(path) == spec["sha256"], "Frozen model hash mismatch"
-    frozen = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
-    assert file_identity(path) == before, "Frozen model changed while loading"
-    assert set(frozen) == {"policy", "reference"}, "Invalid frozen model fields"
-    return frozen
+    assert file_sha256(path) == spec["sha256"], f"{label} hash mismatch"
+    state = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+    assert file_identity(path) == before, "Checkpoint blob changed while loading"
+    assert set(state) == keys, "Invalid checkpoint blob fields"
+    return state
+
+
+def load_frozen(spec: dict) -> dict:
+    return load_verified_blob(spec, {"policy", "reference"}, "Frozen model")
 
 
 def checkpoint_models(state: dict) -> tuple[dict, dict | None]:

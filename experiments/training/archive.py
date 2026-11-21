@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 from experiments.training.resume import atomic_record
 from runtime.checkpoints import file_identity, file_sha256
-from scripts.remote_sync.hf_bucket_sync import BUCKET, RUNS, hf
+from scripts.remote_sync.hf_bucket_sync import BUCKET, RUNS, hf, node_local_tmpdir
 
 
 def archive_checkpoint(path):
@@ -23,7 +23,9 @@ def archive_checkpoint(path):
         )
         return
     hf("buckets", "cp", str(path), destination, online=True)
-    with TemporaryDirectory(dir=RUNS, prefix="checkpoint-verify-") as scratch:
+    with TemporaryDirectory(
+        dir=node_local_tmpdir(), prefix="checkpoint-verify-"
+    ) as scratch:
         downloaded = Path(scratch) / "download"
         hf("buckets", "cp", destination, str(downloaded), online=True)
         assert file_sha256(downloaded) == digest, (
