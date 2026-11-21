@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from time import sleep, time
 
+from experiments.training.pace_ice.chain import submission_environment
 from experiments.training.resume import atomic_record
 
 
@@ -36,7 +37,7 @@ def submit(job, since):
     assert len(set(ids)) <= 1, f"Duplicate submissions for {name}: {ids}"
     if ids:
         return ids[0]
-    env = os.environ | job["env"]
+    env = submission_environment(os.environ | job["env"])
     repo = Path(job["repo"]).resolve(strict=True)
     assert slurm("git", "rev-parse", "HEAD", cwd=repo) == job["commit"]
     assert not slurm("git", "status", "--porcelain", cwd=repo), (
@@ -212,6 +213,7 @@ def run_allocation(plan_path):
             f"--error={directory}/controller-%j.err",
             "experiments/training/pace_ice/watch_resumable.slurm",
             str(plan_path),
+            env=submission_environment(os.environ),
         ).split(";")[0]
     assert successor.isdecimal()
     print(f"watch allocation {job}, successor {successor}", flush=True)

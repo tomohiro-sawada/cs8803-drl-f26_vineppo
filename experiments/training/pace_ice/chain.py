@@ -28,8 +28,17 @@ def latest_checkpoint(attempts):
     )
 
 
-def run_command(*command):
-    return subprocess.check_output(command, text=True).strip()
+def run_command(*command, **kwargs):
+    return subprocess.check_output(command, text=True, **kwargs).strip()
+
+
+def submission_environment(env):
+    """Keep caller configuration and let Slurm set the new allocation identity."""
+    return {
+        key: value
+        for key, value in env.items()
+        if not key.startswith(("SLURM_", "SBATCH_"))
+    }
 
 
 def successor(job, command, env):
@@ -42,7 +51,7 @@ def successor(job, command, env):
         return ids[0]
     limit, constraint = run_command(
         "squeue", "--noheader", f"--jobs={job}", "--format=%l|%f"
-    ).split("|")
+    ).split("|", 1)
     assert limit and constraint and constraint != "(null)", (
         "Expected a pinned GPU constraint"
     )
@@ -75,6 +84,7 @@ def successor(job, command, env):
         f"--error={log}/%x-%j.err",
         SCRIPT,
         *command,
+        env=submission_environment(env),
     ).split(";")[0]
     assert result.isdecimal(), f"Unexpected successor job ID: {result}"
     return result

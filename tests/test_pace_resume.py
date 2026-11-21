@@ -98,6 +98,38 @@ def test_chain_rejects_another_active_owner(tmp_path, monkeypatch):
             chain.main(options)
 
 
+def test_successor_preserves_disjunctive_constraint_and_cleans_env(
+    tmp_path, monkeypatch
+):
+    commands = []
+
+    def shell(*command, **kwargs):
+        if command[0] == "squeue":
+            return "0:10:00|gpu-a100|gpu-h100" if "--jobs=55" in command else ""
+        commands.append((command, kwargs["env"]))
+        return "56"
+
+    monkeypatch.setattr(chain, "run_command", shell)
+    assert (
+        chain.successor(
+            "55",
+            ["/output"],
+            {
+                "SLURM_CPUS_PER_TASK": "12",
+                "SLURM_MEM_PER_CPU": "8192",
+                "SLURM_JOB_ID": "55",
+                "SBATCH_MEM_PER_NODE": "1024",
+                "PACE_CHAIN_LOG_DIR": str(tmp_path),
+            },
+        )
+        == "56"
+    )
+    command, env = commands[0]
+    assert "--constraint=gpu-a100|gpu-h100" in command
+    assert "--mem-per-cpu=8192" in command
+    assert env == {"PACE_CHAIN_LOG_DIR": str(tmp_path)}
+
+
 def test_successor_runs_frozen_test_and_records_completion(
     tmp_path, simulated_slurm, monkeypatch
 ):
