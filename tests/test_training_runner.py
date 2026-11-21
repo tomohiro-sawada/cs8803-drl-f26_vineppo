@@ -424,7 +424,8 @@ def test_ppo_prune_keeps_current_blob_and_requires_older_candidate_receipt(tmp_p
         folder.mkdir(parents=True)
     old = observed / "critic-1.pt"
     new = current / "critic-2.pt"
-    for file in old, new, observed / "iteration-1.pt":
+    staging = observed / ".critic-2.pt.abandoned.tmp"
+    for file in old, new, staging, observed / "iteration-1.pt":
         file.touch()
     trainer.config = SimpleNamespace(checkpoint_dir=current)
     trainer.chain_status = tmp_path / "status.json"
@@ -433,7 +434,7 @@ def test_ppo_prune_keeps_current_blob_and_requires_older_candidate_receipt(tmp_p
         trainer.prune_critic_blobs()
     old.with_suffix(".archive.json").touch()
     trainer.prune_critic_blobs()
-    assert new.is_file() and not old.exists()
+    assert new.is_file() and not old.exists() and not staging.exists()
     assert (observed / "iteration-1.pt").is_file()
 
 

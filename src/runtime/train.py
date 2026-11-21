@@ -1059,7 +1059,11 @@ class PPOTrainer:
                     f"critic-{state['iteration']}.pt"
                 )
                 assert not {"critic", "critic_optimizer"} & state.keys()
-                state.update(load_verified_blob(spec, {"critic", "critic_optimizer"}))
+                # AdamW keeps CPU step counters after restore. A mapping would
+                # pin the entire unlinked critic file until this allocation ends.
+                state.update(
+                    load_verified_blob(spec, {"critic", "critic_optimizer"}, mmap=False)
+                )
             assert (
                 self._optimizer_identity(self.critic, self.critic_optimizer)
                 == state["critic_optimizer_identity"]

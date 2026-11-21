@@ -538,6 +538,9 @@ class MeasuredTrainer(PPOTrainer):
             else (directory,)
         )
         for folder in directories:
+            # The run owns this directory. A killed write may leave staging files.
+            for staging in folder.glob(".critic-*.pt.*.tmp"):
+                staging.unlink()
             for blob in folder.glob("critic-*.pt"):
                 if blob == self.critic_checkpoint:
                     continue

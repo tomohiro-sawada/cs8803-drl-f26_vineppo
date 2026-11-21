@@ -36,13 +36,15 @@ def publish_checkpoint(path: Path, state: dict) -> None:
         os.link(stream.name, path)
 
 
-def load_verified_blob(spec: dict, keys: set[str], label="Checkpoint blob") -> dict:
+def load_verified_blob(
+    spec: dict, keys: set[str], label="Checkpoint blob", *, mmap=True
+) -> dict:
     assert set(spec) == {"path", "sha256"}, "Invalid checkpoint blob reference"
     path = Path(spec["path"]).resolve(strict=True)
     assert str(path) == spec["path"], "Checkpoint blob path must be canonical"
     before = file_identity(path)
     assert file_sha256(path) == spec["sha256"], f"{label} hash mismatch"
-    state = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+    state = torch.load(path, map_location="cpu", weights_only=True, mmap=mmap)
     assert file_identity(path) == before, "Checkpoint blob changed while loading"
     assert set(state) == keys, "Invalid checkpoint blob fields"
     return state
