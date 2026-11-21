@@ -186,14 +186,10 @@ class TrainBatch:
 
 @dataclass(frozen=True)
 class CriticBatch(TrainBatch):
-    """
-    Represents a batch of training data for the critic network.
-    This is enough for an initial unclipped value loss
-
-    Note: Value clipping is an algorithm choice, distinct from policy-ratio clipping. Only add old_values if I need value clipping.
-    """
+    """Fixed pre-update values and return targets aligned to response states."""
 
     returns: Float32[Tensor, "B T-1"]
+    old_values: Float32[Tensor, "B T-1"]
 
 
 @dataclass(frozen=True)
@@ -310,14 +306,19 @@ def collate_critic(
         [estimate.episode for estimate in estimates], pad_token_id=pad_token_id
     )
     returns = torch.zeros(layout.response_mask.shape, dtype=torch.float32, device="cpu")
+    old_values = torch.zeros_like(returns)
     for i, estimate in enumerate(estimates):
         estimate.__post_init__()
         returns[i, layout.response_mask[i]] = torch.tensor(
             estimate.return_estimates, dtype=torch.float32, device="cpu"
+        )
+        old_values[i, layout.response_mask[i]] = torch.tensor(
+            estimate.critic_value_estimates, dtype=torch.float32, device="cpu"
         )
     return CriticBatch(
         input_ids=layout.input_ids,
         attention_mask=layout.attention_mask,
         response_mask=layout.response_mask,
         returns=returns,
+        old_values=old_values,
     )

@@ -11,6 +11,8 @@ from transformers import GPT2Config, GPT2LMHeadModel, PreTrainedTokenizerFast
 
 import algorithms.actor as actor_module
 import runtime.train as train_module
+from algorithms.grpo import GRPOConfig
+from algorithms.rloo import RLOOConfig
 from algorithms.vineppo import VinePPOConfig
 from core.data import Episode, EpisodeWithAdvantages, Example, collate
 from core.inference import Completion, HFInference, token_logprobs
@@ -238,7 +240,9 @@ def training_case(tmp_path, monkeypatch):
     threads = torch.get_num_threads()
     torch.set_num_threads(1)
 
-    def make(name="run", *, random_answers=False, **overrides):
+    def make(
+        name="run", *, random_answers=False, polynomial_schedule=False, **overrides
+    ):
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(17)
             policy = GPT2LMHeadModel(
@@ -278,6 +282,7 @@ def training_case(tmp_path, monkeypatch):
             HFInference(policy, pad_token_id=tokenizer.pad_token_id),
             optimizer=torch.optim.AdamW(policy.parameters(), lr=0.003),
             reference_policy=deepcopy(policy),
+            polynomial_schedule=polynomial_schedule,
         )
 
         def generate(prefixes, *, num_samples, max_new_tokens, temperature):
@@ -685,6 +690,55 @@ def test_checkpoint_resume_is_bitwise_equal_to_uninterrupted(training_case):
         "iteration-3.pt",
     ]
     assert resumed.train(**inputs) == []
+
+
+@pytest.mark.parametrize("cuts", [(1,), (2,), (3,), (1, 2, 3)])
+@pytest.mark.parametrize("algorithm", [VinePPOConfig, GRPOConfig, RLOOConfig])
+def test_polynomial_resume_at_boundaries(training_case, algorithm, cuts):
+    make, inputs = training_case
+    settings = {
+        "num_iterations": 4,
+        "checkpoint_every": 4,
+        "random_answers": True,
+        "algorithm_config": algorithm(),
+        "polynomial_schedule": True,
+    }
+    full = make("full-schedule", **settings)
+    torch.manual_seed(1234)
+    expected = full.train(**inputs)
+    final = torch.load(full.config.checkpoint_dir / "iteration-4.pt", weights_only=True)
+    trainer = make("split-0", **settings)
+    torch.manual_seed(1234)
+    actual = []
+    for index, cut in enumerate(cuts):
+        actual.extend(
+            trainer.train(
+                **inputs,
+                stop_at_boundary=lambda trainer=trainer, cut=cut: (
+                    trainer.iteration == cut
+                ),
+            )
+        )
+        assert not list(trainer.config.checkpoint_dir.glob("iteration-*.pt"))
+        path = trainer.save_checkpoint(
+            trainer.config.checkpoint_dir / f"resume-{cut}.pt"
+        )
+        trainer = make(f"split-{index + 1}", **settings)
+        trainer.load_checkpoint(path, **inputs)
+    actual.extend(trainer.train(**inputs))
+    checkpoint = torch.load(
+        trainer.config.checkpoint_dir / "iteration-4.pt", weights_only=True
+    )
+    assert actual == expected
+    for field in (
+        "policy",
+        "reference",
+        "optimizer",
+        "scheduler",
+        "generator",
+        "cpu_rng",
+    ):
+        assert_exact(checkpoint[field], final[field])
 
 
 @pytest.mark.parametrize(

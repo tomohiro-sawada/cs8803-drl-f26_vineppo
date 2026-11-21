@@ -73,6 +73,7 @@ from experiments.training.resume import BoundaryDeadline, ResumeSlot, atomic_rec
 from experiments.training.selection import CheckpointSelection
 from experiments.training.tracking import WandBTracker
 from runtime.config import PPOTrainerConfig
+from runtime.schedule import POLYNOMIAL
 from runtime.train import PPOTrainer
 
 # Identical to scripts/paper_artifact_replications/evaluate_sft.py; no test loader.
@@ -150,6 +151,9 @@ def parse_args(argv=None):
     )
     parser.add_argument("--critic-learning-rate", type=positive_float, default=1e-5)
     parser.add_argument("--kl-coef", type=float, default=1e-4)
+    parser.add_argument(
+        "--lr-schedule", choices=("constant", POLYNOMIAL), default="constant"
+    )
     parser.add_argument("--math-grader-workers", type=positive_int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -207,10 +211,8 @@ def parse_args(argv=None):
         )
     if args.worker_placement == "colocated" and args.num_workers != 1:
         parser.error("--worker-placement colocated requires --num-workers 1")
-    if args.backend == "vllm" and (
-        args.finetuning != "lora" or args.algorithm == "ppo"
-    ):
-        parser.error("--backend vllm publishes LoRA actors for vineppo/grpo/rloo")
+    if args.backend == "vllm" and args.finetuning != "lora":
+        parser.error("--backend vllm requires a LoRA actor")
     if not 0 <= args.eval_seed <= 2**32 - max(16, args.validation_rounds):
         parser.error("Evaluation seed range exceeds NumPy bounds")
     if args.mode == "evaluate":
@@ -242,9 +244,9 @@ def parse_args(argv=None):
     if (
         args.mode != "evaluate"
         and args.dtype == "bfloat16"
-        and (args.finetuning == "full" or args.algorithm == "ppo")
+        and args.finetuning == "full"
     ):
-        parser.error("Full tuning and PPO require --dtype float32")
+        parser.error("Full tuning requires --dtype float32")
     if args.finetuning == "lora":
         args.lora_rank = 16 if args.lora_rank is None else args.lora_rank
         args.lora_alpha = 32.0 if args.lora_alpha is None else args.lora_alpha
@@ -589,7 +591,7 @@ def trainer_config(args):
         checkpoint_dir=args.output / "checkpoints",
         algorithm_config={
             "vineppo": VinePPOConfig,
-            "ppo": PPOConfig,
+            "ppo": lambda: PPOConfig(lam=1.0, value_clip_eps=0.2),
             "grpo": GRPOConfig,
             "rloo": RLOOConfig,
         }[args.algorithm](),
@@ -696,7 +698,9 @@ def main(argv=None):
     critic = critic_optimizer = None
     if args.algorithm == "ppo":
         critic = TokenCritic(
-            AutoModel.from_pretrained(str(args.model_path), **model_kwargs).to("cuda:0")
+            AutoModel.from_pretrained(
+                str(args.model_path), **(model_kwargs | {"dtype": torch.float32})
+            ).to("cuda:0")
         )
         critic_optimizer = torch.optim.AdamW(
             critic.parameters(), lr=args.critic_learning_rate, weight_decay=0.0
@@ -765,6 +769,7 @@ def main(argv=None):
             resume_checkpoint_every=args.resume_checkpoint_every,
             deadline=deadline,
             archive=args.archive_checkpoints == "yes",
+            polynomial_schedule=args.lr_schedule == POLYNOMIAL,
         )
         inputs = {
             "examples": examples,
@@ -775,23 +780,26 @@ def main(argv=None):
         }
         if args.resume is not None:
             trainer.load_checkpoint(args.resume, **inputs)
-            assert all(g["lr"] == args.learning_rate for g in optimizer.param_groups), (
-                "--learning-rate must match the resumed optimizer"
-            )
+            lr_key = "initial_lr" if trainer.schedule is not None else "lr"
+            assert all(
+                g[lr_key] == args.learning_rate for g in optimizer.param_groups
+            ), "--learning-rate must match the resumed optimizer"
             if critic_optimizer is not None:
                 assert all(
-                    g["lr"] == args.critic_learning_rate
+                    g[lr_key] == args.critic_learning_rate
                     for g in critic_optimizer.param_groups
                 ), "--critic-learning-rate must match the resumed optimizer"
         assert args.num_iterations - trainer.iteration > warmup or (
-            args.resume_selection is not None
-            and trainer.iteration == args.num_iterations
+            args.resume is not None and trainer.iteration == args.num_iterations
         ), "Need non-warmup new iterations after resume"
         metadata = {
             "schema_version": 1,
             "created_at": datetime.now(UTC).isoformat(),
             "cli": vars(args),
             "trainer_config": asdict(config),
+            "learning_rate_schedule": (
+                trainer.schedule.identity() if trainer.schedule is not None else None
+            ),
             "model": {
                 "path": str(args.model_path),
                 "config": actor.config.to_dict(),

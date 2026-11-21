@@ -53,22 +53,21 @@ def cli(tmp_path):
     ]
 
 
-@pytest.mark.parametrize("algorithm,finetuning", [("grpo", "full"), ("ppo", "lora")])
-def test_bf16_requires_critic_free_lora(cli, capsys, algorithm, finetuning):
+def test_bf16_requires_lora(cli, capsys):
     with pytest.raises(SystemExit) as error:
         runner.parse_args(
             cli
             + [
                 "--algorithm",
-                algorithm,
+                "grpo",
                 "--finetuning",
-                finetuning,
+                "full",
                 "--dtype",
                 "bfloat16",
             ]
         )
     assert error.value.code == 2
-    assert "require --dtype float32" in capsys.readouterr().err
+    assert "requires --dtype float32" in capsys.readouterr().err
 
 
 def test_math_grading_workers_require_cpu_and_memory_budget(monkeypatch):
@@ -409,6 +408,9 @@ def measured_trainer():
     trainer.pending = None
     trainer.tracker = None
     trainer.selection = None
+    trainer.archive = False
+    trainer.deadline = None
+    trainer.schedule = None
     return trainer
 
 
@@ -464,7 +466,7 @@ def test_retention_only_prunes_owned_files_after_success(monkeypatch, tmp_path, 
         )
         for finetuning, dtype in (
             ("full", "float32"),
-            ("lora", "float32" if algorithm == "ppo" else "bfloat16"),
+            ("lora", "bfloat16"),
         )
     ],
 )
@@ -697,7 +699,9 @@ def test_main_local_model_assembly_and_real_warmup_summary(
     )
     assert assembly.call_args.kwargs["warmup_iterations"] == 1
     if algorithm == "ppo":
-        load_backbone.assert_called_once_with(str(model_path.resolve()), **kwargs)
+        load_backbone.assert_called_once_with(
+            str(model_path.resolve()), **(kwargs | {"dtype": torch.float32})
+        )
         make_critic.assert_called_once_with(backbone)
         assert assembly.call_args.kwargs["critic"] is critic
         assert optimizer.call_count == 2

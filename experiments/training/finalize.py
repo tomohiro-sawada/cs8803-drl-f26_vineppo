@@ -29,6 +29,9 @@ def frozen_plan(args):
         "Frozen training plan differs from launcher options"
     )
     cli = json.loads((owner / "metadata.json").read_text())["cli"]
+    assert cli.get("lr_schedule", "constant") == args.lr_schedule, (
+        "Frozen learning-rate schedule differs from launcher options"
+    )
     for key in (
         "model_path",
         "dataset_path",

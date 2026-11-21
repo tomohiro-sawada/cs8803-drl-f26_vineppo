@@ -21,10 +21,12 @@ from core.optimization import assert_fp32_optimizer_state, trainable_fp32_parame
 class PPOConfig(AlgorithmConfig):
     gamma: float = 1.0
     lam: float = 0.95
+    value_clip_eps: float | None = None
 
     def __post_init__(self):
         assert isfinite(self.gamma) and 0 <= self.gamma <= 1
         assert isfinite(self.lam) and 0 <= self.lam <= 1
+        assert self.value_clip_eps is None or 0 < self.value_clip_eps < 1
 
 
 class TokenCritic(nn.Module):
@@ -139,14 +141,28 @@ def masked_gae(
 
 
 def value_loss(
-    values: Tensor, returns: Tensor, mask: Tensor, *, num_tokens: int | None = None
+    values: Tensor,
+    returns: Tensor,
+    mask: Tensor,
+    *,
+    num_tokens: int | None = None,
+    old_values: Tensor | None = None,
+    value_clip_eps: float | None = None,
 ) -> Tensor:
-    """Half masked MSE with detached targets and an optional accumulation denominator."""
+    """Half masked MSE, clipped against fixed pre-update values when requested."""
     _validate_masked_pair(values, returns, mask)
     tokens = int(mask.sum())
     num_tokens = tokens if num_tokens is None else num_tokens
     assert type(num_tokens) is int and num_tokens >= tokens
-    loss = 0.5 * (values[mask] - returns.detach()[mask]).square().sum() / num_tokens
+    current, target = values[mask], returns.detach()[mask]
+    error = (current - target).square()
+    if value_clip_eps is not None:
+        assert old_values is not None and 0 < value_clip_eps < 1
+        _validate_masked_pair(old_values, returns, mask)
+        old = old_values.detach()[mask]
+        clipped = old + (current - old).clamp(-value_clip_eps, value_clip_eps)
+        error = torch.maximum(error, (clipped - target).square())
+    loss = 0.5 * error.sum() / num_tokens
     assert torch.isfinite(loss), "Nonfinite value loss"
     return loss
 
@@ -161,6 +177,7 @@ def update_critic(
     microbatch_size: int,
     max_grad_norm: float = 1.0,
     generator: torch.Generator | None = None,
+    value_clip_eps: float | None = None,
 ) -> list[dict[str, float]]:
     """Optimize fixed returns; report pre-step token-mean loss and pre-clip norm.
 
@@ -188,7 +205,7 @@ def update_critic(
         assert batch.response_mask.shape == (size, width - 1)
         for field in fields(batch):
             assert getattr(batch, field.name).device == batch.input_ids.device
-        _validate_masked_pair(batch.returns, batch.returns, batch.response_mask)
+        _validate_masked_pair(batch.returns, batch.old_values, batch.response_mask)
         _validate_contiguous(batch.response_mask)
         assert not (
             batch.response_mask
@@ -228,6 +245,8 @@ def update_critic(
                         targets[rows].to(device),
                         batch.response_mask[rows].to(device),
                         num_tokens=tokens,
+                        old_values=batch.old_values[rows].to(device),
+                        value_clip_eps=value_clip_eps,
                     )
                     loss.backward()
                     total_loss += loss.item()

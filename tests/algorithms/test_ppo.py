@@ -19,6 +19,18 @@ from algorithms.ppo import (
 from core.data import Episode, PPOValueEstimate, collate_critic
 
 
+def test_value_clipping_uses_frozen_previous_value_and_detaches_targets():
+    values = torch.tensor([[0.9, -0.5, float("nan")]], requires_grad=True)
+    target = torch.tensor([[1.0, 1.0, float("nan")]], requires_grad=True)
+    old = torch.zeros_like(values, requires_grad=True)
+    mask = torch.tensor([[True, True, False]])
+    loss = value_loss(values, target, mask, old_values=old, value_clip_eps=0.2)
+    assert loss.item() == pytest.approx((0.8**2 + 1.5**2) / 4)
+    loss.backward()
+    assert values.grad.tolist() == [[0, -0.75, 0]]
+    assert target.grad is None and old.grad is None
+
+
 @pytest.mark.parametrize("field", ["gamma", "lam"])
 @pytest.mark.parametrize("bad", [-0.01, 1.01, float("nan"), float("inf")])
 def test_config_rejects_invalid_discount(field, bad):

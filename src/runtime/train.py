@@ -16,7 +16,7 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import asdict
 from hashlib import sha256
-from math import isfinite, sqrt
+from math import ceil, isfinite, sqrt
 from pathlib import Path
 from typing import Literal
 
@@ -70,6 +70,7 @@ from runtime.checkpoints import (
     validate_tensor_state,
 )
 from runtime.config import PPOTrainerConfig
+from runtime.schedule import PolynomialSchedule
 
 
 class _Moments:
@@ -142,6 +143,7 @@ class PPOTrainer:
         critic_optimizer: torch.optim.Optimizer | None = None,
         compact_lora_checkpoints: bool = False,
         math_grader_workers: int = 1,
+        polynomial_schedule: bool = False,
     ):
         # validate the inputs
         assert inference.model is policy, "Inference must share the training actor"
@@ -165,6 +167,18 @@ class PPOTrainer:
         self.compact_lora_checkpoints = compact_lora_checkpoints
         assert type(math_grader_workers) is int and math_grader_workers > 0
         self.math_grader_workers = math_grader_workers
+        self.schedule = None
+        if polynomial_schedule:
+            assert optimizer is not None
+            self.steps_per_iteration = config.update_epochs * ceil(
+                config.prompts_per_iteration
+                * config.num_samples
+                / config.minibatch_size
+            )
+            self.schedule = PolynomialSchedule(
+                [o for o in (optimizer, critic_optimizer) if o is not None],
+                self.steps_per_iteration * config.num_iterations,
+            )
         self._frozen_checkpoint = None
         self.iteration = 0  # Number of fully completed iterations.
         self._generator: torch.Generator | None = None
@@ -774,12 +788,18 @@ class PPOTrainer:
             microbatch_size=self.config.microbatch_size,
             max_grad_norm=self.config.max_grad_norm,
             generator=self._generator,
+            value_clip_eps=self.config.algorithm_config.value_clip_eps,
         )
 
     def _config_state(self) -> dict:
         state = asdict(self.config)
         state["checkpoint_dir"] = str(self.config.checkpoint_dir)
         algorithm = type(self.config.algorithm_config)
+        if (
+            algorithm is PPOConfig
+            and state["algorithm_config"]["value_clip_eps"] is None
+        ):
+            del state["algorithm_config"]["value_clip_eps"]
         state["algorithm_type"] = f"{algorithm.__module__}.{algorithm.__qualname__}"
         return state
 
@@ -896,6 +916,8 @@ class PPOTrainer:
             state["critic_backbone_class"] = (
                 f"{type(self.critic.backbone).__module__}.{type(self.critic.backbone).__qualname__}"
             )
+        if self.schedule is not None:
+            state["scheduler"] = self.schedule.state_dict()
         publish_checkpoint(path, state)
         return path
 
@@ -942,6 +964,13 @@ class PPOTrainer:
             self._optimizer_identity(self.policy, self.optimizer)
             == state["optimizer_identity"]
         ), "Optimizer identity mismatch"
+        assert ("scheduler" in state) == (self.schedule is not None), (
+            "Checkpoint learning-rate schedule presence mismatch"
+        )
+        if self.schedule is not None:
+            assert state["scheduler"]["identity"] == self.schedule.identity(), (
+                "Checkpoint learning-rate schedule mismatch"
+            )
         assert_fp32_optimizer_state(state["optimizer"]["state"])
         if self.critic is not None:
             assert (
@@ -991,6 +1020,10 @@ class PPOTrainer:
             self.critic.load_state_dict(state["critic"], strict=True)
             self.critic_optimizer.load_state_dict(state["critic_optimizer"])
             self.critic_optimizer.zero_grad(set_to_none=True)
+        if self.schedule is not None:
+            self.schedule.load_state_dict(
+                state["scheduler"], state["iteration"] * self.steps_per_iteration
+            )
         self._generator.set_state(state["generator"])
         torch.set_rng_state(state["cpu_rng"])
         if state["cuda_rng"]:
