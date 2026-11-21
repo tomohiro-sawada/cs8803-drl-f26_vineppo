@@ -11,6 +11,7 @@ from transformers import AutoTokenizer
 
 from core.prompt_protocol import prompt_protocol
 from experiments.training import evaluate
+from experiments.training.resume import atomic_record
 from experiments.training.run import git, parse_args, write_json
 
 
@@ -71,7 +72,11 @@ def main():
         value = getattr(args, key)
         if value is not None:
             options.extend((f"--{key.replace('_', '-')}", str(value)))
-    evaluate.main(options)
+    result = evaluate.main(options)
+    assert result["complete"] and result["rounds_completed"] == 16
+    atomic_record(
+        args.output / "COMPLETE", {"result": str(args.output / "test/result.json")}
+    )
 
 
 if __name__ == "__main__":

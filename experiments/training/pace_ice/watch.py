@@ -118,6 +118,20 @@ def free_scratch_gib(mount):
     return (hard_limit - used) / 1024**2
 
 
+def disk_reservation(job):
+    root = Path(job["disk_root"])
+    if root.is_file() or any(
+        (root / marker).is_file() for marker in ("COMPLETE", "HALTED")
+    ):
+        return 0
+    used = (
+        int(slurm("du", "-sk", "--", str(root)).split()[0]) / 1024**2
+        if root.is_dir()
+        else 0
+    )
+    return max(0, job["space_gib"] - used)
+
+
 def dependency_blockers(dependencies, receipts, accounting):
     """Require durable success before submitting a job whose evidence gates opened."""
     missing = {
@@ -164,15 +178,7 @@ def watch(plan_path):
     ), "Unknown wave dependency"
     retry_at = {}
     while time() < plan["deadline"]:
-        disk_active = any(
-            job["name"] in state["jobs"]
-            and not any(
-                (Path(job["disk_root"]) / marker).exists()
-                for marker in ("COMPLETE", "HALTED")
-            )
-            for job in jobs
-            if "disk_root" in job
-        )
+        reserved = None
         disk_wait = {}
         evidence_wait = {}
         dependency_wait = {}
@@ -203,10 +209,17 @@ def watch(plan_path):
                     continue
                 if "disk_root" in job:
                     free = free_scratch_gib(plan["scratch_mount"])
-                    if disk_active or free < job["space_gib"]:
+                    if reserved is None:
+                        reserved = sum(
+                            disk_reservation(active)
+                            for active in jobs
+                            if active["name"] in state["jobs"] and "disk_root" in active
+                        )
+                    required = job["space_gib"] + reserved + 20
+                    if free < required:
                         disk_wait[name] = {
                             "free_gib": free,
-                            "required_gib": job["space_gib"],
+                            "required_gib": required,
                         }
                         continue
                 if time() < retry_at.get(name, 0):
@@ -223,7 +236,8 @@ def watch(plan_path):
                     retry_at[name] = time() + 60
                     continue
                 atomic_record(state_path, state)
-                disk_active |= "disk_root" in job
+                if "disk_root" in job:
+                    reserved += disk_reservation(job)
         outstanding = False
         for spec in plan.get("faults", []):
             name = spec["name"]

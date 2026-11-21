@@ -633,6 +633,16 @@ class MeasuredTrainer(PPOTrainer):
             self.deadline.observe(elapsed, phases["checkpoint_seconds"])
             status = json.loads(self.chain_status.read_text())
             atomic_record(self.chain_status, status | {"iteration": self.iteration})
+            rollover = self.chain_status.with_name("ROLLOVER")
+            if status["position"][0] > 0 and not rollover.exists():
+                atomic_record(
+                    rollover,
+                    {
+                        "job": status["job"],
+                        "resumed_from": status["position"][0],
+                        "completed": self.iteration,
+                    },
+                )
         if self.tracker is not None:
             self.tracker.log_iteration(row)
         self.pending = None
