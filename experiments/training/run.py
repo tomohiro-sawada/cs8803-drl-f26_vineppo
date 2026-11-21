@@ -42,7 +42,7 @@ from collections import defaultdict
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
-from functools import wraps
+from functools import partial, wraps
 from importlib.metadata import version
 from pathlib import Path
 from time import perf_counter, time
@@ -61,11 +61,13 @@ from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
 from algorithms.grpo import GRPOConfig
 from algorithms.ppo import PPOConfig, TokenCritic
+from algorithms.restem import RestEMConfig
 from algorithms.rloo import RLOOConfig
 from algorithms.vineppo import MC_PREFIX_POLICY, VinePPOConfig
 from core.data import Example
 from core.inference import HFInference
 from core.lora import apply_lora, lora_identity
+from core.prompt_protocol import OLMO3, PROMPT, RHOMATH, prompt_protocol
 from core.segmentation import MATH_SEGMENTATION_POLICY
 from core.vllm_inference import VLLMClient, VLLMInference, gpu_identity, slurm_attempt
 from experiments.training.archive import archive_checkpoint
@@ -76,8 +78,6 @@ from runtime.config import PPOTrainerConfig
 from runtime.schedule import POLYNOMIAL
 from runtime.train import PPOTrainer
 
-# Identical to scripts/paper_artifact_replications/evaluate_sft.py; no test loader.
-PROMPT = "[MATH_TASK] Problem:\n{question}\n\nSolution:"
 PHASES = (
     "primary_generation",
     "mc_estimation",
@@ -117,9 +117,12 @@ def parse_args(argv=None):
         "--mode", choices=("train", "benchmark", "evaluate"), required=True
     )
     parser.add_argument(
-        "--algorithm", choices=("vineppo", "ppo", "grpo", "rloo"), required=True
+        "--algorithm",
+        choices=("vineppo", "ppo", "grpo", "rloo", "restem"),
+        required=True,
     )
     parser.add_argument("--task", choices=("gsm8k", "math"), required=True)
+    parser.add_argument("--model-protocol", choices=(RHOMATH, OLMO3), default=RHOMATH)
     for name in ("model-path", "dataset-path", "output"):
         parser.add_argument(f"--{name}", type=Path, required=True)
     parser.add_argument(
@@ -150,7 +153,7 @@ def parse_args(argv=None):
         help="Default: 1e-6 full tuning, 1e-5 LoRA; tune independently",
     )
     parser.add_argument("--critic-learning-rate", type=positive_float, default=1e-5)
-    parser.add_argument("--kl-coef", type=float, default=1e-4)
+    parser.add_argument("--kl-coef", type=float)
     parser.add_argument(
         "--lr-schedule", choices=("constant", POLYNOMIAL), default="constant"
     )
@@ -252,11 +255,19 @@ def parse_args(argv=None):
         args.lora_alpha = 32.0 if args.lora_alpha is None else args.lora_alpha
     if args.learning_rate is None:
         args.learning_rate = 1e-5 if args.finetuning == "lora" else 1e-6
+    if args.kl_coef is None:
+        args.kl_coef = 0 if args.algorithm == "restem" else 1e-4
+    if args.algorithm == "restem" and (
+        args.finetuning != "lora" or args.kl_coef != 0 or args.lr_schedule != "constant"
+    ):
+        parser.error("RestEM requires LoRA, zero KL, and a constant learning rate")
     if args.algorithm in ("grpo", "rloo") and args.num_samples < 2:
         parser.error("GRPO/RLOO require --num-samples >= 2 per prompt")
     if args.warmup_iterations < 0 or not 0 <= args.seed < 2**64:
         parser.error("warmup must be nonnegative; seed must be in [0, 2**64)")
-    if not math.isfinite(args.kl_coef) or args.kl_coef < 0:
+    if args.kl_coef is not None and (
+        not math.isfinite(args.kl_coef) or args.kl_coef < 0
+    ):
         parser.error("--kl-coef must be finite and nonnegative")
     if args.mode == "benchmark" and args.warmup_iterations >= args.num_iterations:
         parser.error("benchmark needs at least one non-warmup iteration")
@@ -594,6 +605,7 @@ def trainer_config(args):
             "ppo": lambda: PPOConfig(lam=1.0, value_clip_eps=0.2),
             "grpo": GRPOConfig,
             "rloo": RLOOConfig,
+            "restem": RestEMConfig,
         }[args.algorithm](),
         checkpoint_every=checkpoint_every,
         **{
@@ -636,12 +648,22 @@ def validate_grading_resources(workers):
 
 def main(argv=None):
     args = parse_args(argv)
+    profile = prompt_protocol(args.model_protocol, args.task)
+    assert (
+        args.evaluation == "disabled"
+        or args.max_sequence_length >= profile.context_size
+    )
     deadline = None
     if deadline_file := os.environ.get("PACE_CHAIN_STOP_FILE"):
         deadline = BoundaryDeadline(
             int(os.environ["SLURM_JOB_END_TIME"]), Path(deadline_file), clock=time
         )
         signal.signal(signal.SIGUSR1, deadline.request_stop)
+        status_path = Path(os.environ["PACE_CHAIN_STATUS_FILE"])
+        status = json.loads(status_path.read_text())
+        atomic_record(
+            status_path, status | {"learner_step": os.environ["SLURM_STEP_ID"]}
+        )
     validate_grading_resources(args.math_grader_workers)
     assert args.mode in ("train", "benchmark"), (
         "Dispatch final testing through the launcher"
@@ -687,6 +709,9 @@ def main(argv=None):
     reference = AutoModelForCausalLM.from_pretrained(
         str(args.model_path), **model_kwargs
     ).to("cuda:0")
+    if args.model_protocol == OLMO3:
+        assert actor.config.model_type == "olmo3"
+        assert actor.generation_config.eos_token_id == profile.eos_ids(tokenizer)
     reference.requires_grad_(False).eval()
     if args.finetuning == "lora":
         actor = apply_lora(actor, rank=args.lora_rank, alpha=args.lora_alpha)
@@ -770,12 +795,18 @@ def main(argv=None):
             deadline=deadline,
             archive=args.archive_checkpoints == "yes",
             polynomial_schedule=args.lr_schedule == POLYNOMIAL,
+            add_prompt_special_tokens=profile.add_special_tokens,
+            prompt_special_ids=profile.context_special_ids(tokenizer),
         )
         inputs = {
             "examples": examples,
             "tokenizer": tokenizer,
             "task": args.task,
-            "formatter": paper_prompt,
+            "formatter": (
+                paper_prompt
+                if args.model_protocol == RHOMATH
+                else partial(profile.format, tokenizer)
+            ),
             "reference_is_solution": args.task == "math",
         }
         if args.resume is not None:
@@ -823,7 +854,7 @@ def main(argv=None):
             "mc_prefix_policy": MC_PREFIX_POLICY
             if args.algorithm == "vineppo"
             else None,
-            "prompt": PROMPT,
+            "prompt": profile.template,
             "tokenizer_sha256": tokenizer_sha256,
             "pad_uses_eos_because_missing": pad_was_missing,
             "software": {
@@ -875,10 +906,12 @@ def main(argv=None):
         trainer.evaluation_provenance = {
             "schema_version": 1,
             "task": args.task,
-            "prompt": PROMPT,
+            "prompt": profile.template,
             "tokenizer_sha256": tokenizer_sha256,
             "dataset": metadata["dataset"],
         }
+        if args.model_protocol != RHOMATH:
+            trainer.evaluation_provenance["model_protocol"] = args.model_protocol
         write_json(args.output / "metadata.json", metadata)
         tracker = tracking_context.enter_context(WandBTracker(args, metadata))
         if args.wandb_mode != "disabled":
@@ -952,6 +985,7 @@ def main(argv=None):
                 inference.close()
                 trainer.policy = trainer.reference_policy = trainer.critic = None
                 trainer.optimizer = trainer.critic_optimizer = None
+                trainer.schedule = None
                 del actor, reference, critic, optimizer, critic_optimizer
                 gc.collect()
                 torch.cuda.empty_cache()

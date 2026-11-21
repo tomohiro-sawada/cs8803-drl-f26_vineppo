@@ -163,14 +163,17 @@ arguments are:
 --num-samples --mc-num-samples --update-epochs --minibatch-size
 --microbatch-size --max-sequence-length --max-new-tokens
 --learning-rate --critic-learning-rate --math-grader-workers --seed
+--kl-coef --lr-schedule --model-protocol
 --checkpoint-every --checkpoint-format --keep-checkpoints --resume --dtype
+--resume-checkpoint-every --archive-checkpoints
 --finetuning --lora-rank --lora-alpha
 --wandb-mode --wandb-project --wandb-entity --wandb-group --wandb-name
 --evaluation --validation-rounds --eval-batch-size --eval-seed --eval-timeout-seconds
 ```
 
-`--dtype float32` is required for full tuning and PPO. Critic-free LoRA also
-accepts `--dtype bfloat16` for the frozen base and reference. Trainable parameters,
+`--dtype float32` is required for full tuning. LoRA also accepts
+`--dtype bfloat16` for the frozen base and reference. The PPO critic is
+loaded in FP32, independently of the actor. Trainable parameters,
 gradients, and AdamW moments use FP32 in both cases. Learning rates default to `1e-6` (full actor),
 `1e-5` (LoRA actor), and `1e-5` (critic); seed is `42`. Explicit learning rates win. Numeric ranges and shape consistency are
 validated by the runner; the launchers do not duplicate its validation logic.
@@ -190,6 +193,35 @@ group and keeps the results in sample order. Reserve one CPU and up to 1 GiB
 per worker in addition to learner resources.
 
 ## Resume into a new output
+
+PACE unattended jobs use `pace_ice/train_resumable.slurm RUN_ROOT [runner options]`.
+Submit from a detached worktree with absolute paths for the Python environments,
+data, cache, and `PACE_CHAIN_LOG_DIR`. Pass an absolute run root and explicit
+`--num-iterations` and `--resume-checkpoint-every`. Each allocation stores its
+progress in `status.json`, holds one afterany successor, and creates a new
+`attempt-NNNN` only when it needs to train. The runner observes the wall-clock
+deadline and the Slurm warning file at iteration boundaries. With
+`--archive-checkpoints yes`, immutable candidates and the shared frozen blob
+are copied to checkpoint history and SHA256-verified before candidate pruning.
+The chain stops after a no-progress link and records `HALTED`.
+
+Long RhoMath runs may select `--lr-schedule polynomial` for 3% warmup and
+degree-one decay to zero over optimizer steps. A resumed schedule requires the
+same total budget and base learning rates. Pass `--kl-coef 0.003` explicitly for
+the paper-coefficient GRPO/RLOO arm. PPO and VinePPO use `0.0001` by default.
+
+RestEM keeps up to ten verified correct stopped responses per sampled prompt,
+resets the adapter and optimizer before each update round, and optimizes
+response-token NLL. Use `--algorithm restem --finetuning lora`. The matched
+RhoMath run uses 10 rounds of 320 prompts, eight samples per prompt, and eight
+update epochs. Sampling uses temperature 1 and includes the full distribution.
+The last update of each round is its validation candidate and next sampler.
+
+`--model-protocol olmo3-sft` selects the pinned OLMo-3-7B-Instruct-SFT
+chat prompt. MATH requests a boxed answer and GSM8K requests a `####` line.
+Evaluation stops at chat end or model EOS and uses a 2,048-token context with a
+1,024-token generation cap. Base weights are pinned to
+`e1452fc572d51966ff4aaeb25118b891eb93e549`.
 
 `--checkpoint-format compact-lora` stores the frozen actor and reference once
 in `checkpoints/frozen-lora.pt`. Each iteration checkpoint stores the adapter

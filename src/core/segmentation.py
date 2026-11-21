@@ -45,6 +45,7 @@ def step_boundaries_from_tokens(
     dataset: Literal["math", "gsm8k"],
     eos_token_ids: Sequence[int],
     context_ids: Sequence[int] = (),
+    context_special_ids: Sequence[int] = (),
 ) -> tuple[int, ...]:
     """Segment sampled IDs using character offsets from incremental decoding.
 
@@ -84,9 +85,10 @@ def step_boundaries_from_tokens(
     context = list(context_ids)
     if context and context[0] == tokenizer.bos_token_id:
         context = context[1:]
-    assert not set(context).intersection(tokenizer.all_special_ids), (
-        "Context contains special tokens other than one leading BOS"
-    )
+    assert set(context_special_ids) <= set(tokenizer.all_special_ids)
+    assert set(context).intersection(tokenizer.all_special_ids) <= set(
+        context_special_ids
+    ), "Context contains special tokens other than one leading BOS"
     decode = partial(
         tokenizer.decode, skip_special_tokens=False, clean_up_tokenization_spaces=False
     )

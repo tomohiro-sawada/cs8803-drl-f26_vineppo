@@ -21,8 +21,9 @@ from torch import Tensor
 from transformers import PreTrainedModel
 
 from algorithms.grpo import grpo_loss
+from algorithms.restem import restem_loss
 from algorithms.rloo import rloo_loss
-from core.data import PolicyGradientBatch
+from core.data import PolicyGradientBatch, TrainBatch
 from core.inference import token_logprobs
 from core.optimization import assert_fp32_optimizer_state, trainable_fp32_parameters
 
@@ -111,7 +112,7 @@ def actor_loss(
 def update_actor(
     actor: PreTrainedModel,
     optimizer: torch.optim.Optimizer,
-    batch: PolicyGradientBatch,
+    batch: TrainBatch,
     *,
     epochs: int,
     minibatch_size: int,
@@ -120,7 +121,7 @@ def update_actor(
     kl_coef: float = 1e-4,
     max_grad_norm: float = 1.0,
     generator: torch.Generator | None = None,
-    objective: Literal["ppo", "grpo", "rloo"] = "ppo",
+    objective: Literal["ppo", "grpo", "rloo", "restem"] = "ppo",
 ) -> list[dict[str, float]]:
     """Shuffle fixed data each epoch; return pre-step diagnostics per optimizer step.
 
@@ -137,8 +138,10 @@ def update_actor(
     Scoring leaves the actor in eval mode (dropout off, autograd on).
     No DDP, AMP scaler, scheduler, reference model, or reward shaping lives here.
     """
-    assert objective in ("ppo", "grpo", "rloo"), "Unknown actor objective"
-    loss_fn = {"ppo": actor_loss, "grpo": grpo_loss, "rloo": rloo_loss}[objective]
+    assert objective in ("ppo", "grpo", "rloo", "restem"), "Unknown actor objective"
+    supervised = objective == "restem"
+    assert isinstance(batch, PolicyGradientBatch) != supervised
+    loss_fn = {"ppo": actor_loss, "grpo": grpo_loss, "rloo": rloo_loss}.get(objective)
     assert all(
         type(n) is int and n > 0 for n in (epochs, minibatch_size, microbatch_size)
     )
@@ -161,8 +164,9 @@ def update_actor(
         batch.response_mask
         & ~(batch.attention_mask[:, :-1] & batch.attention_mask[:, 1:])
     ).any()
-    for value in (batch.old_logprobs, batch.ref_logprobs, batch.advantages):
-        assert torch.isfinite(value[batch.response_mask]).all()
+    if not supervised:
+        for value in (batch.old_logprobs, batch.ref_logprobs, batch.advantages):
+            assert torch.isfinite(value[batch.response_mask]).all()
     parameters = trainable_fp32_parameters(actor)
     owned = [p for group in optimizer.param_groups for p in group["params"]]
     assert len(owned) == len({id(p) for p in owned}), "Duplicate optimizer parameters"
@@ -179,11 +183,12 @@ def update_actor(
             order = torch.randperm(size, generator=generator).to(batch.input_ids.device)
             for indices in order.split(minibatch_size):
                 mask = batch.response_mask[indices]
-                advantages = (
-                    normalize_advantages(batch.advantages[indices], mask)
-                    if objective == "ppo"
-                    else batch.advantages[indices].detach()
-                )
+                if not supervised:
+                    advantages = (
+                        normalize_advantages(batch.advantages[indices], mask)
+                        if objective == "ppo"
+                        else batch.advantages[indices].detach()
+                    )
                 tokens = int(mask.sum())
                 sequences = len(indices)
                 metrics: dict[str, float] = {}
@@ -194,21 +199,25 @@ def update_actor(
                         batch.input_ids[rows].to(device),
                         batch.attention_mask[rows].to(device),
                     )
-                    loss, info = loss_fn(
-                        current,
-                        batch.old_logprobs[rows].to(device),
-                        batch.ref_logprobs[rows].to(device),
-                        advantages[start : start + microbatch_size].to(device),
-                        batch.response_mask[rows].to(device),
-                        clip_eps=clip_eps,
-                        kl_coef=kl_coef,
-                        num_tokens=tokens,
-                        num_sequences=sequences,
-                    )
+                    response = batch.response_mask[rows].to(device)
+                    if supervised:
+                        loss, info = restem_loss(current, response, tokens)
+                    else:
+                        loss, info = loss_fn(
+                            current,
+                            batch.old_logprobs[rows].to(device),
+                            batch.ref_logprobs[rows].to(device),
+                            advantages[start : start + microbatch_size].to(device),
+                            response,
+                            clip_eps=clip_eps,
+                            kl_coef=kl_coef,
+                            num_tokens=tokens,
+                            num_sequences=sequences,
+                        )
                     loss.backward()
                     for key, value in info.items():
                         metrics[key] = metrics.get(key, 0.0) + value.item()
-                assert metrics["ratio_mean"] <= 10, (
+                assert supervised or metrics["ratio_mean"] <= 10, (
                     "Mean policy ratio exceeds upstream safety threshold 10"
                 )
                 norm = torch.nn.utils.clip_grad_norm_(

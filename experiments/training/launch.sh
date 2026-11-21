@@ -17,14 +17,15 @@ while (( $# )); do
     case "$1" in
         --algorithm)
             case "$2" in
-                vineppo|grpo|rloo) ;;
+                vineppo|grpo|rloo|restem) ;;
                 ppo) [[ $cluster == pace_ice ]] || fail 'PPO is not supported on Skynet; use PACE ICE' ;;
-                *) fail "Unsupported algorithm: $2 (choose vineppo, ppo, grpo, or rloo)" ;;
+                *) fail "Unsupported algorithm: $2 (choose vineppo, ppo, grpo, rloo, or restem)" ;;
             esac ;;
         --resume-selection) [[ -e $2 ]] || fail "Resume selection does not exist: $2" ;;
         --evaluation|--validation-rounds|--eval-batch-size|--eval-seed|--eval-timeout-seconds|--archive-checkpoints|--lr-schedule) ;;
         --wandb-mode|--wandb-project|--wandb-entity|--wandb-group|--wandb-name) ;;
         --task) task=$2 ;;
+        --model-protocol) ;;
         --model-path) model=$2 ;;
         --dataset-path) dataset=$2 ;;
         --output) output=$2 ;;

@@ -6,6 +6,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+from core.prompt_protocol import RHOMATH
 from experiments.training import evaluate
 from experiments.training.run import parse_args, trainer_config
 
@@ -32,6 +33,9 @@ def frozen_plan(args):
     assert cli.get("lr_schedule", "constant") == args.lr_schedule, (
         "Frozen learning-rate schedule differs from launcher options"
     )
+    assert cli.get("model_protocol", RHOMATH) == args.model_protocol, (
+        "Frozen model protocol differs from launcher options"
+    )
     for key in (
         "model_path",
         "dataset_path",
@@ -46,7 +50,7 @@ def frozen_plan(args):
         assert cli[key] == (str(value) if isinstance(value, Path) else value), (
             f"Frozen {key} differs from launcher options"
         )
-    protocol = evaluate.protocol_for(args.backend) | {
+    protocol = evaluate.protocol_for(args.backend, args.model_protocol, args.task) | {
         "seed": args.eval_seed,
         "batch_size": args.eval_batch_size,
     }

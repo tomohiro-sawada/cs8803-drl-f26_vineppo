@@ -535,3 +535,32 @@ def test_context_with_special_tokens_is_rejected(byte_tokenizer):
             eos_token_ids=[],
             context_ids=[byte_tokenizer.pad_token_id, *ids],
         )
+
+
+def test_chat_prompt_controls_are_allowlisted_without_changing_response_ids(
+    byte_tokenizer,
+):
+    eos = byte_tokenizer.eos_token_id
+    ids = byte_tokenizer.encode("first step\nsecond", add_special_tokens=False) + [eos]
+    prompt = byte_tokenizer.encode("question", add_special_tokens=False) + [eos]
+    plain = step_boundaries_from_tokens(
+        ids, byte_tokenizer, dataset="math", eos_token_ids=[eos]
+    )
+    decorated = step_boundaries_from_tokens(
+        ids,
+        byte_tokenizer,
+        dataset="math",
+        eos_token_ids=[eos],
+        context_ids=prompt,
+        context_special_ids=[eos],
+    )
+    assert decorated == plain
+    with pytest.raises(AssertionError, match="other special tokens"):
+        step_boundaries_from_tokens(
+            [eos, *ids],
+            byte_tokenizer,
+            dataset="math",
+            eos_token_ids=[eos],
+            context_ids=prompt,
+            context_special_ids=[eos],
+        )

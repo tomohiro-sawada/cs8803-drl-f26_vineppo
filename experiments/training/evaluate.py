@@ -14,6 +14,7 @@ import json
 import os
 import sys
 from dataclasses import asdict
+from functools import partial
 from importlib.metadata import version
 from pathlib import Path
 from statistics import mean, pstdev
@@ -30,6 +31,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 from core.data import Example
 from core.inference import TextCompletion
+from core.prompt_protocol import PROMPT, RHOMATH, STOP, prompt_protocol
 from core.verifier import VERIFIER_POLICY, VERIFIER_PROVENANCE
 from core.vllm_inference import (
     BASE_MODEL,
@@ -43,8 +45,6 @@ from runtime.checkpoint_actor import load_checkpoint_actor
 from runtime.checkpoints import file_identity, file_sha256
 from runtime.evaluate import evaluate, inference_context
 from scripts.paper_artifact_replications.evaluate_sft import (
-    PROMPT,
-    STOP,
     PaperGenerator,
     paper_prompt,
 )
@@ -73,28 +73,41 @@ VLLM_PROTOCOL = PROTOCOL | {
 }
 
 
-def protocol_for(backend):
-    return VLLM_PROTOCOL if backend == "vllm" else PROTOCOL
+def protocol_for(backend, key=RHOMATH, task=None):
+    protocol = VLLM_PROTOCOL if backend == "vllm" else PROTOCOL
+    if key == RHOMATH:
+        return protocol
+    profile = prompt_protocol(key, task)
+    return protocol | {
+        "model_protocol": key,
+        "prompt": profile.template,
+        "context_size": profile.context_size,
+        "stop": profile.stop,
+        "stop_policy": "chat end or model EOS",
+    }
 
 
 class RemotePaperGenerator:
     """Paper decoding on vLLM replicas serving `model`; one seeded request per prompt."""
 
-    def __init__(self, client, tokenizer, model, seed, release):
-        assert tokenizer.bos_token_id is not None and tokenizer.eos_token_id is not None
+    def __init__(self, client, tokenizer, model, seed, release, profile=None):
+        assert tokenizer.eos_token_id is not None
+        self.profile = prompt_protocol() if profile is None else profile
         self.client, self.tokenizer, self.model = client, tokenizer, model
         self.seed, self.release, self.count = seed, release, 0
 
     def generate(self, prompts, *, num_samples, max_new_tokens, temperature):
         assert num_samples == 1 and max_new_tokens == 1024 and temperature == 0.35
-        prefixes = self.tokenizer(prompts, add_special_tokens=True, padding=False)[
-            "input_ids"
+        prefixes = self.profile.encode(self.tokenizer, prompts)
+        budgets = [
+            min(max_new_tokens, self.profile.context_size - len(p)) for p in prefixes
         ]
-        assert all(p[0] == self.tokenizer.bos_token_id for p in prefixes), (
-            "Expected BOS"
-        )
-        budgets = [min(max_new_tokens, 2047 - len(p)) for p in prefixes]
         assert all(b > 0 for b in budgets), "Prompt exceeds paper context size"
+        stop = (
+            {"stop": [self.profile.stop]}
+            if self.profile.stop is not None
+            else {"stop_token_ids": self.profile.eos_ids(self.tokenizer)}
+        )
         results = self.client.complete(
             [
                 {
@@ -110,7 +123,7 @@ class RemotePaperGenerator:
                     "repetition_penalty": 1.0,
                     "presence_penalty": 0.0,
                     "frequency_penalty": 0.0,
-                    "stop": [STOP],
+                    **stop,
                     "add_special_tokens": False,
                     "skip_special_tokens": True,
                     "return_token_ids": True,
@@ -262,7 +275,9 @@ def validate_results(result, task, training_output, *, split):
     protocol = result["protocol"]
     assert all(
         protocol[key] == value
-        for key, value in protocol_for(protocol.get("backend")).items()
+        for key, value in protocol_for(
+            protocol.get("backend"), protocol.get("model_protocol", RHOMATH), task
+        ).items()
     )
     n = protocol["rounds"]
     assert type(n) is int and n > 0
@@ -343,7 +358,7 @@ def selected_checkpoint(selection, task, training_output, *, verify_digest=True)
     return checkpoint
 
 
-def run_rounds(args, task, examples, generator, identity):
+def run_rounds(args, task, examples, generator, identity, formatter=paper_prompt):
     rounds = []
     for index in range(args.rounds):
         seed = args.seed + index
@@ -369,7 +384,7 @@ def run_rounds(args, task, examples, generator, identity):
                     num_samples=1,
                     max_new_tokens=1024,
                     temperature=0.35,
-                    formatter=paper_prompt,
+                    formatter=formatter,
                     reference_is_solution=task == "math",
                 )
                 for record in records:
@@ -404,6 +419,26 @@ def run_rounds(args, task, examples, generator, identity):
     }
 
 
+def baseline_identity(path, profile):
+    if profile.key == RHOMATH:
+        checkpoint = path / "model.safetensors"
+        return {
+            "path": str(checkpoint),
+            "sha256": file_sha256(checkpoint),
+            "iteration": 0,
+        }, {}
+    index = path / "model.safetensors.index.json"
+    shards = set(json.loads(index.read_text())["weight_map"].values())
+    assert shards and all(
+        Path(name).name == name and name.endswith(".safetensors") for name in shards
+    )
+    digests = {name: file_sha256(path / name) for name in sorted(shards | {index.name})}
+    combined = hashlib.sha256(json.dumps(digests, sort_keys=True).encode()).hexdigest()
+    return {"path": str(index), "sha256": combined, "iteration": 0}, {
+        "weight_sha256": digests
+    }
+
+
 def main(argv=None):
     """Return the final result dict; write result.json only after successful cleanup."""
     args = parse_args(argv)
@@ -424,12 +459,13 @@ def main(argv=None):
         cli = metadata["cli"]
         task = cli["task"]
         assert task in EXPECTED_ROWS[args.split], "Invalid training task"
-        assert metadata["prompt"] == PROMPT, "Training prompt mismatch"
+        profile = prompt_protocol(cli.get("model_protocol", RHOMATH), task)
+        assert metadata["prompt"] == profile.template, "Training prompt mismatch"
         assert metadata["tokenizer_sha256"], "Missing training tokenizer hash"
         model_path = Path(cli["model_path"]).resolve(strict=True)
         dataset_path = Path(cli["dataset_path"]).resolve(strict=True)
         assert model_path.is_dir() and dataset_path.is_dir(), "Local artifacts required"
-        protocol = protocol_for(args.backend) | {
+        protocol = protocol_for(args.backend, profile.key, task) | {
             "rounds": args.rounds,
             "seed": args.seed,
             "batch_size": args.batch_size,
@@ -443,9 +479,7 @@ def main(argv=None):
             checkpoint = selected_checkpoint(
                 selection, task, args.training_output, verify_digest=False
             )
-        elif args.baseline:
-            checkpoint = model_path / "model.safetensors"
-        else:
+        elif not args.baseline:
             checkpoint = args.checkpoint.expanduser().resolve(strict=True)
         source = (
             selection["best"]["checkpoint_source"]
@@ -465,6 +499,7 @@ def main(argv=None):
         for key in ("dataset", "model", "prompt", "tokenizer_sha256"):
             assert source_metadata[key] == metadata[key], f"Source {key} mismatch"
         assert source_metadata["cli"]["task"] == task
+        assert source_metadata["cli"].get("model_protocol", RHOMATH) == profile.key
         metadata = source_metadata
         cli = metadata["cli"]
         client = workers = None
@@ -496,12 +531,8 @@ def main(argv=None):
                 ).hexdigest()
                 == metadata["tokenizer_sha256"]
             ), "Tokenizer hash mismatch"
-            info = {"baseline": True, "dtype": cli["dtype"]}
-            checkpoint_info = {
-                "path": str(checkpoint),
-                "sha256": file_sha256(checkpoint),
-                "iteration": 0,
-            }
+            checkpoint_info, weights = baseline_identity(model_path, profile)
+            info = {"baseline": True, "dtype": cli["dtype"], **weights}
             model = None
             if args.backend == "hf":
                 model = (
@@ -540,15 +571,17 @@ def main(argv=None):
                 "tokenizer_sha256": metadata["tokenizer_sha256"],
                 "dataset": metadata["dataset"],
             }
+            if profile.key != RHOMATH:
+                expected_evaluation_provenance["model_protocol"] = profile.key
             assert info["evaluation_provenance"] == expected_evaluation_provenance, (
                 "Checkpoint evaluation provenance mismatch"
             )
             config = dict(info["training_config"])
             algorithm = config.pop("algorithm_type")
-            assert cli["algorithm"] in ("ppo", "vineppo", "grpo", "rloo")
+            assert cli["algorithm"] in ("ppo", "vineppo", "grpo", "rloo", "restem")
             assert (
                 algorithm
-                == f"algorithms.{cli['algorithm']}.{ {'ppo': 'PPOConfig', 'vineppo': 'VinePPOConfig', 'grpo': 'GRPOConfig', 'rloo': 'RLOOConfig'}[cli['algorithm']] }"
+                == f"algorithms.{cli['algorithm']}.{ {'ppo': 'PPOConfig', 'vineppo': 'VinePPOConfig', 'grpo': 'GRPOConfig', 'rloo': 'RLOOConfig', 'restem': 'RestEMConfig'}[cli['algorithm']] }"
             ), "Algorithm identity mismatch"
             assert config == metadata["trainer_config"], "Training config mismatch"
             for key in ("dtype", "finetuning"):
@@ -589,12 +622,12 @@ def main(argv=None):
                     )
 
                 return RemotePaperGenerator(
-                    client, tokenizer, actor, args.seed, restore
+                    client, tokenizer, actor, args.seed, restore, profile
                 )
         else:
 
             def make_generator():
-                return PaperGenerator(model, tokenizer)
+                return PaperGenerator(model, tokenizer, profile)
 
         if selection is not None:
             assert checkpoint_info == selection["best"]["checkpoint"], (
@@ -622,13 +655,13 @@ def main(argv=None):
         } | identity
         deviations = [
             "Sequential seeded rounds of one sample per question",
-            "Long-prompt budget counts BOS",
             "No bitwise parity claim",
         ]
+        if profile.key == RHOMATH:
+            deviations.append("Long-prompt budget counts BOS")
         backend = protocol.get("backend", "hf")
         deviations += (
             [
-                "HF generation trims the stop string after generation",
                 "Extra draws can affect the global RNG within a round",
                 "Checkpoint dtype preserved",
             ]
@@ -639,6 +672,8 @@ def main(argv=None):
                 "Concurrent batching can affect reproducibility",
             ]
         )
+        if profile.stop is not None and backend == "hf":
+            deviations.append("HF generation trims the stop string after generation")
         provenance = {
             "model": metadata["model"],
             "model_path": str(model_path),
@@ -673,7 +708,14 @@ def main(argv=None):
             }
             with inference_context(make_generator) as generator:
                 write_json(args.output / "provenance.json", base | provenance)
-                result = base | run_rounds(args, task, examples, generator, identity)
+                result = base | run_rounds(
+                    args,
+                    task,
+                    examples,
+                    generator,
+                    identity,
+                    formatter=partial(profile.format, tokenizer),
+                )
             tracker.log_evaluation(result, selection=selection)
         write_json(args.output / "result.json", result)
         return result

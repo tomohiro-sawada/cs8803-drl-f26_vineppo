@@ -1,16 +1,19 @@
 """Full-weight LoRA checkpoints and real adapter-only actor optimization."""
 
 from copy import deepcopy
+from dataclasses import replace
 
 import pytest
 import torch
 from peft.tuners.lora import LoraLayer
 
 from algorithms.grpo import GRPOConfig
+from algorithms.restem import RestEMConfig
 from algorithms.rloo import RLOOConfig
 from algorithms.vineppo import VinePPOConfig
 from core.lora import apply_lora
 from runtime.checkpoints import COMPACT_LORA, checkpoint_models
+from runtime.train import PPOTrainer
 from tests.runtime import test_train
 from tests.runtime.test_train import assert_exact
 
@@ -37,6 +40,78 @@ def lora_case(training_case):
         return run
 
     return build, inputs
+
+
+@pytest.mark.parametrize("cuts", [(1,), (2,), (3,), (1, 2, 3)])
+def test_restem_samples_current_adapter_then_resets_and_resumes(lora_case, cuts):
+    make, inputs = lora_case
+
+    def build(name):
+        base = make(name, num_iterations=4, checkpoint_every=4)
+        return PPOTrainer(
+            replace(base.config, algorithm_config=RestEMConfig(), kl_coef=0),
+            base.policy,
+            base.inference,
+            optimizer=base.optimizer,
+            reference_policy=base.reference_policy,
+            compact_lora_checkpoints=True,
+        )
+
+    def train(trainer, cut):
+        sampled, updated = [], []
+        sync = trainer.inference.sync
+        update = trainer.update_policy
+
+        def observe_sync(version):
+            sampled.append(
+                {
+                    key: p.detach().clone()
+                    for key, p in trainer.policy.named_parameters()
+                    if p.requires_grad
+                }
+            )
+            sync(version)
+
+        def observe_update(batch):
+            assert not trainer.optimizer.state
+            for key, p in trainer.policy.named_parameters():
+                if p.requires_grad:
+                    assert_exact(p, trainer.restem_initial[key])
+            updated.append(len(batch.input_ids))
+            return update(batch)
+
+        trainer.inference.sync = observe_sync
+        trainer.update_policy = observe_update
+        result = trainer.train(
+            **inputs, stop_at_boundary=lambda: trainer.iteration == cut
+        )
+        assert [row["restem/accepted_episodes"] for row in result] == updated
+        assert all(count == 1 for count in updated)
+        if trainer.iteration > 1:
+            assert any(
+                not torch.equal(sampled[-1][name], value)
+                for name, value in trainer.restem_initial.items()
+            )
+        return result
+
+    full = build("full-restem")
+    torch.manual_seed(42)
+    expected = train(full, 4)
+    interrupted = build("split-restem-0")
+    torch.manual_seed(42)
+    actual = []
+    for index, cut in enumerate(cuts):
+        actual.extend(train(interrupted, cut))
+        checkpoint = interrupted.save_checkpoint(
+            interrupted.config.checkpoint_dir / f"resume-{cut}.pt"
+        )
+        interrupted = build(f"split-restem-{index + 1}")
+        interrupted.load_checkpoint(checkpoint, **inputs)
+    actual.extend(train(interrupted, 4))
+    assert actual == expected
+    assert_exact(interrupted.policy.state_dict(), full.policy.state_dict())
+    assert_exact(interrupted.optimizer.state_dict(), full.optimizer.state_dict())
+    assert_exact(interrupted._generator.get_state(), full._generator.get_state())
 
 
 @pytest.mark.parametrize("algorithm", [VinePPOConfig(), GRPOConfig(), RLOOConfig()])

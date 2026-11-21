@@ -33,6 +33,7 @@ from algorithms.ppo import (
     token_values,
     update_critic,
 )
+from algorithms.restem import RestEMConfig, keep_correct
 from algorithms.rloo import RLOOConfig, rloo_advantages
 from algorithms.vineppo import (
     ScoreResponses,
@@ -46,9 +47,9 @@ from core.data import (
     Episode,
     EpisodeWithAdvantages,
     Example,
-    PolicyGradientBatch,
     PPOValueEstimate,
     PrefixSamples,
+    TrainBatch,
     VinePPOValueEstimate,
     _collate_token_layout,
     collate,
@@ -97,7 +98,7 @@ class _Moments:
 
 
 def _training_diagnostics(
-    episodes: Sequence[EpisodeWithAdvantages], *, group_size: int | None
+    episodes: Sequence[Episode], *, group_size: int | None
 ) -> dict[str, float]:
     """Primary-only lengths/correctness and pre-normalization token advantages.
 
@@ -107,16 +108,19 @@ def _training_diagnostics(
     population statistics, not sample uncertainty estimates.
     """
     lengths = [len(e.response_ids) for e in episodes]
-    advantages = torch.tensor(
-        [a for e in episodes for a in e.advantages], dtype=torch.float64
-    )
-    assert advantages.numel() and torch.isfinite(advantages).all()
     metrics = {
         "response_length_mean": sum(lengths) / len(lengths),
         "response_length_max": float(max(lengths)),
-        "raw_advantage_token_zero_fraction": (advantages == 0).double().mean().item(),
-        "raw_advantage_token_std": advantages.std(correction=0).item(),
     }
+    if isinstance(episodes[0], EpisodeWithAdvantages):
+        advantages = torch.tensor(
+            [a for e in episodes for a in e.advantages], dtype=torch.float64
+        )
+        assert advantages.numel() and torch.isfinite(advantages).all()
+        metrics.update(
+            raw_advantage_token_zero_fraction=(advantages == 0).double().mean().item(),
+            raw_advantage_token_std=advantages.std(correction=0).item(),
+        )
     stopped = [e.reward for e in episodes if e.finish_reason == "stop"]
     if stopped:
         metrics["stopped_correctness_mean"] = sum(stopped) / len(stopped)
@@ -144,6 +148,8 @@ class PPOTrainer:
         compact_lora_checkpoints: bool = False,
         math_grader_workers: int = 1,
         polynomial_schedule: bool = False,
+        add_prompt_special_tokens: bool = True,
+        prompt_special_ids: tuple[int, ...] = (),
     ):
         # validate the inputs
         assert inference.model is policy, "Inference must share the training actor"
@@ -167,6 +173,18 @@ class PPOTrainer:
         self.compact_lora_checkpoints = compact_lora_checkpoints
         assert type(math_grader_workers) is int and math_grader_workers > 0
         self.math_grader_workers = math_grader_workers
+        self.add_prompt_special_tokens = add_prompt_special_tokens
+        self.prompt_special_ids = prompt_special_ids
+        self.restem_initial = None
+        if isinstance(config.algorithm_config, RestEMConfig):
+            assert lora_identity(policy) is not None, "RestEM requires a LoRA actor"
+            assert not polynomial_schedule, "RestEM has a variable update budget"
+            assert config.kl_coef == 0, "RestEM uses only token negative log likelihood"
+            self.restem_initial = {
+                name: p.detach().to(device="cpu", copy=True)
+                for name, p in policy.named_parameters()
+                if p.requires_grad
+            }
         self.schedule = None
         if polynomial_schedule:
             assert optimizer is not None
@@ -270,7 +288,7 @@ class PPOTrainer:
     def _validate_training(self) -> None:
         assert isinstance(
             self.config.algorithm_config,
-            (VinePPOConfig, PPOConfig, GRPOConfig, RLOOConfig),
+            (VinePPOConfig, PPOConfig, GRPOConfig, RLOOConfig, RestEMConfig),
         ), "Unsupported training algorithm"
         if isinstance(self.config.algorithm_config, (GRPOConfig, RLOOConfig)):
             assert self.config.num_samples >= 2, (
@@ -402,7 +420,10 @@ class PPOTrainer:
                 "Formatter must return nonempty text"
             )
             ids = tokenizer(
-                prompt, add_special_tokens=True, padding=False, truncation=False
+                prompt,
+                add_special_tokens=self.add_prompt_special_tokens,
+                padding=False,
+                truncation=False,
             )["input_ids"]
             assert ids and all(
                 type(t) is int and 0 <= t < self.policy.config.vocab_size for t in ids
@@ -440,9 +461,10 @@ class PPOTrainer:
         self._validate_training()
         algorithm = self.config.algorithm_config
         grouped = isinstance(algorithm, (GRPOConfig, RLOOConfig))
-        if grouped:
+        supervised = isinstance(algorithm, RestEMConfig)
+        if grouped or supervised:
             assert record_value_estimate is None and record_prefix_samples is None, (
-                "Grouped training does not support value/prefix callbacks"
+                "This algorithm does not support value/prefix callbacks"
             )
         prompts, identity = self._prepare_inputs(
             examples,
@@ -556,6 +578,7 @@ class PPOTrainer:
                                 dataset=task,
                                 eos_token_ids=eos_ids,
                                 context_ids=episode.prompt_ids,
+                                context_special_ids=self.prompt_special_ids,
                             ),
                             scorer,
                         )
@@ -607,19 +630,32 @@ class PPOTrainer:
                     for estimate in estimates:
                         record_value_estimate(estimate)
             diagnostics = _training_diagnostics(
-                episodes, group_size=self.config.num_samples if grouped else None
+                raw_episodes if supervised else episodes,
+                group_size=self.config.num_samples if grouped else None,
             )
             if isinstance(algorithm, VinePPOConfig):
                 diagnostics.update(step_counts.metrics("vineppo/steps_per_response"))
                 diagnostics["vineppo/step_count"] = float(prefix_values.count)
                 diagnostics.update(prefix_values.metrics("vineppo/mc_prefix_value"))
-            old, ref = self._cache_scores(episodes)
-            batch = collate(
-                episodes,
-                old_logprobs=old,
-                ref_logprobs=ref,
-                pad_token_id=self.inference.pad_token_id,
-            )
+            if supervised:
+                kept = keep_correct(
+                    raw_episodes,
+                    self.config.num_samples,
+                    algorithm.max_correct_per_prompt,
+                )
+                diagnostics["restem/accepted_episodes"] = len(kept)
+                self._reset_restem()
+                batch = _collate_token_layout(
+                    kept, pad_token_id=self.inference.pad_token_id
+                )
+            else:
+                old, ref = self._cache_scores(episodes)
+                batch = collate(
+                    episodes,
+                    old_logprobs=old,
+                    ref_logprobs=ref,
+                    pad_token_id=self.inference.pad_token_id,
+                )
             updates = self.update_policy(batch)
             metrics = {
                 key: sum(row[key] for row in updates) / len(updates)
@@ -638,10 +674,12 @@ class PPOTrainer:
             metrics.update(
                 iteration=self.iteration + 1,
                 optimizer_steps=len(updates),
-                episodes=len(episodes),
-                reward_mean=sum(e.reward for e in episodes) / len(episodes),
-                truncation_fraction=sum(e.finish_reason == "length" for e in episodes)
-                / len(episodes),
+                episodes=len(raw_episodes),
+                reward_mean=sum(e.reward for e in raw_episodes) / len(raw_episodes),
+                truncation_fraction=sum(
+                    e.finish_reason == "length" for e in raw_episodes
+                )
+                / len(raw_episodes),
             )
             metrics.update(diagnostics)
             self.iteration += 1
@@ -742,7 +780,14 @@ class PPOTrainer:
                 )
         return old, ref
 
-    def update_policy(self, batch: PolicyGradientBatch) -> list[dict[str, float]]:
+    @torch.no_grad()
+    def _reset_restem(self):
+        for name, parameter in self.policy.named_parameters():
+            if parameter.requires_grad:
+                parameter.copy_(self.restem_initial[name])
+        self.optimizer.state.clear()
+
+    def update_policy(self, batch: TrainBatch) -> list[dict[str, float]]:
         """Delegate all epochs/minibatches/microbatches; standalone calls invalidate checkpoints."""
         self._validate_training()
         size = len(batch.input_ids)
@@ -751,6 +796,8 @@ class PPOTrainer:
             if isinstance(self.config.algorithm_config, GRPOConfig)
             else "rloo"
             if isinstance(self.config.algorithm_config, RLOOConfig)
+            else "restem"
+            if isinstance(self.config.algorithm_config, RestEMConfig)
             else "ppo"
         )
         if objective == "ppo" and (
@@ -918,6 +965,8 @@ class PPOTrainer:
             )
         if self.schedule is not None:
             state["scheduler"] = self.schedule.state_dict()
+        if self.restem_initial is not None:
+            state["restem_initial"] = self.restem_initial
         publish_checkpoint(path, state)
         return path
 
@@ -971,6 +1020,13 @@ class PPOTrainer:
             assert state["scheduler"]["identity"] == self.schedule.identity(), (
                 "Checkpoint learning-rate schedule mismatch"
             )
+        if self.restem_initial is not None:
+            initial = state["restem_initial"]
+            assert initial.keys() == self.restem_initial.keys()
+            assert all(
+                torch.equal(value, initial[name])
+                for name, value in self.restem_initial.items()
+            ), "RestEM initial adapters changed on resume"
         assert_fp32_optimizer_state(state["optimizer"]["state"])
         if self.critic is not None:
             assert (

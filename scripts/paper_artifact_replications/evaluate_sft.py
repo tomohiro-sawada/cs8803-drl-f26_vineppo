@@ -22,13 +22,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 from core.data import Example
 from core.inference import HFInference, TextCompletion
+from core.prompt_protocol import PROMPT, STOP, prompt_protocol
 from core.verifier import UPSTREAM_COMMIT, VERIFIER_POLICY, VERIFIER_PROVENANCE
 from runtime.evaluate import evaluate, inference_context
 
 ROOT = Path(__file__).resolve().parents[2]
 PAPER = "https://arxiv.org/html/2410.01679v2"
-PROMPT = "[MATH_TASK] Problem:\n{question}\n\nSolution:"
-STOP = "\n\n\nProblem:"
 DATASET_SHA256 = "c25d3977febe21260a1d6fe484ef368774e3d99ef10ef3f07a4531f4cd02a503"
 MODELS = {
     "gsm8k": (
@@ -143,25 +142,28 @@ class PaperSamplingModel:
 
 
 class PaperGenerator:
-    def __init__(self, model, tokenizer):
+    def __init__(self, model, tokenizer, profile=None):
         self.tokenizer = tokenizer
-        assert tokenizer.bos_token_id is not None and tokenizer.eos_token_id is not None
-        assert model.generation_config.eos_token_id == tokenizer.eos_token_id
+        self.profile = prompt_protocol() if profile is None else profile
+        assert tokenizer.eos_token_id is not None
+        eos_ids = (
+            tokenizer.eos_token_id
+            if self.profile.add_special_tokens
+            else self.profile.eos_ids(tokenizer)
+        )
+        assert model.generation_config.eos_token_id == eos_ids
         self.inference = HFInference(
             PaperSamplingModel(model), pad_token_id=tokenizer.eos_token_id
         )
 
     def generate(self, prompts, *, num_samples, max_new_tokens, temperature):
         assert num_samples == 1 and max_new_tokens == 1024 and temperature == 0.35
-        prefixes = self.tokenizer(prompts, add_special_tokens=True, padding=False)[
-            "input_ids"
-        ]
-        assert all(p[0] == self.tokenizer.bos_token_id for p in prefixes), (
-            "Expected BOS"
-        )
+        prefixes = self.profile.encode(self.tokenizer, prompts)
         # Upstream reserves one context token and shrinks each long prompt's budget.
         # Group adjacent equal budgets; never shrink short prompts due to batch peers.
-        budgets = [min(max_new_tokens, 2047 - len(p)) for p in prefixes]
+        budgets = [
+            min(max_new_tokens, self.profile.context_size - len(p)) for p in prefixes
+        ]
         assert all(b > 0 for b in budgets), "Prompt exceeds paper context size"
         results = []
         for budget, group in groupby(zip(prefixes, budgets), key=lambda pair: pair[1]):
@@ -179,7 +181,10 @@ class PaperGenerator:
                 )
                 # HFInference only stops at EOS/budget. Exclude the upstream stop
                 # string and all following text from scoring (extra compute only).
-                before, separator, _ = text.partition(STOP)
+                if self.profile.stop is None:
+                    results.append([TextCompletion(text, completion.finish_reason)])
+                    continue
+                before, separator, _ = text.partition(self.profile.stop)
                 results.append(
                     [
                         TextCompletion(

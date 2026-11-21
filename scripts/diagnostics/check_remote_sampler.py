@@ -29,8 +29,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from core.inference import HFInference, token_logprobs
 from core.lora import apply_lora
+from core.prompt_protocol import prompt_protocol
 from core.vllm_inference import BASE_MODEL, VLLMClient, VLLMInference, gpu_identity
-from experiments.training.run import load_examples, paper_prompt, parse_args
+from experiments.training.run import load_examples, parse_args
 
 GREEDY_TOKENS = 96
 
@@ -106,10 +107,14 @@ def main():
     )
     args.output.mkdir(parents=True)
     examples, _ = load_examples(args.dataset_path, args.task)
-    prompts = [
-        tokenizer(paper_prompt(e.question))["input_ids"]
-        for e in examples[: args.prompts_per_iteration]
-    ]
+    profile = prompt_protocol(args.model_protocol, args.task)
+    prompts = profile.encode(
+        tokenizer,
+        [
+            profile.format(tokenizer, e.question)
+            for e in examples[: args.prompts_per_iteration]
+        ],
+    )
     remote = VLLMInference(
         actor,
         client,

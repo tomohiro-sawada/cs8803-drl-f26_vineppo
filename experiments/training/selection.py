@@ -33,7 +33,7 @@ class CheckpointSelection:
         self.frozen_path = args.output / "selection-frozen.json"
         self.directory = args.output / "evaluations"
         self.directory.mkdir()
-        protocol = protocol_for(args.backend)
+        protocol = protocol_for(args.backend, args.model_protocol, args.task)
         self.state = {
             "schema_version": 1,
             "frozen": False,

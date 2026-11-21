@@ -304,7 +304,7 @@ def main(config: Config) -> dict:
                 ["git", "--no-optional-locks", "status", "--short"], cwd=ROOT, text=True
             ),
             "source_sha256": {
-                str(path.relative_to(ROOT)): hashlib.sha256(
+                str(path.resolve().relative_to(ROOT)): hashlib.sha256(
                     path.read_bytes()
                 ).hexdigest()
                 for path in sources

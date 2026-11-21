@@ -38,6 +38,7 @@ def main() -> None:
     port = 20000 + (int(os.environ["SLURM_JOB_ID"]) * 16 + rank) % 20000
     identity = {
         **slurm_attempt(),
+        "slurm_step_id": os.environ.get("SLURM_STEP_ID"),
         "rank": rank,
         "url": f"http://{host}:{port}",
         "host": host,
