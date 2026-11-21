@@ -103,8 +103,13 @@ def main():
         count=args.num_workers,
         api_key=os.environ["VLLM_API_KEY"],
         model_path=args.model_path,
-        other_gpu_uuids=[learner_gpu["uuid"]],
+        other_gpu_uuids=[learner_gpu["uuid"]]
+        if args.worker_placement == "dedicated"
+        else [],
     )
+    assert args.worker_placement != "colocated" or (
+        workers[0]["gpu"]["uuid"] == learner_gpu["uuid"]
+    ), "A colocated worker must share the learner GPU"
     args.output.mkdir(parents=True)
     examples, _ = load_examples(args.dataset_path, args.task)
     profile = prompt_protocol(args.model_protocol, args.task)

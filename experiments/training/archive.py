@@ -1,6 +1,7 @@
 """Copy immutable training artifacts to the bucket and verify every byte."""
 
 import json
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from experiments.training.resume import atomic_record
@@ -23,8 +24,8 @@ def archive_checkpoint(path):
         return
     hf("buckets", "cp", str(path), destination, online=True)
     with TemporaryDirectory(dir=RUNS, prefix="checkpoint-verify-") as scratch:
-        downloaded = f"{scratch}/download"
-        hf("buckets", "cp", destination, downloaded, online=True)
+        downloaded = Path(scratch) / "download"
+        hf("buckets", "cp", destination, str(downloaded), online=True)
         assert file_sha256(downloaded) == digest, (
             f"Bucket content mismatch: {destination}"
         )

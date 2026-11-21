@@ -108,6 +108,15 @@ def inject(spec, job, cache):
     return event
 
 
+def free_scratch_gib(mount):
+    entries = slurm("lfs", "quota", "-u", os.environ["USER"], mount).splitlines()
+    quota = [line.split() for line in entries if line.split()[:1] == [mount]]
+    assert len(quota) == 1, f"No scratch quota for {mount}"
+    used, soft_limit, hard_limit = (int(field.rstrip("*")) for field in quota[0][1:4])
+    assert 0 < soft_limit <= hard_limit
+    return (hard_limit - used) / 1024**2
+
+
 def watch(plan_path):
     directory = plan_path.parent
     state_path = directory / "watch-state.json"
@@ -120,12 +129,30 @@ def watch(plan_path):
     jobs = plan["jobs"]
     assert len({job["name"] for job in jobs}) == len(jobs)
     while time() < plan["deadline"]:
+        disk_active = any(
+            job["name"] in state["jobs"]
+            and not any(
+                (Path(job["disk_root"]) / marker).exists()
+                for marker in ("COMPLETE", "HALTED")
+            )
+            for job in jobs
+            if "disk_root" in job
+        )
+        disk_wait = {}
         for job in jobs:
             name = job["name"]
             gates = job.get("gates", [])
             if name not in state["jobs"] and all(
                 Path(path).is_file() for path in gates
             ):
+                if "disk_root" in job:
+                    free = free_scratch_gib(plan["scratch_mount"])
+                    if disk_active or free < job["space_gib"]:
+                        disk_wait[name] = {
+                            "free_gib": free,
+                            "required_gib": job["space_gib"],
+                        }
+                        continue
                 options = job
                 if dependencies := job.get("afterok"):
                     assert all(dep in state["jobs"] for dep in dependencies)
@@ -139,6 +166,7 @@ def watch(plan_path):
                     }
                 state["jobs"][name] = submit(options, plan["since"])
                 atomic_record(state_path, state)
+                disk_active |= "disk_root" in job
         outstanding = False
         for spec in plan.get("faults", []):
             name = spec["name"]
@@ -151,7 +179,8 @@ def watch(plan_path):
                 atomic_record(state_path, state)
         pending = [job["name"] for job in jobs if job["name"] not in state["jobs"]]
         atomic_record(
-            directory / "watch-status.json", {"pending": pending, "updated": time()}
+            directory / "watch-status.json",
+            {"pending": pending, "disk_wait": disk_wait, "updated": time()},
         )
         if not pending and len(state["faults"]) == len(plan.get("faults", [])):
             return
@@ -159,8 +188,46 @@ def watch(plan_path):
     raise TimeoutError("PACE wave watcher reached the handoff budget")
 
 
+def run_allocation(plan_path):
+    directory = plan_path.parent
+    complete, halted = (
+        directory / "watch-complete.json",
+        directory / "watch-halted.json",
+    )
+    if complete.exists() or halted.exists():
+        return
+    job = os.environ["SLURM_JOB_ID"]
+    name = f"vp26-watch-after-{job}"
+    jobs = slurm("squeue", "--me", "--name", name, "--noheader", "--format=%A").split()
+    assert len(jobs) <= 1
+    if jobs:
+        successor = jobs[0]
+    else:
+        successor = slurm(
+            "sbatch",
+            "--parsable",
+            f"--dependency=afterany:{job}",
+            f"--job-name={name}",
+            f"--output={directory}/controller-%j.log",
+            f"--error={directory}/controller-%j.err",
+            "experiments/training/pace_ice/watch_resumable.slurm",
+            str(plan_path),
+        ).split(";")[0]
+    assert successor.isdecimal()
+    print(f"watch allocation {job}, successor {successor}", flush=True)
+    try:
+        watch(plan_path)
+    except Exception as error:
+        atomic_record(halted, {"job": job, "error": str(error)})
+        raise
+    else:
+        atomic_record(complete, {"job": job, "time": time()})
+    finally:
+        subprocess.run(["scancel", successor], check=True)
+
+
 if __name__ == "__main__":
     plan_path = Path(sys.argv[1]).resolve(strict=True)
     with (plan_path.parent / "watch.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        watch(plan_path)
+        (run_allocation if sys.argv[2:] == ["--slurm"] else watch)(plan_path)
