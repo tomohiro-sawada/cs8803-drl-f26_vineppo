@@ -430,6 +430,7 @@ def test_ppo_prune_keeps_current_blob_and_requires_older_candidate_receipt(tmp_p
     trainer.config = SimpleNamespace(checkpoint_dir=current)
     trainer.chain_status = tmp_path / "status.json"
     trainer.critic_checkpoint = new
+    trainer.archive = True
     with pytest.raises(AssertionError):
         trainer.prune_critic_blobs()
     old.with_suffix(".archive.json").touch()

@@ -89,6 +89,43 @@ def test_failed_chain_halts_after_no_progress(tmp_path, simulated_slurm, monkeyp
     assert halted["position"] == [0, False] and halted["state"] == "halted"
 
 
+def test_chain_starts_from_an_explicit_checkpoint(
+    tmp_path, simulated_slurm, monkeypatch
+):
+    source = tmp_path / "earlier/attempt-0000"
+    initial = source / "checkpoints/iteration-2.pt"
+    initial.parent.mkdir(parents=True)
+    initial.touch()
+    selection = source / "selection.json"
+    selection.touch()
+    root = tmp_path / "retry"
+    root.mkdir()
+
+    def interrupted(command, *, env):
+        assert command.count("--resume") == 1
+        assert command[-4:] == [
+            "--resume",
+            str(initial),
+            "--resume-selection",
+            str(selection),
+        ]
+        return 89
+
+    monkeypatch.setattr(chain.subprocess, "call", interrupted)
+    args = [
+        "--num-iterations",
+        "4",
+        "--evaluation",
+        "validation-test",
+        "--resume",
+        str(initial),
+    ]
+    assert chain.supervise(root, args, {"SLURM_JOB_ID": "1"}) == 89
+    assert chain.supervise(root, args, {"SLURM_JOB_ID": "2"}) == 1
+    assert json.loads((root / "HALTED").read_text())["position"] == [2, False]
+    assert initial.is_file() and selection.is_file()
+
+
 def test_chain_rejects_another_active_owner(tmp_path, monkeypatch):
     monkeypatch.setenv("SLURM_NTASKS", "1")
     options = [str(tmp_path), "--num-iterations", "4", "--resume-checkpoint-every", "1"]

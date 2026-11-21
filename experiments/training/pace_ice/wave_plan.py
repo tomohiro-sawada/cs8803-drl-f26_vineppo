@@ -140,6 +140,9 @@ def generate(args):
         root = out / f"handoff-{key}-{suffix}"
         assert not root.exists(), root
         model = args.olmo_model if olmo else scratch / "cache/models/rho-1b-sft-GSM8K"
+        keep = 2 if steps == 200 and method != "ppo" else 1
+        if args.archive_checkpoints == "no":
+            keep = (steps + period - 1) // period
         command = [
             f"--time={limit}",
             "--constraint=gpu-h200" if olmo else "--constraint=gpu-h100",
@@ -169,7 +172,7 @@ def generate(args):
             "--checkpoint-format",
             "compact-lora",
             "--keep-checkpoints",
-            2 if steps == 200 and method != "ppo" else 1,
+            keep,
             "--evaluation",
             evaluation,
             "--validation-rounds",
@@ -185,7 +188,7 @@ def generate(args):
             if method == "restem"
             else 0.0001,
             "--archive-checkpoints",
-            "yes",
+            args.archive_checkpoints,
             "--math-grader-workers",
             4 if task == "math" else 1,
             "--wandb-name",
@@ -322,6 +325,7 @@ if __name__ == "__main__":
     parser.add_argument("--deadline", type=float, required=True)
     parser.add_argument("--cpu-job", required=True)
     parser.add_argument("--suffix", default="03")
+    parser.add_argument("--archive-checkpoints", choices=("yes", "no"), default="yes")
     parser.add_argument(
         "--extra-long-seed", type=int, choices=(43, 44), action="append", default=[]
     )

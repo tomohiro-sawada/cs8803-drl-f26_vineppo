@@ -436,7 +436,11 @@ class MeasuredTrainer(PPOTrainer):
         self.deadline = deadline
         self.archive = archive
         self.archived_frozen = False
-        self.split_critic = archive and self.critic is not None
+        self.split_critic = (
+            self.critic is not None
+            and self.compact_lora_checkpoints
+            and (archive or deadline is not None)
+        )
         self.chain_status = (
             Path(os.environ["PACE_CHAIN_STATUS_FILE"]) if deadline is not None else None
         )
@@ -545,7 +549,7 @@ class MeasuredTrainer(PPOTrainer):
                 if blob == self.critic_checkpoint:
                     continue
                 iteration = int(blob.stem.removeprefix("critic-"))
-                if (folder / f"iteration-{iteration}.pt").is_file():
+                if self.archive and (folder / f"iteration-{iteration}.pt").is_file():
                     assert blob.with_suffix(".archive.json").is_file(), blob
                 blob.unlink()
 

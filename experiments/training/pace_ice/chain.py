@@ -14,13 +14,16 @@ SCRIPT = "experiments/training/pace_ice/train_resumable.slurm"
 LAUNCH = ["bash", "experiments/training/launch.sh", "pace_ice"]
 
 
-def latest_checkpoint(attempts):
+def latest_checkpoint(attempts, initial=None):
     paths = [
         path
         for attempt in attempts
         for pattern in ("iteration-*.pt", "resume-*.pt")
         for path in (attempt / "checkpoints").glob(pattern)
     ]
+    if initial is not None:
+        assert initial.is_file(), initial
+        paths.append(initial)
     return max(
         paths,
         key=lambda path: (*checkpoint_position(path), path.parent.parent.name),
@@ -112,7 +115,14 @@ def supervise(root, options, env):
     }
     attempts = sorted(root.glob("attempt-*"))
     assert all(path.name == f"attempt-{i:04d}" for i, path in enumerate(attempts))
-    checkpoint = latest_checkpoint(attempts)
+    args = dict(zip(options[::2], options[1::2], strict=True))
+    initial = (
+        Path(args["--resume"]).resolve(strict=True) if "--resume" in args else None
+    )
+    launcher_options = [
+        value for pair in args.items() if pair[0] != "--resume" for value in pair
+    ]
+    checkpoint = latest_checkpoint(attempts, initial)
     frozen = list(root.glob("attempt-*/selection-frozen.json"))
     assert len(frozen) <= 1, "Multiple frozen selections"
     iteration = checkpoint_position(checkpoint)[0] if checkpoint is not None else 0
@@ -144,7 +154,6 @@ def supervise(root, options, env):
         print(f"{reason}: {root}", file=sys.stderr)
         return 1
     atomic_record(status_path, status)
-    args = dict(zip(options[::2], options[1::2], strict=True))
     evaluation = args.get("--evaluation", "disabled")
     if not frozen:
         output = root / f"attempt-{len(attempts):04d}"
@@ -154,7 +163,8 @@ def supervise(root, options, env):
             assert selection.is_file(), f"Resume boundary has no selection: {selection}"
             resume.extend(("--resume-selection", str(selection)))
         rc = subprocess.call(
-            [*LAUNCH, "train", *options, "--output", str(output), *resume], env=env
+            [*LAUNCH, "train", *launcher_options, "--output", str(output), *resume],
+            env=env,
         )
         if rc:
             status = json.loads(status_path.read_text())
@@ -182,7 +192,7 @@ def supervise(root, options, env):
             [
                 *LAUNCH,
                 "evaluate",
-                *options,
+                *launcher_options,
                 "--output",
                 str(root),
                 "--resume-selection",
@@ -208,7 +218,7 @@ def main(argv):
     assert len(options) % 2 == 0 and all(opt.startswith("--") for opt in options[::2])
     keys = options[::2]
     assert len(set(keys)) == len(keys), "Duplicate runner option"
-    assert not {"--output", "--resume", "--resume-selection"}.intersection(keys)
+    assert not {"--output", "--resume-selection"}.intersection(keys)
     assert "--num-iterations" in keys and "--resume-checkpoint-every" in keys
     assert os.environ["SLURM_NTASKS"] == "1", (
         "PACE chaining needs a single GPU allocation"
