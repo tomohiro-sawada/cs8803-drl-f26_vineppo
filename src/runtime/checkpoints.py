@@ -78,3 +78,20 @@ def validate_tensor_state(model, weights: dict) -> None:
     for name, value in current.items():
         assert value.dtype == weights[name].dtype, f"Model dtype mismatch: {name}"
         assert value.shape == weights[name].shape, f"Model shape mismatch: {name}"
+
+
+def assert_state_equal(actual, expected, path="state"):
+    """Assert exact checkpoint tensor dtype, shape and values across devices."""
+    assert type(actual) is type(expected), f"Type mismatch: {path}"
+    if isinstance(actual, torch.Tensor):
+        assert actual.shape == expected.shape and actual.dtype == expected.dtype, path
+        assert torch.equal(actual.detach().cpu(), expected.detach().cpu()), path
+    elif isinstance(actual, dict):
+        assert actual.keys() == expected.keys(), f"Keys mismatch: {path}"
+        for key, value in actual.items():
+            assert_state_equal(value, expected[key], f"{path}.{key}")
+    elif isinstance(actual, (list, tuple)):
+        for i, (left, right) in enumerate(zip(actual, expected, strict=True)):
+            assert_state_equal(left, right, f"{path}.{i}")
+    else:
+        assert actual == expected, path

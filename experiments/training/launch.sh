@@ -22,7 +22,7 @@ while (( $# )); do
                 *) fail "Unsupported algorithm: $2 (choose vineppo, ppo, grpo, rloo, or restem)" ;;
             esac ;;
         --resume-selection) [[ -e $2 ]] || fail "Resume selection does not exist: $2" ;;
-        --evaluation|--validation-rounds|--eval-batch-size|--eval-seed|--eval-timeout-seconds|--archive-checkpoints|--lr-schedule) ;;
+        --evaluation|--validation-rounds|--eval-batch-size|--eval-seed|--eval-timeout-seconds|--archive-checkpoints|--lr-schedule|--resume-audit) ;;
         --wandb-mode|--wandb-project|--wandb-entity|--wandb-group|--wandb-name) ;;
         --task) task=$2 ;;
         --model-protocol) ;;

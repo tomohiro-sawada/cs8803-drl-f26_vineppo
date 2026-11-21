@@ -18,6 +18,7 @@ from experiments.training import selection
 def case(tmp_path, monkeypatch):
     monkeypatch.setitem(evaluation.EXPECTED_ROWS["validation"], "gsm8k", 2)
     args = SimpleNamespace(
+        model_protocol="rhomath",
         output=tmp_path,
         task="gsm8k",
         evaluation="validation-test",

@@ -325,6 +325,7 @@ class VLLMInference:
         self.version: int | None = None
         self.adapter: str | None = None
         self.calls = 0
+        self.record_requests = None
 
     def close(self) -> None:
         self.client.close()
@@ -398,31 +399,32 @@ class VLLMInference:
         assert isinstance(eos_ids, list) and eos_ids, "Configure EOS token IDs"
 
         call, self.calls = self.calls, self.calls + 1
-        results = self.client.complete(
-            [
-                {
-                    "model": self.adapter,
-                    "prompt": list(prefix),
-                    "n": num_samples,
-                    "seed": stream_seed(self.seed, self.version, call, index),
-                    "max_tokens": budget,
-                    "temperature": temperature,
-                    "top_p": 1.0,
-                    "top_k": 0,
-                    "min_p": 0.0,
-                    "repetition_penalty": 1.0,
-                    "presence_penalty": 0.0,
-                    "frequency_penalty": 0.0,
-                    "stop_token_ids": eos_ids,
-                    "add_special_tokens": False,
-                    "skip_special_tokens": False,
-                    "return_token_ids": True,
-                }
-                for index, (prefix, budget) in enumerate(
-                    zip(prefixes, budgets, strict=True)
-                )
-            ]
-        )
+        bodies = [
+            {
+                "model": self.adapter,
+                "prompt": list(prefix),
+                "n": num_samples,
+                "seed": stream_seed(self.seed, self.version, call, index),
+                "max_tokens": budget,
+                "temperature": temperature,
+                "top_p": 1.0,
+                "top_k": 0,
+                "min_p": 0.0,
+                "repetition_penalty": 1.0,
+                "presence_penalty": 0.0,
+                "frequency_penalty": 0.0,
+                "stop_token_ids": eos_ids,
+                "add_special_tokens": False,
+                "skip_special_tokens": False,
+                "return_token_ids": True,
+            }
+            for index, (prefix, budget) in enumerate(
+                zip(prefixes, budgets, strict=True)
+            )
+        ]
+        if self.record_requests is not None:
+            self.record_requests(self.version, call, bodies)
+        results = self.client.complete(bodies)
         completions = []
         for choices, budget in zip(results, budgets, strict=True):
             group = []

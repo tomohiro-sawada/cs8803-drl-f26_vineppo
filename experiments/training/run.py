@@ -172,6 +172,7 @@ def parse_args(argv=None):
     )
     parser.add_argument("--resume-checkpoint-every", type=positive_int)
     parser.add_argument("--archive-checkpoints", choices=("yes", "no"), default="no")
+    parser.add_argument("--resume-audit", choices=("yes", "no"), default="no")
     parser.add_argument(
         "--resume-selection",
         type=Path,
@@ -809,8 +810,38 @@ def main(argv=None):
             ),
             "reference_is_solution": args.task == "math",
         }
+        audit = args.resume_audit == "yes"
+        if audit and args.backend == "vllm":
+            requests = tracking_context.enter_context(
+                (args.output / "sampling-requests.jsonl").open("x", buffering=1)
+            )
+
+            def record_requests(iteration, call, bodies):
+                requests.write(
+                    json.dumps(
+                        {
+                            "iteration": iteration,
+                            "call": call,
+                            "requests": bodies,
+                        }
+                    )
+                    + "\n"
+                )
+
+            inference.record_requests = record_requests
         if args.resume is not None:
-            trainer.load_checkpoint(args.resume, **inputs)
+            trainer.load_checkpoint(
+                args.resume, **inputs, **({"audit": True} if audit else {})
+            )
+            if audit:
+                write_json(
+                    args.output / "resume-audit.json",
+                    {
+                        "checkpoint": str(args.resume),
+                        "iteration": trainer.iteration,
+                        "state_bitwise_equal": True,
+                    },
+                )
             lr_key = "initial_lr" if trainer.schedule is not None else "lr"
             assert all(
                 g[lr_key] == args.learning_rate for g in optimizer.param_groups

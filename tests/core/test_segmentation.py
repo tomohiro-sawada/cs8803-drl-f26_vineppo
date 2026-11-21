@@ -544,12 +544,12 @@ def test_chat_prompt_controls_are_allowlisted_without_changing_response_ids(
     ids = byte_tokenizer.encode("first step\nsecond", add_special_tokens=False) + [eos]
     prompt = byte_tokenizer.encode("question", add_special_tokens=False) + [eos]
     plain = step_boundaries_from_tokens(
-        ids, byte_tokenizer, dataset="math", eos_token_ids=[eos]
+        ids, byte_tokenizer, dataset="gsm8k", eos_token_ids=[eos]
     )
     decorated = step_boundaries_from_tokens(
         ids,
         byte_tokenizer,
-        dataset="math",
+        dataset="gsm8k",
         eos_token_ids=[eos],
         context_ids=prompt,
         context_special_ids=[eos],
@@ -559,7 +559,7 @@ def test_chat_prompt_controls_are_allowlisted_without_changing_response_ids(
         step_boundaries_from_tokens(
             [eos, *ids],
             byte_tokenizer,
-            dataset="math",
+            dataset="gsm8k",
             eos_token_ids=[eos],
             context_ids=prompt,
             context_special_ids=[eos],

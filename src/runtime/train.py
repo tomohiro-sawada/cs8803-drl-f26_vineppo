@@ -63,6 +63,7 @@ from core.verifier import verify_math_responses, verify_response
 from runtime.checkpoints import (
     COMPACT_LORA,
     FULL,
+    assert_state_equal,
     checkpoint_models,
     file_identity,
     file_sha256,
@@ -979,6 +980,7 @@ class PPOTrainer:
         task: Literal["math", "gsm8k"],
         formatter: Callable[[str], str],
         reference_is_solution: bool = False,
+        audit: bool = False,
     ) -> None:
         """Restore a boundary after validating caller-recreated inputs.
 
@@ -1089,3 +1091,24 @@ class PPOTrainer:
         self.iteration = state["iteration"]
         self._identity = identity
         self._at_boundary = True
+        if audit:
+            actual = {
+                "policy": dict(self.policy.state_dict()),
+                "reference": dict(self.reference_policy.state_dict()),
+                "optimizer": self.optimizer.state_dict(),
+                "generator": self._generator.get_state(),
+                "cpu_rng": torch.get_rng_state(),
+                "cuda_rng": torch.cuda.get_rng_state_all() if state["cuda_rng"] else [],
+                "mps_rng": torch.mps.get_rng_state()
+                if state["mps_rng"] is not None
+                else None,
+            }
+            if self.critic is not None:
+                actual.update(
+                    critic=dict(self.critic.state_dict()),
+                    critic_optimizer=self.critic_optimizer.state_dict(),
+                )
+            if self.schedule is not None:
+                actual["scheduler"] = self.schedule.state_dict()
+            expected = state | {"policy": dict(policy), "reference": dict(reference)}
+            assert_state_equal(actual, {name: expected[name] for name in actual})

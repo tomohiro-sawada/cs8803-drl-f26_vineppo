@@ -76,7 +76,7 @@ def test_restem_samples_current_adapter_then_resets_and_resumes(lora_case, cuts)
             assert not trainer.optimizer.state
             for key, p in trainer.policy.named_parameters():
                 if p.requires_grad:
-                    assert_exact(p, trainer.restem_initial[key])
+                    assert_exact(p.detach(), trainer.restem_initial[key])
             updated.append(len(batch.input_ids))
             return update(batch)
 
