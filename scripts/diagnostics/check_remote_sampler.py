@@ -9,10 +9,8 @@ writes <output>/acceptance.json. On fixed prefixes it compares, per replica:
 - teacher-forced log-probabilities of fixed token sequences against the
   learner, before and after a deliberate adapter change.
 
-Differences and near-tied logits are recorded, not thresholded: BF16 replica
-adapters versus FP32 learner adapters make small differences expected. Hard
-failures are a replica whose scores ignore the adapter change, a replica that
-still serves a retired actor, and a stale-version response.
+The update check compares paired score deltas on each backend. A repeated
+base-model score measures replica drift independently of HF/vLLM differences.
 """
 
 import json
@@ -77,6 +75,31 @@ def differences(left, right):
         "max_abs": max(flat),
         "mean_abs": sum(flat) / len(flat),
         "tokens": len(flat),
+    }
+
+
+def paired_effect(learner_before, learner_after, replica_before, replica_after):
+    def delta(before, after):
+        return torch.tensor(
+            [
+                b - a
+                for x, y in zip(before, after, strict=True)
+                for a, b in zip(x, y, strict=True)
+            ],
+            dtype=torch.float64,
+        )
+
+    expected = delta(learner_before, learner_after)
+    observed = delta(replica_before, replica_after)
+    energy = expected.square().sum()
+    assert (
+        expected.abs().max() > 1e-2
+        and expected.isfinite().all()
+        and observed.isfinite().all()
+    )
+    return {
+        "projection": float(expected.dot(observed) / energy),
+        "relative_squared_error": float((observed - expected).square().sum() / energy),
     }
 
 
@@ -172,9 +195,9 @@ def main():
     report["learner_min_top2_logit_gap"] = gaps
 
     before = learner_scores(actor, sequences)
-    report["zero_adapter"] = [
-        differences(replica_scores(c, first, sequences), before) for c in client.clients
-    ]
+    replica_before = [replica_scores(c, first, sequences) for c in client.clients]
+    base_before = [replica_scores(c, BASE_MODEL, sequences) for c in client.clients]
+    report["zero_adapter"] = [differences(scores, before) for scores in replica_before]
     with torch.no_grad():
         for name, parameter in actor.named_parameters():
             if "lora_B" in name:
@@ -185,12 +208,18 @@ def main():
     report["changed_adapter"] = []
     for index, worker in enumerate(client.clients):
         scores = replica_scores(worker, remote.adapter, sequences)
-        moved = differences(scores, before)
-        assert moved["max_abs"] > 10 * report["zero_adapter"][index]["max_abs"], (
-            f"Worker {index} ignored the adapter change"
+        moved = differences(scores, replica_before[index])
+        drift = differences(
+            replica_scores(worker, BASE_MODEL, sequences), base_before[index]
         )
+        effect = paired_effect(before, after, replica_before[index], scores)
         report["changed_adapter"].append(
-            {"vs_learner": differences(scores, after), "vs_previous_version": moved}
+            {
+                "vs_learner": differences(scores, after),
+                "vs_previous_version": moved,
+                "base_drift": drift,
+                "paired_effect": effect,
+            }
         )
         stale = worker.post(
             "/v1/completions",
@@ -202,6 +231,17 @@ def main():
         json.loads(line)
         for line in (args.output / "actors/published.jsonl").read_text().splitlines()
     ]
+    (args.output / "acceptance-diagnostics.json").write_text(
+        json.dumps(report, indent=2) + "\n"
+    )
+    for index, change in enumerate(report["changed_adapter"]):
+        effect = change["paired_effect"]
+        assert (
+            effect["projection"] > 0.25
+            and effect["relative_squared_error"] < 1
+            and change["vs_previous_version"]["max_abs"]
+            > 3 * change["base_drift"]["max_abs"]
+        ), f"Worker {index} did not reproduce the learner adapter change: {effect}"
     (args.output / "acceptance.json").write_text(json.dumps(report, indent=2) + "\n")
     print(
         json.dumps(
