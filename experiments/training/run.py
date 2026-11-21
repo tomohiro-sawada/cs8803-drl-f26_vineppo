@@ -71,7 +71,12 @@ from core.prompt_protocol import OLMO3, PROMPT, RHOMATH, prompt_protocol
 from core.segmentation import MATH_SEGMENTATION_POLICY
 from core.vllm_inference import VLLMClient, VLLMInference, gpu_identity, slurm_attempt
 from experiments.training.archive import archive_checkpoint
-from experiments.training.resume import BoundaryDeadline, ResumeSlot, atomic_record
+from experiments.training.resume import (
+    BoundaryDeadline,
+    ResumeSlot,
+    atomic_record,
+    checkpoint_position,
+)
 from experiments.training.selection import CheckpointSelection
 from experiments.training.tracking import WandBTracker
 from runtime.config import PPOTrainerConfig
@@ -508,18 +513,38 @@ class MeasuredTrainer(PPOTrainer):
                 self.pending.update(self.selection.validate(saved, self.iteration))
         self.archive_candidate(saved)
         with self.meter.phase("checkpoint"):
-            retained = set(self.saved[-self.keep_checkpoints :])
-            if self.selection is not None:
-                retained.add(self.selection.best_path)
-            # Only prune this invocation's files, after validation has succeeded.
-            for old in self.saved:
-                if old not in retained:
-                    if self.archive:
-                        assert old.with_suffix(".archive.json").is_file()
-                    old.unlink()
-            self.saved = [path for path in self.saved if path in retained]
+            self.prune_candidates()
         self.finish_iteration()
         return saved
+
+    def prune_candidates(self):
+        own = self.saved
+        attempts = [own[-1].parent]
+        if self.archive and self.chain_status is not None:
+            root = self.config.checkpoint_dir.parent.parent
+            attempts = sorted(root.glob("attempt-*/checkpoints"))
+            own = sorted(
+                (
+                    path
+                    for directory in attempts
+                    for path in directory.glob("iteration-*.pt")
+                ),
+                key=lambda path: (*checkpoint_position(path), path.parent.parent.name),
+            )
+        retained = set(own[-self.keep_checkpoints :])
+        if self.selection is not None:
+            retained.add(self.selection.best_path)
+        for old in own:
+            if old not in retained:
+                if self.archive:
+                    assert old.with_suffix(".archive.json").is_file()
+                old.unlink()
+        self.saved = [path for path in self.saved if path in retained]
+        if self.resume_every:
+            for directory in attempts:
+                for slot in directory.glob("resume-*.pt"):
+                    assert checkpoint_position(slot)[0] < self.iteration
+                    slot.unlink()
 
     def archive_candidate(self, path):
         if not self.archive:

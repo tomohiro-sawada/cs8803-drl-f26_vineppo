@@ -411,6 +411,7 @@ def measured_trainer():
     trainer.archive = False
     trainer.deadline = None
     trainer.schedule = None
+    trainer.resume_every = None
     return trainer
 
 

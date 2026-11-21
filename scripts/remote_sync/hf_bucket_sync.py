@@ -34,7 +34,7 @@ from dotenv import dotenv_values
 ROOT = Path(__file__).resolve().parents[2]
 BUCKET = "tsawada/cs8803-drl-f26_vineppo"
 RUNS = Path("/home/hice1/tsawada7/scratch/cs8803-drl-f26_vineppo")
-EXCLUDE = ("wandb/**", "evaluations/*/wandb/**")
+EXCLUDE = ("wandb/**", "*/wandb/**")
 
 
 def file_sha256(path: Path) -> str:
