@@ -87,6 +87,18 @@ def _construct(node):
 def parse_expr(source: str, *, implicit: bool = False):
     if not re.fullmatch(r"[A-Za-z0-9+*/^().,!\s-]+", source):
         raise ValueError("Unsupported symbolic characters")
+    depth = 0
+    for char in source:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth < 0:
+                raise SyntaxError(
+                    "Unmatched closing parenthesis in symbolic expression"
+                )
+    if depth:
+        raise SyntaxError("Unmatched opening parenthesis in symbolic expression")
     transforms = sympy_parser.standard_transformations
     if implicit:
         source = source.replace("^", "**")

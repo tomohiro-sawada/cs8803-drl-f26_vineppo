@@ -257,6 +257,18 @@ def test_infrastructure_errors_are_not_scored(monkeypatch):
     assert "Predictions=('2',), references=('2',)" in failure.value.__notes__[1]
 
 
+def test_olmo_validation_polynomials_reach_a_grade():
+    prediction = r"\boxed{(2x^2+10x+60)(2x^2+22x+60)-3x^2}"
+    reference = "(2x^2+35x+120)(x+8)(2x+15)"
+    assert not verify_response(prediction, reference, task="math").correct
+
+
+@pytest.mark.parametrize("expression", ["x)(x", "(x+1"])
+def test_unbalanced_implicit_products_are_syntax_errors(expression):
+    with pytest.raises(SyntaxError, match="Unmatched .* parenthesis"):
+        parse_expr(expression, implicit=True)
+
+
 def test_worker_bootstrap_is_independent_of_cwd(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PYTHONPATH", str(tmp_path))
