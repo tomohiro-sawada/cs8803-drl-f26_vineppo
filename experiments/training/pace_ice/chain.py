@@ -171,6 +171,12 @@ def supervise(root, options, env):
         if evaluation != "disabled":
             frozen = [output / "selection-frozen.json"]
             assert frozen[0].is_file(), "Completed training did not freeze selection"
+            if (output / "test-deferred.json").exists():
+                assert evaluation == "validation-test"
+                atomic_record(
+                    status_path, status | {"state": "yielded", "iteration": iteration}
+                )
+                return 0
     if frozen:
         rc = subprocess.call(
             [

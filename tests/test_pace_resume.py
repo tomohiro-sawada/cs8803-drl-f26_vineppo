@@ -150,3 +150,30 @@ def test_successor_runs_frozen_test_and_records_completion(
     assert chain.supervise(tmp_path, args, {"SLURM_JOB_ID": "2"}) == 0
     assert simulated_slurm == [["scancel", "2"]]
     assert json.loads((tmp_path / "COMPLETE").read_text())["iteration"] == 4
+
+
+def test_deadline_hands_frozen_selection_to_successor(
+    tmp_path, simulated_slurm, monkeypatch
+):
+    calls = []
+
+    def invoke(command, *, env):
+        mode = command[3]
+        calls.append(mode)
+        if mode == "train":
+            output = tmp_path / "attempt-0000"
+            checkpoints = output / "checkpoints"
+            checkpoints.mkdir(parents=True)
+            (checkpoints / "iteration-4.pt").touch()
+            (output / "selection-frozen.json").touch()
+            (output / "test-deferred.json").touch()
+            (output / "summary.json").write_text('{"completed_iteration": 4}')
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", invoke)
+    args = ["--num-iterations", "4", "--evaluation", "validation-test"]
+    assert chain.supervise(tmp_path, args, {"SLURM_JOB_ID": "1"}) == 0
+    assert calls == ["train"] and simulated_slurm == []
+    assert chain.supervise(tmp_path, args, {"SLURM_JOB_ID": "2"}) == 0
+    assert calls == ["train", "evaluate"]
+    assert (tmp_path / "COMPLETE").exists()

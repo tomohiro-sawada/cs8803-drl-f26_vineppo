@@ -1036,7 +1036,16 @@ def main(argv=None):
         if trainer.selection is not None and trainer.iteration == args.num_iterations:
             frozen = trainer.selection.freeze()
             tracker.log_selection(frozen)
-            if args.evaluation == "validation-test":
+            if (
+                args.evaluation == "validation-test"
+                and deadline
+                and deadline.should_stop()
+            ):
+                write_json(
+                    args.output / "test-deferred.json",
+                    {"selection": str(trainer.selection.frozen_path)},
+                )
+            elif args.evaluation == "validation-test":
                 # No more updates: release all training GPU owners before final test.
                 inference.close()
                 trainer.policy = trainer.reference_policy = trainer.critic = None
