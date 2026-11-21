@@ -19,7 +19,6 @@ from pathlib import Path
 # This import sets HF offline mode before importing the HF libraries.
 from scripts.paper_artifact_replications.evaluate_sft import (
     MODELS,
-    PROMPT,
     ROOT,
     paper_prompt,
     read_artifacts,
@@ -33,6 +32,7 @@ from datasets import DatasetDict, load_from_disk
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
 
 from core.inference import HFInference
+from core.prompt_protocol import OLMO3, OLMO3_REVISION, RHOMATH, prompt_protocol
 from core.segmentation import (
     MATH_SEGMENTATION_POLICY,
     split_solution_inplace,
@@ -59,9 +59,13 @@ class Config:
     batch_size: int = 8
     seed: int = 42
     max_new_tokens: int = 1024
+    model_protocol: str = RHOMATH
+    model_path: Path | None = None
 
     def __post_init__(self):
         assert self.task in MODELS, "Unsupported task"
+        assert self.model_protocol in (RHOMATH, OLMO3)
+        assert (self.model_protocol == OLMO3) == (self.model_path is not None)
         assert all(
             type(n) is int and n > 0
             for n in (
@@ -75,7 +79,7 @@ class Config:
 
 
 def select_prompts(
-    dataset: DatasetDict, task: str, count: int, seed: int
+    dataset: DatasetDict, task: str, count: int, seed: int, formatter=paper_prompt
 ) -> list[dict]:
     """Select train rows without replacement; retain their original row indices."""
     assert isinstance(dataset, DatasetDict), "Expected the original saved DatasetDict"
@@ -95,14 +99,20 @@ def select_prompts(
             {
                 "id": f"{task}:train:{index}",
                 "index": index,
-                "prompt": paper_prompt(question),
+                "prompt": formatter(question),
             }
         )
     return selected
 
 
 def assess(
-    response_ids, tokenizer, *, task: str, eos_token_ids, context_ids=()
+    response_ids,
+    tokenizer,
+    *,
+    task: str,
+    eos_token_ids,
+    context_ids=(),
+    context_special_ids=(),
 ) -> dict:
     """Run production first; labels describe its first failure, never a repair.
 
@@ -116,6 +126,7 @@ def assess(
             dataset=task,
             eos_token_ids=eos_token_ids,
             context_ids=context_ids,
+            context_special_ids=context_special_ids,
         )
     except (AssertionError, ValueError) as error:
         message = str(error)
@@ -144,17 +155,20 @@ def run_samples(
 ) -> dict:
     """Persist each generation sub-batch; generation/decoding errors propagate."""
     assert len(prompts) == config.num_prompts
+    profile = prompt_protocol(config.model_protocol, config.task)
     prefixes = tokenizer(
         [row["prompt"] for row in prompts],
-        add_special_tokens=True,
+        add_special_tokens=profile.add_special_tokens,
         padding=False,
         truncation=False,
     )["input_ids"]
     assert len(prefixes) == len(prompts)
-    assert tokenizer.bos_token_id is not None
-    assert all(ids and ids[0] == tokenizer.bos_token_id for ids in prefixes), (
-        "Expected BOS"
-    )
+    if profile.add_special_tokens:
+        assert tokenizer.bos_token_id is not None
+        assert all(ids and ids[0] == tokenizer.bos_token_id for ids in prefixes), (
+            "Expected BOS"
+        )
+    controls = profile.context_special_ids(tokenizer)
     budgets = [min(config.max_new_tokens, CONTEXT_SIZE - len(ids)) for ids in prefixes]
     assert all(b > 0 for b in budgets), "Prompt exhausts total context budget"
     metrics = {
@@ -206,6 +220,7 @@ def run_samples(
                             task=config.task,
                             eos_token_ids=eos_ids,
                             context_ids=ids,
+                            context_special_ids=controls,
                         )
                         record = prompt | {
                             "sample_index": sample_index,
@@ -245,8 +260,24 @@ def main(config: Config) -> dict:
         raise FileExistsError(f"Refusing to overwrite {config.output}")
     gpu = require_cuda(None)
     model_entry, dataset_entry = read_artifacts(config.manifest, config.task)
+    profile = prompt_protocol(config.model_protocol, config.task)
+    if profile.key == OLMO3:
+        model_entry = {
+            "path": str(config.model_path.resolve(strict=True)),
+            "repo_id": "allenai/Olmo-3-7B-Instruct-SFT",
+            "revision": OLMO3_REVISION,
+        }
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_entry["path"], local_files_only=True, trust_remote_code=False
+    )
     dataset = load_from_disk(dataset_entry["path"])
-    prompts = select_prompts(dataset, config.task, config.num_prompts, config.seed)
+    prompts = select_prompts(
+        dataset,
+        config.task,
+        config.num_prompts,
+        config.seed,
+        lambda question: profile.format(tokenizer, question),
+    )
     assert len(dataset["train"]) == dataset_entry["splits"]["train"]["rows"], (
         "Wrong train split size"
     )
@@ -257,6 +288,9 @@ def main(config: Config) -> dict:
         | {
             "output": str(config.output.resolve()),
             "manifest": str(config.manifest.resolve()),
+            "model_path": str(config.model_path.resolve())
+            if config.model_path
+            else None,
             "temperature": 1.0,
             "top_p": 1.0,
             "top_k": 0,
@@ -264,7 +298,7 @@ def main(config: Config) -> dict:
             "dtype": "bfloat16",
             "attention": "sdpa",
             "device": "cuda:0",
-            "prompt": PROMPT,
+            "prompt": profile.template,
             "stop_strings": None,
             "selection": "sorted(random.Random(seed).sample(range(len(train)), num_prompts))",
             "generation_seed": "set_seed(seed) once before batches; batch/group order affects RNG",
@@ -319,9 +353,6 @@ def main(config: Config) -> dict:
             "classification": "Observed first production failure only; upstream_or_span includes unclassified assertions/ValueErrors. No repairs.",
         },
     )
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_entry["path"], local_files_only=True, trust_remote_code=False
-    )
     model = AutoModelForCausalLM.from_pretrained(
         model_entry["path"],
         local_files_only=True,
@@ -336,6 +367,10 @@ def main(config: Config) -> dict:
     eos_ids = [eos] if type(eos) is int else eos
     assert isinstance(eos_ids, list) and eos_ids, "Configure model EOS IDs"
     assert tokenizer.eos_token_id in eos_ids, "Tokenizer/model EOS mismatch"
+    if profile.key == OLMO3:
+        assert model.config.model_type == "olmo3" and eos_ids == profile.eos_ids(
+            tokenizer
+        )
     write_json(
         config.output / "tokenizer.json",
         {
@@ -355,6 +390,10 @@ def parse_args(argv=None) -> Config:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task", required=True, choices=tuple(MODELS))
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--model-protocol", choices=(RHOMATH, OLMO3), default=RHOMATH)
+    parser.add_argument(
+        "--model-path", type=Path, help="Local pinned OLMo SFT snapshot"
+    )
     parser.add_argument(
         "--manifest", type=Path, default=ROOT / ".cache/download_manifest.json"
     )

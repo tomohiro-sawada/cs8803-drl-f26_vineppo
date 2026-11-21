@@ -1111,4 +1111,6 @@ class PPOTrainer:
             if self.schedule is not None:
                 actual["scheduler"] = self.schedule.state_dict()
             expected = state | {"policy": dict(policy), "reference": dict(reference)}
+            if self.critic is not None:
+                expected["critic"] = dict(expected["critic"])
             assert_state_equal(actual, {name: expected[name] for name in actual})

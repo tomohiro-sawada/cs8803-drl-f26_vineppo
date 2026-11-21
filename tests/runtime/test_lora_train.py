@@ -14,6 +14,7 @@ from algorithms.vineppo import VinePPOConfig
 from core.lora import apply_lora
 from runtime.checkpoints import COMPACT_LORA, checkpoint_models
 from runtime.train import PPOTrainer
+from tests.core import test_vllm_inference
 from tests.runtime import test_train
 from tests.runtime.test_train import assert_exact
 
@@ -40,6 +41,57 @@ def lora_case(training_case):
         return run
 
     return build, inputs
+
+
+@pytest.mark.parametrize("cut", [1, 2])
+def test_fake_vllm_resume_preserves_requests_and_optimizer_state(
+    lora_case, tmp_path, monkeypatch, cut
+):
+    make, inputs = lora_case
+    tokenizer = inputs["tokenizer"]
+
+    def sample(body, index):
+        assert body["temperature"] == 1.0
+        answer = 1 + ((body["seed"] + index) % 2)
+        return tokenizer.encode(f"#### {answer}") + [tokenizer.eos_token_id], "stop"
+
+    monkeypatch.setattr(test_vllm_inference, "sample", sample)
+
+    def build(name):
+        trainer = make(
+            name, algorithm_config=GRPOConfig(), num_iterations=3, checkpoint_every=3
+        )
+        remote = test_vllm_inference.make(
+            trainer.policy,
+            tmp_path,
+            [test_vllm_inference.FakeReplica()],
+            name=f"{name}-actors",
+        )
+        remote.pad_token_id = trainer.inference.pad_token_id
+        observed = []
+        remote.record_requests = lambda step, call, bodies: observed.append(
+            (step, call, bodies)
+        )
+        trainer.inference = remote
+        return trainer, observed
+
+    full, expected = build("full-remote")
+    with full.inference:
+        reference = full.train(**inputs)
+    split, first = build("split-remote")
+    with split.inference:
+        history = split.train(**inputs, stop_at_boundary=lambda: split.iteration == cut)
+        checkpoint = split.save_checkpoint(
+            split.config.checkpoint_dir / f"resume-{cut}.pt"
+        )
+    resumed, second = build("resumed-remote")
+    with resumed.inference:
+        resumed.load_checkpoint(checkpoint, **inputs, audit=True)
+        history += resumed.train(**inputs)
+    assert first + second == expected
+    assert history == reference
+    assert_exact(resumed.policy.state_dict(), full.policy.state_dict())
+    assert_exact(resumed.optimizer.state_dict(), full.optimizer.state_dict())
 
 
 @pytest.mark.parametrize("cuts", [(1,), (2,), (3,), (1, 2, 3)])

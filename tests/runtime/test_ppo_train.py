@@ -70,7 +70,7 @@ def ppo_case(tmp_path, monkeypatch):
         "formatter": str,
     }
 
-    def make(name="run", **overrides):
+    def make(name="run", *, polynomial_schedule=False, **overrides):
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(17)
             config = GPT2Config(
@@ -111,6 +111,7 @@ def ppo_case(tmp_path, monkeypatch):
             reference_policy=deepcopy(actor),
             critic=critic,
             critic_optimizer=torch.optim.AdamW(critic.parameters(), lr=0.003),
+            polynomial_schedule=polynomial_schedule,
         )
 
         def generate(prefixes, *, num_samples, max_new_tokens, temperature):
@@ -324,30 +325,48 @@ def test_real_updates_reuse_fixed_targets_after_all_actor_epochs(ppo_case, monke
     )
 
 
-def test_resume_is_bitwise_exact_for_models_optimizers_rng_and_metrics(ppo_case):
+@pytest.mark.parametrize("cuts", [(1,), (2,), (1, 2)])
+@pytest.mark.parametrize("polynomial", [False, True])
+def test_resume_is_bitwise_exact_for_models_optimizers_rng_and_metrics(
+    ppo_case, cuts, polynomial
+):
     make, inputs = ppo_case
-    full, split = make("full", num_iterations=3), make("split")
+    settings = {
+        "num_iterations": 3,
+        "checkpoint_every": 3,
+        "polynomial_schedule": polynomial,
+        "algorithm_config": PPOConfig(lam=1.0, value_clip_eps=0.2),
+    }
+    full, split = make("full", **settings), make("split", **settings)
     torch.manual_seed(101)
     expected_metrics = full.train(**inputs)
     expected = torch.load(
         full.config.checkpoint_dir / "iteration-3.pt", weights_only=True
     )
     torch.manual_seed(101)
-    first_metrics = split.train(**inputs)
-    path = split.config.checkpoint_dir / "iteration-1.pt"
-    saved = torch.load(path, weights_only=True)
-    assert_exact(saved["critic"], split.critic.state_dict())
-    assert_exact(saved["critic_optimizer"], split.critic_optimizer.state_dict())
-    assert len(saved["model_identity"]) == 3
-    resumed = make("resumed", num_iterations=3)
-    torch.rand(31)
-    resumed.load_checkpoint(path, **inputs)
-    assert_exact(states(resumed), states(split))
-    assert_exact(torch.get_rng_state(), saved["cpu_rng"])
-    assert_exact(resumed._generator.get_state(), saved["generator"])
-    assert_exact(first_metrics + resumed.train(**inputs), expected_metrics)
+    metrics = []
+    for cut in cuts:
+        metrics.extend(
+            split.train(
+                **inputs,
+                stop_at_boundary=lambda split=split, cut=cut: split.iteration == cut,
+            )
+        )
+        path = split.save_checkpoint(split.config.checkpoint_dir / f"resume-{cut}.pt")
+        saved = torch.load(path, weights_only=True)
+        assert_exact(saved["critic"], split.critic.state_dict())
+        assert_exact(saved["critic_optimizer"], split.critic_optimizer.state_dict())
+        assert len(saved["model_identity"]) == 3
+        resumed = make(f"resumed-{cut}", **settings)
+        torch.rand(31)
+        resumed.load_checkpoint(path, **inputs, audit=True)
+        assert_exact(states(resumed), states(split))
+        assert_exact(torch.get_rng_state(), saved["cpu_rng"])
+        assert_exact(resumed._generator.get_state(), saved["generator"])
+        split = resumed
+    assert_exact(metrics + split.train(**inputs), expected_metrics)
     actual = torch.load(
-        resumed.config.checkpoint_dir / "iteration-3.pt", weights_only=True
+        split.config.checkpoint_dir / "iteration-3.pt", weights_only=True
     )
     for key in expected.keys() - {"config"}:
         assert_exact(actual[key], expected[key])
