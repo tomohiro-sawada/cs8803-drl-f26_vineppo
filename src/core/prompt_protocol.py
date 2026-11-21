@@ -14,6 +14,14 @@ OLMO_INSTRUCTIONS = {
 }
 
 
+def _added_special_id(tokenizer, text):
+    token_id = tokenizer.convert_tokens_to_ids(text)
+    assert type(token_id) is int
+    token = tokenizer.added_tokens_decoder[token_id]
+    assert token.special and token.content == text
+    return token_id
+
+
 @dataclass(frozen=True)
 class PromptProtocol:
     key: str
@@ -49,17 +57,15 @@ class PromptProtocol:
 
     def eos_ids(self, tokenizer):
         assert self.key == OLMO3
-        tokens = [tokenizer.convert_tokens_to_ids("<|im_end|>"), tokenizer.eos_token_id]
-        assert all(type(t) is int and t in tokenizer.all_special_ids for t in tokens)
-        assert len(set(tokens)) == 2
-        return tokens
+        end = _added_special_id(tokenizer, "<|im_end|>")
+        eos = tokenizer.eos_token_id
+        assert type(eos) is int and eos in tokenizer.all_special_ids and eos != end
+        return [end, eos]
 
     def context_special_ids(self, tokenizer):
         if self.key == RHOMATH:
             return ()
-        start = tokenizer.convert_tokens_to_ids("<|im_start|>")
-        assert type(start) is int and start in tokenizer.all_special_ids
-        return (start, *self.eos_ids(tokenizer))
+        return (_added_special_id(tokenizer, "<|im_start|>"), *self.eos_ids(tokenizer))
 
 
 def prompt_protocol(key=RHOMATH, task=None):
