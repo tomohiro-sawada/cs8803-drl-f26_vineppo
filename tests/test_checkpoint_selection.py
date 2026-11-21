@@ -299,6 +299,25 @@ def test_resume_recovers_interrupted_validation_and_keeps_prior_best(case, monke
     assert sdk.init.call_args.kwargs["config"]["cli"]["resume"] == str(interrupted)
 
 
+def test_resume_slot_keeps_candidate_schedule_and_best(case, monkeypatch):
+    _, previous = case
+    first = candidate(previous, 2)
+    monkeypatch.setattr(
+        previous, "_evaluate", Mock(return_value=result(previous, first, 2))
+    )
+    previous.validate(first, 2)
+    slot = first.with_name("resume-3.pt")
+    slot.write_bytes(b"resume only")
+    resumed = selection.CheckpointSelection(resume_args(previous, slot), 2, 3)
+    evaluate = Mock()
+    monkeypatch.setattr(resumed, "_evaluate", evaluate)
+    resumed.recover(3)
+    evaluate.assert_not_called()
+    assert resumed.best_path == first
+    assert resumed.state["candidate_iterations"] == [2, 4, 5]
+    assert [x["checkpoint"]["iteration"] for x in resumed.state["candidates"]] == [2]
+
+
 @pytest.mark.parametrize(
     "mutation",
     ["lookahead", "schedule", "cadence", "protocol", "data", "metadata", "frozen"],

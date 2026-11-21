@@ -1,5 +1,6 @@
 """Exercise the PACE supervisor and commit ordering without a GPU allocation."""
 
+import fcntl
 import json
 import subprocess
 
@@ -86,6 +87,15 @@ def test_failed_chain_halts_after_no_progress(tmp_path, simulated_slurm, monkeyp
     assert simulated_slurm == [["scancel", "3"]]
     halted = json.loads((tmp_path / "HALTED").read_text())
     assert halted["position"] == [0, False] and halted["state"] == "halted"
+
+
+def test_chain_rejects_another_active_owner(tmp_path, monkeypatch):
+    monkeypatch.setenv("SLURM_NTASKS", "1")
+    options = [str(tmp_path), "--num-iterations", "4", "--resume-checkpoint-every", "1"]
+    with (tmp_path / ".resume.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(BlockingIOError):
+            chain.main(options)
 
 
 def test_successor_runs_frozen_test_and_records_completion(

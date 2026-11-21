@@ -169,7 +169,12 @@ def test_only_production_assertion_and_valueerror_are_caught(monkeypatch):
     with pytest.raises(RuntimeError, match="infrastructure"):
         sampler.assess([2], Tokenizer(), task="gsm8k", eos_token_ids=[2])
     production.assert_called_once_with(
-        [2], ANY, dataset="gsm8k", eos_token_ids=[2], context_ids=()
+        [2],
+        ANY,
+        dataset="gsm8k",
+        eos_token_ids=[2],
+        context_ids=(),
+        context_special_ids=(),
     )
 
 
