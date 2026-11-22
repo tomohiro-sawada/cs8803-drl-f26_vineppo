@@ -440,3 +440,59 @@ Watcher 7210728 stopped at 23:47 after Slurm rejected an `afterok` dependency on
 - Forge API audit 7232620 matched all 14 completed production tests to their online W&B runs at `tsawada/vineppo`. Each run was marked finished and matched the local Pass@1 and 16-round count. This covers all three seeds of PPO and RLOO as well as the other ten completed runs. The audit took 12s.
 - OLMo MATH smoke 7232076 resumed at iteration 2, completed iteration 4, and ran 16 held-out rounds on validation-selected iteration 2 with 70.24% Pass@1. Its final H200 allocation took 46:33. The watcher submitted production MATH GRPO 7232689, which started on H200 in `handoff-olmo3-math-grpo-50-s42-08`. Full archive of the smoke and production checkpoint directories is deferred under the recorded bucket restriction.
 - Checked 45 training status files and 12 watcher status files. All seven outstanding admission gates have a producer. The three other RhoMath 650 arms await the VinePPO run's first scheduled rollover, and the GSM8K OLMo sequence awaits MATH GRPO completion.
+
+### 20261121-200140 · `75af343`
+
+- MATH GRPO 7232689 completed all four initial validation rounds, then spent 15s waiting for a grading subprocess on the first training batch. The worker was grading prediction `0` against `\frac{\sqrt{7}}{3}`. Slurm marked the allocation failed after 19:39. No training update or checkpoint was written.
+- CPU probe 7232920 replayed that exact pair 24 times serially and 24 times with four workers. All graded false. Median wall time was 0.900s serially and 0.938s in parallel, with maxima of 1.204s and 1.093s. The probe took 28s. This rules out expensive mathematics in the failing pair. The production environment showed startup stalls, with model serving taking several minutes before the first validation.
+- `75af343` gives the grader subprocess up to 60s wall clock for launch, shared-storage waits and grading. Each process keeps its independent 10s CPU and 1 GiB address-space limits, and infrastructure failures still abort. Grading, sampling and training settings remain as configured. CPU suite 7232943 gates the `-09` MATH production retry and downstream GSM8K stages. Watcher 7232953 took over in `control-14`. Cancelled the pending no-progress successor 7232690. The retry starts at zero and preserves the old baseline and logs.
+
+### 20261121-200635 · `75af343`
+
+- CPU 7232943 passed 1,607 tests but hit the unrelated colocated launcher fixture's 10s subprocess timeout in 2:04 allocated. The isolated fixture and full suite passed on the same pin in 7232988, with 1,608 passed in 104.44s and 2:04 allocated total. No fixture or runtime code was changed between suites.
+- Watcher 7232995 in `control-15` adopted that clean accounting receipt and queued MATH production retry 7233011 under `-09`. All downstream MATH and GSM8K gates point to the new lineage. VinePPO 650 continues on its original pin.
+
+### 20261121-202054 · `75af343`
+
+- CPU 7233106 replayed all 512 original RhoMath MATH responses in `segmentation-rate-math-01/records.jsonl` (SHA256 `ac96339abcedffcdcad1ade7e04437fb5d6b9a0f4022906ffc49cf31e7628349`). Under the approved first-character rule, all 42 original inside-token rejections pass, with the exact sampled IDs in order. All 463 prior successes keep identical token boundaries. Seven responses still raise upstream splitter assertions, six at the text reconstruction check and one at the final boundary check. This accounts for the 49 original rejections. No response was replaced, re-tokenized, or dropped.
+- VinePPO 650 seed 42 is past iteration 250 and verified the iteration-250 actor candidate. The repaired OLMo MATH run 7233011 is pending for queue priority. The watcher is current and all seven remaining gates are reachable.
+
+### 20261121-205415 · `57f422a`
+
+- MATH 7233011 passed baseline validation and the first training update. It then failed on the official training row `math:train:11385`, whose solution proves every term composite and leaves `\boxed{}` empty. Slurm used 21:14. The first full checkpoint was due after update 2. The successor 7233190 halted in 1s without a resumable checkpoint.
+- Audit 7233427 checked all 11,500 train, 500 validation and 500 test references in 6s. Six training references had malformed final spans. The six values as established by their gold solutions are Saturday, 4, 9, 2, 0 and 0, at training indices 1740, 3512, 4867, 6075, 7318 and 11385. The official final-answer column normalizes to an empty answer or the literal `None` on those rows. Both held-out splits had complete references. The full-solution training representation also preserves 161 multi-answer references.
+- `57f422a` applies six explicit, asserted training-source edits keyed by source ID before normalizing the dataset. It retains every example, the existing full-solution extraction and the original held-out splits. CPU 7233459 checks all 11,500 normalized references, verifies that exactly the six intended records changed, then runs the full suite. Watcher 7233461 in `control-16` repointed the dead gate at the fresh `-10` production root, subject to that suite. The `-09` attempt's one completed update and failed logs remain available. The new trial starts at zero.
+
+### 20261121-205734 · `57f422a`
+
+- CPU 7233459 verified all 11,500 training references and the six corrected gold spans. The normalized training SHA256 is `53475df0be0236aba25b4eb5d79c90957f0201d32ca9549fcb75e958d3a2ed52`. All 1,609 tests passed in 109.69s, with 2:34 Slurm wall clock including the dataset audit. Watcher 7233461 admitted MATH production retry 7233483. The scheduler lists it pending for priority.
+- Removed the clean `75af343` detached worktree after confirming no allocation or outstanding job spec used it. The original training roots, their checkpoint data and the logs stay in place.
+
+### 20261121-213601 · `6716e71`
+
+- OLMo MATH production 7233483 started at 21:08:36 and reached iteration 4, past the prior failure. It published its first resumable checkpoint at iteration 2. The frozen actor and reference occupy 29,192,322,063 bytes. Lustre showed about 116 GiB free before the other three long RhoMath jobs enter admission.
+- The passed OLMo MATH smoke now covers the model's GRPO training path for both tasks. GSM8K GRPO will follow its own 16-round SFT baseline, with MATH completion still gating that baseline. This removes the extra GSM8K smoke's projected 27.2 GiB frozen copy while keeping the 20 GiB scratch reserve and all production hyperparameters. CPU proof 7233837 regenerated the wave on `6716e71` and verified task order, unchanged arguments and unchanged reservations in 2s.
+- Watcher 7233855 in `control-17` adopted the tested gate. The OLMo production allocations use `57f422a`. The plan also admits verification of the small, test-only GSM8K SFT directory once it completes. Larger archives remain deferred under the recorded bucket restriction.
+
+### 20261121-220928 · `6716e71`
+
+- The first VinePPO 650 allocation 7226476 yielded at iteration 328 on its scheduled Slurm warning. It exited 0 after 7:49:45. Link 7227188 started 46s later, restored `resume-328.pt`, completed iteration 329 and published `ROLLOVER`. Rows 328 and 329 each contain 512 primary continuations. Their actor LRs (5.107057891e-6 and 5.091197462e-6) match the expected consecutive schedule positions. Reward was 0.719 then 0.705, summed reference KL 12.605 then 12.543, and pre-clip actor norm 0.581 then 0.603.
+- Watcher 7233855 admitted RLOO 7234239, GRPO 7234240 and PPO 7234241 for 650 iterations while the VinePPO rehearsal continued. All are queued on `6212e45` with 8-hour links and their configured scratch reserves. Lustre reported 115.5 GiB free at admission. OLMo MATH 7233483 reached iteration 17 and passed candidate-10 validation.
+
+### 20261121-225843 · `6716e71`
+
+- RLOO 650 seed 42 (7234239) started on H100 at 22:55:06 after 47:07 in the scheduler queue. Its automatic successor is 7234882. GRPO 7234240 and PPO 7234241 remain pending for H100 resources. VinePPO has reached iteration 364, OLMo MATH 31, and the four outstanding watcher gates all have producers. Lustre reported about 115 GiB free.
+
+### 20261121-234931 · `6716e71`
+
+- GRPO 650 seed 42 (7234240) started on H100 at 23:37:17 after 1:29:18 in the queue. Slurm registered successor 7235448. RLOO was past iteration 50, VinePPO was approaching 400, and OLMo MATH was running its final candidate validation. PPO 7234241 remained queued. The watcher was current and Lustre had about 105 GiB free.
+
+### 20261122-002723 · `6716e71`
+
+- OLMo MATH GRPO 7233483 completed on H200 with all 50 updates and 16 test rounds. Validation selected iteration 50 at 67.90%. Its held-out Pass@1 was 71.86% on 8,000 responses, against 70.59% for SFT. The successful allocation took 3:16:15. Including the interrupted starts, it used 3:57:09 allocated GPU wall clock and 4:46:37 elapsed from first start to final end. The completed trial logged 6,400 primary continuations and 2,789,254 tokens. It has `COMPLETE` and an online Forge run.
+- Selected-checkpoint and exact test-directory archive 7236078 is underway. The whole-run archive includes the 29.2 GB frozen payload and is still deferred. Watcher 7233855 submitted the OLMo GSM8K SFT job 7236066 after the MATH completion gate. PPO 650 is still eligible in the H100 queue.
+
+### 20261122-003001 · `6716e71`
+
+- Archive 7236078 SHA256-verified the 480,460,948-byte OLMo MATH winner, the frozen selection, the test completion marker, and all 38 files in the 23,290,546-byte test directory in 1:39. The whole-run proof in 7236118 is the first attempt for this root and uses the existing node-local verifier and by-path deletion receipt.
+- Audit 7236089 verified all 15 completed online tests in 44s. OLMo MATH GRPO improved on SFT by 1.275 percentage points. The paired 95% interval clustered by MATH question is +0.38 to +2.17 points across 500 questions at one training seed.
