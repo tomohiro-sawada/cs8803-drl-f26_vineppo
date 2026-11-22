@@ -264,22 +264,24 @@ def generate(args):
             entry="scripts/diagnostics/evaluate_model_baseline.py",
         )
         archive(key, root)
-        smoke = train(
-            f"olmo3-{task}-smoke",
-            "grpo",
-            steps=4,
-            prompts=4,
-            batch=8,
-            samples=4,
-            rounds=1,
-            period=2,
-            resume=1,
-            micro=1,
-            task=task,
-            olmo=True,
-            limit="02:00:00",
-            gates=[root / "COMPLETE"],
-        )
+        ready = root
+        if task == "math":
+            ready = train(
+                "olmo3-math-smoke",
+                "grpo",
+                steps=4,
+                prompts=4,
+                batch=8,
+                samples=4,
+                rounds=1,
+                period=2,
+                resume=1,
+                micro=1,
+                task=task,
+                olmo=True,
+                limit="02:00:00",
+                gates=[root / "COMPLETE"],
+            )
         trained = train(
             f"olmo3-{task}-grpo-50-s42",
             "grpo",
@@ -290,7 +292,7 @@ def generate(args):
             task=task,
             olmo=True,
             limit="12:00:00",
-            gates=[smoke / "COMPLETE"],
+            gates=[ready / "COMPLETE"],
         )
         olmo_gates.append(trained / "COMPLETE")
     plan = {
