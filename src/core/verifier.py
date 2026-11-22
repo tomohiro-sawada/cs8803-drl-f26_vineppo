@@ -30,7 +30,9 @@ UPSTREAM_COMMIT = "9f716e68bb934e71da86c226c1699c36b5553faf"
 VERIFIER_PROVENANCE = f"{UPSTREAM_REPOSITORY}/tree/{UPSTREAM_COMMIT}/src/treetune/tasks"
 VERIFIER_POLICY = "vineppo-question-final-answer-safe-v2"
 MAX_INPUT_CHARS = 65536
-GRADING_TIMEOUT_SECONDS = 15
+# PACE can stall worker startup on shared storage. The worker independently
+# bounds computation with its ten-second CPU limit.
+GRADING_TIMEOUT_SECONDS = 60
 
 
 @dataclass(frozen=True)
