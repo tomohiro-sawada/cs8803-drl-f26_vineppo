@@ -135,6 +135,23 @@ def test_local_train_only_normalization_and_identity(tmp_path, task):
     )
 
 
+def test_published_math_training_reference_correction(tmp_path):
+    row = {
+        "unique_id": "train/number_theory/7117.json",
+        "problem": "How many of the terms are prime?",
+        "solution": r"Therefore none are prime, so the answer is $\boxed{}$.",
+    }
+    DatasetDict({"train": Dataset.from_list([row])}).save_to_disk(str(tmp_path))
+    examples, _ = runner.load_examples(tmp_path, "math")
+    assert examples == [
+        runner.Example(
+            "math:train:0",
+            row["problem"],
+            r"Therefore none are prime, so the answer is $\boxed{0}$.",
+        )
+    ]
+
+
 @pytest.mark.parametrize(
     "task,row,message",
     [

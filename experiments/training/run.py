@@ -83,6 +83,16 @@ from runtime.config import PPOTrainerConfig
 from runtime.schedule import POLYNOMIAL
 from runtime.train import PPOTrainer
 
+# Corrections to the published MATH training solutions' final answer spans.
+MATH_SOLUTION_EDITS = {
+    "test/number_theory/880.json": (r"\boxed{\mbox{Saturday}}", r"\boxed{Saturday}"),
+    "train/prealgebra/79.json": (r"\boxed{\mbox{four}}", r"\boxed{4}"),
+    "train/algebra/25040.json": (r"\boxed 9", r"\boxed{9}"),
+    "train/algebra/24014.json": (r"\boxed 2", r"\boxed{2}"),
+    "train/number_theory/7115.json": (r"\boxed{}", r"\boxed{0}"),
+    "train/number_theory/7117.json": (r"\boxed{}", r"\boxed{0}"),
+}
+
 PHASES = (
     "primary_generation",
     "mc_estimation",
@@ -314,6 +324,10 @@ def load_examples(path: Path, task: str):
             parts = answer.split("####")
             assert len(parts) == 2, f"Malformed GSM8K reference: {index}"
             answer = parts[1].strip()
+        elif (edit := MATH_SOLUTION_EDITS.get(row.get("unique_id"))) is not None:
+            old, new = edit
+            assert answer.count(old) == 1, f"Unexpected MATH source solution: {index}"
+            answer = answer.replace(old, new)
         assert answer.strip(), f"Empty final reference: {index}"
         examples.append(Example(f"{task}:train:{index}", question.strip(), answer))
     assert examples, "Empty train split"
