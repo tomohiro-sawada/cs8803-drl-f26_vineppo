@@ -496,3 +496,67 @@ Watcher 7210728 stopped at 23:47 after Slurm rejected an `afterok` dependency on
 
 - Archive 7236078 SHA256-verified the 480,460,948-byte OLMo MATH winner, the frozen selection, the test completion marker, and all 38 files in the 23,290,546-byte test directory in 1:39. The whole-run proof in 7236118 is the first attempt for this root and uses the existing node-local verifier and by-path deletion receipt.
 - Audit 7236089 verified all 15 completed online tests in 44s. OLMo MATH GRPO improved on SFT by 1.275 percentage points. The paired 95% interval clustered by MATH question is +0.38 to +2.17 points across 500 questions at one training seed.
+
+### 20261122-004036 · `979a518`
+
+- Full OLMo MATH archive 7236118 stopped after 49s. The bucket returned HTTP 403 requiring automatic credit recharge. The selected actor and exact test copy from 7236078 remain verified. The full frozen payload, other candidates and learner state remain on scratch with no deletion receipt. The storage restriction applies to this independently measured whole run as well as the earlier PPO archives.
+- OLMo GSM8K SFT baseline 7236066 started on H200 at 00:36:33. Its completed 16-round result gates GSM8K GRPO and its small exact-run verification. Long PPO 7234241 remains eligible and queued for H100 resources.
+
+### 20261122-004122 · `979a518`
+
+- After more than 2:30 of waiting on H100-dependent reservations, expanded still-pending PPO 650 job 7234241 to `gpu-h100|gpu-h200`. H200 is the hardware on which the corrected PPO rollover smoke passed. The job still requests one GPU for 8h and retains its 650-iteration policy and optimizer configuration. Record the actual GPU model with its wall-clock comparison.
+
+### 20261122-010002 · `6c05c85`
+
+- OLMo GSM8K SFT 7236066 finished in 17:55 on H200. Its 16 held-out rounds over 21,104 responses scored 61.65% Pass@1. Whole-run archive 7236496 verified all 39 files, 32,597,089 bytes, in 57s.
+- The GSM8K GRPO gate initially required 111.8 GiB with 104.3 GiB free because the old 44 GiB reservation was an estimate. The completed MATH job occupied 29.6 GiB including all six frozen/candidate checkpoint files and its evaluations. The reservation now allows 35 GiB for the same frozen payload, five compact candidates, transient resume files and the larger GSM8K evaluation. The user-requested 20 GiB free margin and the concurrent reservations still apply. The six-hour link leaves more than two and a half hours above the measured MATH allocation's 3:16:15 and fits the concurrent GPU-minute cap more readily.
+- The regenerated spec passed in CPU job 7236543 in 1s. Watcher 7236554 in `control-18` admitted GSM8K GRPO as 7236558 with its same training pin `57f422a`. Removed the clean `6716e71` watcher worktree after checking the allocation list and archive specs.
+
+### 20261122-012209 · `6c05c85`
+
+- PPO 650 seed 42 (7234241) started at 01:02:41 after 2:54:41 queued. Slurm assigned an H100. The learner completed its first updates and published [the online Forge run](https://forge.coreweave.com/wandb/tsawada/vineppo/runs/09007b7f4184400387c64c821bb606a3). Its automatic successor is 7236612.
+- At the check, VinePPO, RLOO, GRPO and PPO were all training concurrently at iteration 466, 188, 112 and 3 respectively. The 20 GiB safety margin remained in effect. The only remaining mandatory training admission, OLMo GSM8K GRPO 7236558, is pending for H200 resources. The watcher is waiting only for the VinePPO whole-run archive gate.
+
+### 20261122-032001 · `6c05c85`
+
+- OLMo GSM8K GRPO 7236558 started on H200 at 03:03:48 after 2:04:07 in the scheduler queue. It has completed six updates. Its successor is 7238322. All mandatory training arms now have completed or started. The only pending watcher gate is the original VinePPO 650 archive.
+- Scratch had 58.01 GiB free, with 36.49 GiB still reserved for admitted jobs and a separate 20 GiB margin. The 1.53 GiB remaining outside those reservations is below even the 10 GiB reserve for an extra non-critic long arm. Keeping optional seeds 43–44 deferred while the required wave runs and the large bucket copies remain blocked.
+
+### 20261122-043755 · `6c05c85`
+
+- OLMo GSM8K GRPO 7236558 completed all 50 updates, then 16 held-out rounds on validation-selected iteration 50 (93.83% validation Pass@1). The test scored 87.87% across 21,104 responses, compared with 61.65% for GSM8K SFT. Training and evaluation took 1:28:20 on H200 with no resume. The run recorded 6,400 primary continuations and 1,017,333 sampled tokens.
+- Selected-checkpoint and held-out archive 7239418 and online-run/paired-test audit 7239421 are in progress. All four OLMo tests and all twelve short RhoMath tests plus RestEM have completed. The four paper-scale RhoMath runs remain active.
+
+### 20261122-044042 · `6c05c85`
+
+- Audit 7239421 matched all 17 completed tests to finished Forge runs. GSM8K GRPO gained 26.23 percentage points over SFT, with a paired question-clustered 95% interval of +24.61 to +27.84 at seed 42. The grader extracted an answer for 17,319 of 21,104 SFT responses and 21,040 of 21,104 GRPO responses. Accuracy among extractable answers was 75.12% and 88.14%, respectively.
+- The bucket denied the GSM8K winner upload in 7239418 in 18s with the automatic-credit 403, and also denied the smaller exact held-out directory in 7239439 in 23s. Both the complete local run and its Forge result are intact. The whole GSM8K GRPO copy remains pending quota relief.
+
+### 20261122-050430 · `6c05c85`
+
+- VinePPO link 7227188 reached iteration 625, saved the checkpoint, and completed its validation. Hugging Face returned the automatic-credit 403 during the candidate upload. That allocation took 6:58:35 and stopped before writing the iteration-625 metric row. The candidate checkpoint SHA256 `8aad4a96f563c147ad716957fa5b13b7ed01199525e2dbafd1b09f33856fc851` matches its saved validation record.
+- Cancelled the automatically started old-policy continuation 7234149 and its pending child 7239479 after confirming no new metric or boundary. The cancelled allocation took 4:37. The other three long arms already had their original rollover evidence and continued independently. Watcher 7239512 in `control-19` submitted VinePPO 7239516 from the iteration-625 checkpoint on the tested local-preservation pin `6212e45`. Its two-hour links cover the remaining 25 updates and final test, with the existing sampler, optimizer and schedule. The exact-run bucket entry now refers to `-11` in the deferred archive plan together with the original `-03` source root. Every runnable admission completed, so the replacement watcher exited successfully. Removed the clean superseded `1c7ea5d` worktree after the old allocations stopped.
+
+### 20261122-063758 · `6c05c85`
+
+- RLOO 650 (7234239) completed 332,800 primary continuations and 34,870,707 sampled tokens in one H100 allocation of 7:37:08. Validation selected iteration 525 at 67.76%. Its 16-round held-out Pass@1 was 51.48%. Whole-run proof 7239999 returned the storage 403 in 20s. All checkpoint files stay on scratch for this run.
+- VinePPO 650 recovery 7239516 restored iteration 625, recorded `ROLLOVER` at 626, and completed the 16-round test in 44:08. The test scored 56.90% on validation-selected iteration 550 (72.59% validation). The original job hash-verified the selected actor, and its receipt records SHA256 `33f0e283607d8dd2097b59a2ed3568b4ac6c2ee1b0da368db9c9b218b9433764`. Across links this run used 15:37:05 allocated and 16:27:08 from first start to last end. The 649 metric rows record 38,736,542 primary and 629,448,585 MC tokens, with 332,288 logged primary continuations out of 332,800 configured. These are measured lower bounds because the archived upload failure suppressed row 625. The new full lineage and final test remain unverified in the bucket.
+- Nineteen mandatory 16-round tests are complete. GRPO 650 and PPO 650 are still running and have registered successors. Audit 7240010 checks the two new results against Forge and the held-out responses.
+
+### 20261122-063941 · `6c05c85`
+
+- CPU audit 7240010 verified all 19 completed online tests in 42s. On the same held-out GSM8K questions and seed 42, VinePPO 650 exceeded RLOO 650 by 5.42 percentage points, with a paired question-clustered 95% interval of +3.69 to +7.16 points. This interval covers questions at one training seed.
+
+### 20261122-074851 · `6c05c85`
+
+- GRPO 650 link 7234240 yielded cleanly on the scheduled warning at iteration 494 after 7:50:02. Successor 7235448 started after 9:04 and confirmed rollover by completing iteration 495. Both rows contain 512 continuations. The recorded LRs 2.474226804e-6 and 2.458366376e-6 match the consecutive optimizer schedule steps. Reward moved 0.674→0.713, mean token KL 0.117→0.096, pre-clip grad norm 0.433→0.349. PPO 650 continues on its first H100 job.
+
+### 20261122-090445 · `6c05c85`
+
+- PPO 650 link 7234241 yielded at iteration 170 on the scheduled signal after 7:51:37. H100 successor 7236612 started 3s later and wrote `ROLLOVER` after iteration 171. Iterations 170 and 171 both logged 512 continuations. Actor and critic LRs stepped from 7.613005551e-6 to 7.597145123e-6, matching the schedule. Reward moved 0.598→0.662 and critic value loss 0.0682→0.0533. The retained critic file was `critic-170.pt`, 12,414,435,359 bytes, at the post-restore check.
+- Dropped the optional long seeds 43 and 44 from this execution under the handoff priority. New verified writes are blocked even for a held-out directory, and the required unverified learner states consume the local storage budget. The two remaining mandatory training chains continue. The completed OLMo and RestEM runs remain part of the results.
+
+### 20261122-102441 · `6c05c85`
+
+- GRPO 650 seed 42 finished 650 updates and 16 test rounds. It trained on 332,800 primary continuations, with 40,727,435 sampled tokens. Test Pass@1 was 53.63% on validation-selected iteration 625 (67.63% validation). The successor took 2:43:52, for 10:33:54 allocated GPU time and 10:42:58 elapsed across both H100 links.
+- Whole-run archive 7241295 returned the automatic-credit 403 in 25s. The completed GRPO run stays on scratch. Audit 7241296 verified all 20 completed online tests in 42s. At seed 42, VinePPO 650 exceeded GRPO 650 by 3.27 percentage points on paired GSM8K questions (95% interval +1.60 to +4.94). PPO 650 is the remaining active training chain.
