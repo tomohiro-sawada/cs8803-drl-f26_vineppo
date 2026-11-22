@@ -194,7 +194,7 @@ def generate(args):
             "--wandb-name",
             root.name,
         ]
-        gib = 44 if olmo else 32 if method == "ppo" else 10
+        gib = 35 if olmo else 32 if method == "ppo" else 10
         job(key, command, root, gib, [*common_gates, *gates])
         archive(key, root)
         return root
@@ -291,7 +291,7 @@ def generate(args):
             micro=1,
             task=task,
             olmo=True,
-            limit="12:00:00",
+            limit="06:00:00",
             gates=[ready / "COMPLETE"],
         )
         olmo_gates.append(trained / "COMPLETE")
