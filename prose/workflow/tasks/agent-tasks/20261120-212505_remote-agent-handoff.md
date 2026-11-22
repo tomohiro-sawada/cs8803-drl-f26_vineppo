@@ -395,3 +395,48 @@ Watcher 7210728 stopped at 23:47 after Slurm rejected an `afterok` dependency on
 ### 20261121-173135 · `6c839a7`
 
 - CPU 7230951 passed all 1,603 tests in 1:50 and used 1:53 of Slurm wall clock. Watcher 7230952 submitted OLMo MATH smoke retry 7230979. The superseded `8052fab` and `2d27896` worktrees were removed after checking that no allocation used them.
+
+### 20261121-180132 · `2f545ce`
+
+- Retry 7230979 reproduced the validation failure in 9:33. Captured stderr traced it to `IndexError` in SymPy's implicit multiplication transform. The grader's interval comparison sliced a parenthesized polynomial product as if it were an interval and sent the resulting unbalanced intermediate expression to SymPy.
+- `2f545ce` checks parenthesis balance before the restricted parser calls that transform. Invalid syntax follows the verifier's existing `SyntaxError` handling, and the normal symbolic comparison still evaluates the whole expression. It does not catch arbitrary grader worker or resource errors. The full suite in 7231460 includes the exact failing polynomial pair and both unmatched-parenthesis directions. Watcher 7231461 in `control-11` gates the `-06` smoke on that suite and retains the verified `-04` SFT result.
+- PPO seed 42 has reached iteration 200 and entered its selected-checkpoint evaluation. Seeds 43 and 44 are still training. The ongoing RhoMath worktree and parameters are unchanged.
+
+### 20261121-180651 · `2f545ce`
+
+- CPU 7231460 passed all 1,606 tests, including the exact failing expression, in 1:49. The allocation took 1:53. Watcher 7231461 submitted OLMo MATH retry 7231492 on the parser fix.
+- PPO 200 seed 42 (7226686) completed its 16-round test in 2:28:34 on H100, with 45.57% Pass@1 on validation-selected iteration 200. It sampled 2,541,225 tokens in 25,600 primary continuations. It did not resume. Whole-run archive 7231508 is running.
+
+### 20261121-181850 · `6212e45`
+
+- PPO seed 42's exact 220-file, 17,056,165,016-byte bucket archive in 7231508 verified. Hugging Face rejected the next seed's iteration-200 critic upload with HTTP 403 requiring automatic credit recharge. Jobs 7226940 and 7229011 failed after 2:24:05 and 5:04, and successor 7231548 halted at the intact validation boundary 200. PPO seed 44's iteration-175 upload failed with the same 403 after 2:18:45 in 7227708. Stopped its 1:20 replay 7229238 and pending successor after confirming the 175 boundary was intact. No approved alternative bucket was configured. The billing and remote files were left as found.
+- `6212e45` supports an explicit source checkpoint for a new resumable root. It also keeps local-only PPO critic storage bounded through rotation, and retains every candidate actor in locally configured waves. CPU 7231649 passed all 1,607 tests in 1:55, with 1:59 of Slurm wall clock. No algorithm, sampling, validation, or optimization settings changed.
+- Watcher 7231703 in `control-12` submitted PPO seed 43 recovery 7231705 from iteration 200, seed 44 recovery 7231706 from iteration 175, and OLMo MATH smoke 7231707 with local checkpointing. Its plan explicitly defers ten dependent archive jobs in `deferred_archives` because of the 403. The pending three other 650 arms and remaining OLMo arms are configured for local preservation, with their dependency order unchanged. Existing checkpoint paths and verified bucket receipts stay intact. Successful tests in this mode still need verified bucket copies to count as complete under the handoff.
+
+### 20261121-183319 · `6212e45`
+
+- PPO seed 43 recovery 7231705 finished the frozen iteration-200 winner's 16-round test at 48.53% Pass@1 in 5:38. Total allocated time for this trial, counting the original link and failed replay, was 2:34:47. Its original metrics stop at 199 because archival failed before the iteration-200 row was written. The final update and validation were preserved in the checkpoint and selection.
+- Small writes are still accepted. The original long VinePPO link verified its iteration-175 candidate. Job 7231830 verified the PPO seed-43 selected compact actor and exact 52-file recovery test directory in 1:15. The frozen actor base was previously verified. The full source root containing the final critic and optimizer remains unverified. Read-only inventory 7231780 reported 854,423,665,742 logical bytes in this bucket, split between run directories and checkpoint history.
+- OLMo MATH smoke 7231707 has started on H200. Removed clean superseded worktrees `6c839a7` and `2f545ce` after confirming no allocation used them.
+
+### 20261121-184852 · `d15e1c7`
+
+- OLMo 7231707 graded the entire 500-example initial validation and made two updates. The iteration-2 checkpoint was durable. The evaluation actor loader rejected its OLMo provenance tag. Jobs 7231707 and 7231827 hit the assertion after 12:42 and 3:14, then 7232006 marked the halt at iteration 2.
+- `d15e1c7` accepts and validates the OLMo tag while preserving the legacy RhoMath schema and exact evaluator-side provenance check. It validates the pinned OLMo tokenizer's BOS alias to EOS with an unset model BOS, consistent with chat-template inputs. CPU job 7232029 uses the actual iteration-2 checkpoint to exercise the full actor restoration path, then runs the entire test suite. Watcher 7232040 in `control-13` gates the `-08` continuation from that checkpoint on both checks.
+- PPO seed 44 resumed iteration 175 and wrote `ROLLOVER` after iteration 176. It advanced past 180 with one local 12,414,435,295-byte critic blob in its new root. The original iteration-175 source remains intact.
+
+### 20261121-185138 · `d15e1c7`
+
+- CPU 7232029 loaded the actual OLMo iteration-2 actor, verified its SHA256 and OLMo tokenizer/config identity, and preserved the expected provenance. Loading took 100.8s. The full suite passed all 1,608 tests in 1:18, with 3:14 total allocated wall clock. Watcher 7232040 submitted the H200 continuation 7232076 from that exact checkpoint.
+
+### 20261121-190725 · `d15e1c7`
+
+- PPO seed 44 finished iteration 200 and scored 47.80% Pass@1 across all 16 rounds on validation-selected iteration 175. The final recovery allocation took 24:12, with 2:44:17 allocated across all links and 3:05:31 from first start to last end. Archive 7232260 verified the winner's compact actor, the selection, the test-completion record and the exact 38-file test directory in 1:25. Full source and final critic copies remain deferred.
+- Result audit 7232286 ran in 29s and combined the PPO lineages. Both recovered PPO trials have 199 recorded metric rows and 25,472 recorded primary continuations. Seed 43 logged 2,735,678 tokens, missing row 200. Seed 44 logged 2,593,354 tokens, missing row 175. Each skipped metric write followed a saved and validated checkpoint and a failed upload. All 12 short-run test records are complete, and the token totals for these two seeds are measured lower bounds.
+- OLMo continuation 7232076 restored and validated the trained iteration-2 actor, then advanced to iteration 3. The matching MATH production gate still awaits the end of the smoke.
+
+### 20261121-193828 · `d15e1c7`
+
+- Forge API audit 7232620 matched all 14 completed production tests to their online W&B runs at `tsawada/vineppo`. Each run was marked finished and matched the local Pass@1 and 16-round count. This covers all three seeds of PPO and RLOO as well as the other ten completed runs. The audit took 12s.
+- OLMo MATH smoke 7232076 resumed at iteration 2, completed iteration 4, and ran 16 held-out rounds on validation-selected iteration 2 with 70.24% Pass@1. Its final H200 allocation took 46:33. The watcher submitted production MATH GRPO 7232689, which started on H200 in `handoff-olmo3-math-grpo-50-s42-08`. Full archive of the smoke and production checkpoint directories is deferred under the recorded bucket restriction.
+- Checked 45 training status files and 12 watcher status files. All seven outstanding admission gates have a producer. The three other RhoMath 650 arms await the VinePPO run's first scheduled rollover, and the GSM8K OLMo sequence awaits MATH GRPO completion.
