@@ -560,3 +560,36 @@ Watcher 7210728 stopped at 23:47 after Slurm rejected an `afterok` dependency on
 
 - GRPO 650 seed 42 finished 650 updates and 16 test rounds. It trained on 332,800 primary continuations, with 40,727,435 sampled tokens. Test Pass@1 was 53.63% on validation-selected iteration 625 (67.63% validation). The successor took 2:43:52, for 10:33:54 allocated GPU time and 10:42:58 elapsed across both H100 links.
 - Whole-run archive 7241295 returned the automatic-credit 403 in 25s. The completed GRPO run stays on scratch. Audit 7241296 verified all 20 completed online tests in 42s. At seed 42, VinePPO 650 exceeded GRPO 650 by 3.27 percentage points on paired GSM8K questions (95% interval +1.60 to +4.94). PPO 650 is the remaining active training chain.
+
+### 20261122-124724 · `7f2ad45`
+
+- PPO 650 reached iteration 264 on its second H100 link. Its last 25 rows averaged 149.3s per update, including 98.8s of critic optimization. This suggests about 16 more hours of updates at the same throughput (estimate), plus rollover queueing and the final test. One 12,414,435,359-byte critic blob was retained at the check. All 53 training status files and 18 watcher statuses were readable, and the final admitted chain has its pending successor.
+- Detailed and brief report drafts dated `20261122-110919` include the 20 finished handoff results and 12 historical runs. The PPO 650 row is marked active. Whole-lineage verification is distinguished from a verified recovery test directory.
+
+### 20261122-170252 · `7f2ad45`
+
+- PPO 650 link 7236612 yielded at iteration 365 after 7:51:03. H100 successor 7240833 started after 57s and has reached iteration 369. Rows 365 and 366 contain 512 primary continuations each and match both LR schedule positions, 4.520222046e-6→4.504361618e-6. Reward moved 0.660→0.564 and critic value loss 0.0506→0.0567. The retained PPO state is one 12,414,435,359-byte critic file. Its next automatic successor is 7244387.
+
+### 20261122-170646 · `7f2ad45`
+
+- Final code pin `6c05c85` passed all 1,609 CPU tests in 161.32s on 7244634, with 2:48 of Slurm wall clock. Removed the clean watcher worktree after checking the queue and deferred specs. The PPO chain remains on its own active `6212e45` worktree.
+
+### 20261123-013103 · `7f2ad45`
+
+- PPO 650 link 7240833 yielded at iteration 561 after 7:51:31. H100 successor 7244387 started at 01:07:10 after a 29:18 gap. Rows 561 and 562 each contain 512 primary continuations. Actor and critic LRs match the consecutive schedule positions, 1.411578113e-6→1.395717684e-6. Reward moved 0.682→0.693 and critic value loss 0.0397→0.0379. The run has advanced to 569 and has one retained critic blob. Successor 7249273 is registered should another allocation be needed.
+
+### 20261123-045508 · `7f2ad45`
+
+- PPO 650 seed 42 completed all 650 updates, 332,800 primary continuations and 36,855,940 sampled tokens. Its 16-round test scored 53.62% Pass@1 on validation-selected iteration 575 (71.18% validation). Final link 7244387 took 3:45:35 and left `COMPLETE`, with the remaining successor cancelled. The four H100 allocations total 27:19:46 of GPU wall clock, with 27:50:04 elapsed from first start to final end.
+- All 21 mandatory runs now have frozen test results or a completed SFT baseline. Final whole PPO archive 7251059 and online/held-out audit 7251060 are in progress.
+
+### 20261123-045746 · `7f2ad45`
+
+- Final audit 7251060 finished in 49s. It checked all 21 required `COMPLETE` markers, 16-round local results and finished Forge runs. The results table includes those 21 runs and all 12 historical results. VinePPO 650 exceeded PPO 650 by 3.28 percentage points on the paired held-out questions at seed 42 (95% interval +1.54 to +5.03). The FP32 critic used 66.1% of PPO's logged iteration time and checkpoints used 3.4%.
+- Whole PPO archive 7251059 returned HTTP 403 requiring automatic credit recharge after 1:16. Thirteen mandatory run lineages have full SHA256-verified archives. Whole-lineage archives remain incomplete for the following eight.
+  - RhoMath PPO 200 seeds 43 and 44, original `-03` and recovered `-07` roots. The selected actors and tests were verified separately.
+  - RhoMath VinePPO 650 seed 42, original `-03` and recovered `-11` roots. Its selected actor and earlier candidates have checkpoint-history receipts.
+  - RhoMath RLOO, GRPO and PPO 650 seed 42, `-07` roots. Whole-run attempts returned the same 403.
+  - OLMo MATH and GSM8K GRPO, `-10` roots. The MATH winner and test were verified separately. GSM8K's winner and isolated test upload both received 403.
+- `control-19/wave-plan.json` records the deferred archive jobs, original source roots and code pins. The unfinished requirement is whole-copy verification for those eight lineages. All local training evidence is retained under the verified-only cleanup rule. The optional long seeds 43 and 44 were dropped as previously recorded.
+- Slurm has no remaining handoff allocations. Removed the three clean final training and archival worktrees after confirming the queue was clear. The reports dated `20261122-110919` are final, with exact per-run Slurm clocks and archive evidence.
