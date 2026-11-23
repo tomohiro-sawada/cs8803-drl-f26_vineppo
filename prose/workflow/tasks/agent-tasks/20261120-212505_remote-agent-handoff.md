@@ -593,3 +593,8 @@ Watcher 7210728 stopped at 23:47 after Slurm rejected an `afterok` dependency on
   - OLMo MATH and GSM8K GRPO, `-10` roots. The MATH winner and test were verified separately. GSM8K's winner and isolated test upload both received 403.
 - `control-19/wave-plan.json` records the deferred archive jobs, original source roots and code pins. The unfinished requirement is whole-copy verification for those eight lineages. All local training evidence is retained under the verified-only cleanup rule. The optional long seeds 43 and 44 were dropped as previously recorded.
 - Slurm has no remaining handoff allocations. Removed the three clean final training and archival worktrees after confirming the queue was clear. The reports dated `20261122-110919` are final, with exact per-run Slurm clocks and archive evidence.
+
+### 20261123-050311 · `fdcb563`
+
+- Read-only Slurm audit 7251094 reconciled the current private bucket inventory against the 11 source and recovery directories for the eight unfinished lineages. The mirror paths lacked 2,802 files totaling 155,221,365,440 logical bytes. Checkpoint-history objects are outside the mirror count. Only the PPO seed-43 recovery directory had an exact listing, and the audit re-downloaded and SHA256-verified all 52 files (23,702,720 bytes) in node-local storage. Its original training directory is still absent from the mirror.
+- The first probe, 7251091, received an empty CLI payload for an absent prefix. The bucket-wide inventory supplied the full comparison. Audit 7251094 finished in 1:25. The most recent whole-run upload, 7251059, returned the provider's automatic-credit 403. The read-only reconciliation completed with no new whole-lineage receipts or local checkpoint deletions.
