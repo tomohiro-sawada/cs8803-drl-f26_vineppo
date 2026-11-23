@@ -598,3 +598,8 @@ Watcher 7210728 stopped at 23:47 after Slurm rejected an `afterok` dependency on
 
 - Read-only Slurm audit 7251094 reconciled the current private bucket inventory against the 11 source and recovery directories for the eight unfinished lineages. The mirror paths lacked 2,802 files totaling 155,221,365,440 logical bytes. Checkpoint-history objects are outside the mirror count. Only the PPO seed-43 recovery directory had an exact listing, and the audit re-downloaded and SHA256-verified all 52 files (23,702,720 bytes) in node-local storage. Its original training directory is still absent from the mirror.
 - The first probe, 7251091, received an empty CLI payload for an absent prefix. The bucket-wide inventory supplied the full comparison. Audit 7251094 finished in 1:25. The most recent whole-run upload, 7251059, returned the provider's automatic-credit 403. The read-only reconciliation completed with no new whole-lineage receipts or local checkpoint deletions.
+
+### 20261123-050445 · `aecb2df`
+
+- Slurm 7251113 tried the smallest wholly missing mirror directory from audit 7251094, the 228,760,255-byte VinePPO 650 recovery root. The private bucket returned HTTP 403 requiring automatic credit recharge in 7s. The attempt produced no verification receipt. Thirteen of 21 required lineages retain full verification. The other eight require a change to available write quota on the designated bucket.
+- Slurm is clear. The clean audit worktree was removed and the local run directories were retained.
