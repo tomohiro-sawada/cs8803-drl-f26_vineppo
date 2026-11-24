@@ -1,10 +1,11 @@
 """What-if replay of stored OLMo samples through the production step splitter.
 
-Production rejects every OLMo sample at the control-token allowlist, because the
-tokenizer lists its chat tokens as added special tokens and not in
-all_special_ids. The proxy below adds them, and nothing else changes.
+The historical control-token allowlist rejected every OLMo sample because the
+tokenizer listed its chat tokens as added special tokens. Replay both the
+historical strict and the forward-rounded GSM8K cut policies.
 """
 import collections, json, re, statistics, sys
+from functools import partial
 
 W = sys.argv[1]
 sys.path[:0] = [W, W + "/src"]
@@ -20,10 +21,11 @@ class Proxy:
     is_fast = tok.is_fast
     bos_token_id = tok.bos_token_id
     all_special_ids = sorted(set(tok.all_special_ids) | {i for i, t in tok.added_tokens_decoder.items() if t.special})
+    added_tokens_decoder = tok.added_tokens_decoder
     decode = staticmethod(tok.decode)
 
 
-strict_gsm8k = seg.gsm8k_step_boundaries
+strict_gsm8k = partial(seg.gsm8k_step_boundaries, round_forward=False)
 
 
 def rounded_gsm8k(text, ids, spans):

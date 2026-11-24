@@ -13,9 +13,8 @@ Zero-width tokens are allowed only as a trailing
 suffix at len(text), e.g. sampled EOS, and belong to the final step. No prompt,
 padding, normalization, tokenization or decoding is performed by those adapters.
 
-MATH assigns a token spanning a character cut to the earlier step and advances
-the cut to the next complete sampled-token boundary. Cuts that coincide are
-merged. GSM8K requires exact character cuts. Both preserve the sampled IDs.
+Both tasks assign tokens spanning character cuts to the earlier step and
+advance the cuts to complete sampled-token boundaries. Coincident cuts merge.
 Empty/degenerate partitions and upstream segmentation failures raise.
 
 GSM8K logic condensed from McGill-NLP/VinePPO, revision
@@ -67,26 +66,31 @@ def step_boundaries_from_tokens(
         treats everything from the first answer marker onward as one suffix,
         including repeated markers. MATH splitter errors and degenerate GSM8K
         whitespace-only partitions propagate.
-        For MATH, advance cuts inside tokens and merge coincident cuts. The same
-        resulting sampled-token boundaries define MC states and PPO credit.
-        For GSM8K, a cut inside a token still raises. Alignment and upstream
-        partition failures raise for both tasks.
+        Departures from upstream: recognize special added tokens even when
+        absent from all_special_ids. Only explicitly allowlisted controls may
+        appear in the prompt after an optional leading BOS. For both MATH and
+        GSM8K, advance cuts inside tokens and merge coincident cuts on the
+        sampled sequence. Use those boundaries for both MC states and PPO
+        credit. Alignment and upstream partition failures still raise.
     """
     assert dataset in ("math", "gsm8k"), "Unsupported segmentation dataset"
     assert tokenizer.is_fast, "Segmentation requires a fast tokenizer"
     ids = list(response_ids)
     assert ids and all(type(token) is int and token >= 0 for token in ids)
     assert all(type(token) is int and token >= 0 for token in eos_token_ids)
+    special_ids = set(tokenizer.all_special_ids) | {
+        token for token, added in tokenizer.added_tokens_decoder.items() if added.special
+    }
     has_eos = ids[-1] in eos_token_ids
     content_ids = ids[:-1] if has_eos else ids
     assert not set(content_ids).intersection(
-        set(tokenizer.all_special_ids) | set(eos_token_ids)
+        special_ids | set(eos_token_ids)
     ), "Only one terminal EOS is supported; response contains other special tokens"
     context = list(context_ids)
     if context and context[0] == tokenizer.bos_token_id:
         context = context[1:]
-    assert set(context_special_ids) <= set(tokenizer.all_special_ids)
-    assert set(context).intersection(tokenizer.all_special_ids) <= set(
+    assert set(context_special_ids) <= special_ids
+    assert set(context).intersection(special_ids) <= set(
         context_special_ids
     ), "Context contains special tokens other than one leading BOS"
     decode = partial(
@@ -150,6 +154,8 @@ def gsm8k_step_boundaries(
     text: str,
     response_ids: Sequence[int],
     token_spans: Sequence[tuple[int, int]],
+    *,
+    round_forward: bool = True,
 ) -> tuple[int, ...]:
     """Return exact GSM8K token offsets using upstream original-format defaults.
 
@@ -159,9 +165,14 @@ def gsm8k_step_boundaries(
     The suffix starting at the first exact ``\\n#### `` answer marker merges with
     the last nonblank reasoning step, including intervening blank lines and
     any repeated answer markers. See the module's shared token-span contract.
+    Pass round_forward=False only to replay historical strict diagnostics.
     """
     return _token_step_boundaries(
-        text, response_ids, token_spans, _gsm8k_character_boundaries
+        text,
+        response_ids,
+        token_spans,
+        _gsm8k_character_boundaries,
+        round_forward=round_forward,
     )
 
 
@@ -186,7 +197,7 @@ def _token_step_boundaries(
     token_spans: Sequence[tuple[int, int]],
     split_characters: Callable[[str], Sequence[int]],
     *,
-    round_forward: bool = False,
+    round_forward: bool,
 ) -> tuple[int, ...]:
     assert text and response_ids, "Text and sampled response must be nonempty"
     assert len(response_ids) == len(token_spans), "One span per sampled token required"

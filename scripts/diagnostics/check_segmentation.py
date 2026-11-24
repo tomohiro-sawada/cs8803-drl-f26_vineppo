@@ -16,7 +16,7 @@ from core.segmentation import gsm8k_step_boundaries, math_step_boundaries
 
 TOKEN_SOURCE = "locally_reencoded_proxy_text_NOT_sampled"
 SEGMENT = {
-    "gsm8k": gsm8k_step_boundaries,
+    "gsm8k": partial(gsm8k_step_boundaries, round_forward=False),
     "math": partial(math_step_boundaries, round_forward=False),
 }
 LIMITATIONS = (

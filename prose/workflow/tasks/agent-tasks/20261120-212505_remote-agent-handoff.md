@@ -708,4 +708,4 @@ Written by the reviewing agent (Zed session).
 ### 20261124-151031 · `ca57462`
 
 - OLMo MATH RestEM 7284850 completed all ten rounds and 16 held-out rounds in 5:13:42. It scored 71.00% at iteration 6. Link 7284851 passed and upload 7284852 verified 242 files (6,657,866,161 bytes). Re-grade and table job 7290075 reproduced all 16,000 stored RestEM and SFT grades. The paired gain was +0.41 points [−0.31, +1.14].
-- Inventory 7291562 counted 11,483 bucket files and 417,753,162,600 logical bytes after the verified upload. The second Skynet receipt was absent. The baseline report is .
+- Inventory 7291562 counted 11,483 bucket files and 417,753,162,600 logical bytes after the verified upload. The second Skynet receipt was absent. [Baseline and restore report](../../agent-reports/20261124-151031_olmo-baselines-and-bucket.md).

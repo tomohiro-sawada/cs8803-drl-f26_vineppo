@@ -221,10 +221,13 @@ def test_gsm8k_upstream_degenerate_whitespace_partition_is_rejected(text):
         )
 
 
-@pytest.mark.parametrize("spans", [[(0, 2), (2, 3)], [(0, 1), (0, 3)]])
-def test_gsm8k_newline_cut_inside_sampled_token_is_rejected(spans):
+@pytest.mark.parametrize(
+    "spans,expected", [([(0, 2), (2, 3)], (0, 1, 2)), ([(0, 1), (0, 3)], (0, 2))]
+)
+def test_gsm8k_rounds_inside_token_newline_cuts(spans, expected):
+    assert gsm8k_step_boundaries("a\nb", [10, 11], spans) == expected
     with pytest.raises(AssertionError, match="inside a sampled token"):
-        gsm8k_step_boundaries("a\nb", [10, 11], spans)
+        gsm8k_step_boundaries("a\nb", [10, 11], spans, round_forward=False)
 
 
 def test_gsm8k_exact_token_boundaries_with_trailing_eos():
@@ -443,13 +446,14 @@ def test_noncanonical_sampled_ids_keep_their_boundaries(byte_tokenizer):
     ) == (0, 2, 5)
 
 
-def test_real_tokenizer_token_straddling_newline_is_rejected(byte_tokenizer):
-    byte_tokenizer.add_tokens(["a\nb"])
-    ids = byte_tokenizer.encode("a\nb", add_special_tokens=False)
-    with pytest.raises(AssertionError, match="inside a sampled token"):
-        step_boundaries_from_tokens(
-            ids, byte_tokenizer, dataset="gsm8k", eos_token_ids=[]
-        )
+def test_real_tokenizer_rounds_coincident_gsm8k_cuts(byte_tokenizer):
+    byte_tokenizer.add_tokens(["a\nb\n"])
+    ids = byte_tokenizer.encode("a\nb\nc", add_special_tokens=False)
+    boundaries = step_boundaries_from_tokens(
+        ids, byte_tokenizer, dataset="gsm8k", eos_token_ids=[]
+    )
+    assert boundaries == (0, 1, 2)
+    assert byte_tokenizer.decode(ids[: boundaries[1]]) == "a\nb\n"
 
 
 def test_math_rounds_sampled_ids_that_would_reencode_differently(byte_tokenizer):
@@ -540,9 +544,12 @@ def test_context_with_special_tokens_is_rejected(byte_tokenizer):
 def test_chat_prompt_controls_are_allowlisted_without_changing_response_ids(
     byte_tokenizer,
 ):
+    byte_tokenizer.backend_tokenizer.add_special_tokens(["<|im_start|>", "<|im_end|>"])
+    start, end = byte_tokenizer.convert_tokens_to_ids(["<|im_start|>", "<|im_end|>"])
+    assert not {start, end}.intersection(byte_tokenizer.all_special_ids)
     eos = byte_tokenizer.eos_token_id
     ids = byte_tokenizer.encode("first step\nsecond", add_special_tokens=False) + [eos]
-    prompt = byte_tokenizer.encode("question", add_special_tokens=False) + [eos]
+    prompt = [start, *byte_tokenizer.encode("question", add_special_tokens=False), end]
     plain = step_boundaries_from_tokens(
         ids, byte_tokenizer, dataset="gsm8k", eos_token_ids=[eos]
     )
@@ -552,15 +559,24 @@ def test_chat_prompt_controls_are_allowlisted_without_changing_response_ids(
         dataset="gsm8k",
         eos_token_ids=[eos],
         context_ids=prompt,
-        context_special_ids=[eos],
+        context_special_ids=[start, end],
     )
     assert decorated == plain
     with pytest.raises(AssertionError, match="other special tokens"):
         step_boundaries_from_tokens(
-            [eos, *ids],
+            [start, *ids],
             byte_tokenizer,
             dataset="gsm8k",
             eos_token_ids=[eos],
             context_ids=prompt,
-            context_special_ids=[eos],
+            context_special_ids=[start, end],
+        )
+    with pytest.raises(AssertionError, match="Context contains special tokens"):
+        step_boundaries_from_tokens(
+            ids,
+            byte_tokenizer,
+            dataset="gsm8k",
+            eos_token_ids=[eos],
+            context_ids=prompt,
+            context_special_ids=[start],
         )

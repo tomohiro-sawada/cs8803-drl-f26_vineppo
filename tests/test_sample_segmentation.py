@@ -24,6 +24,7 @@ class Tokenizer:
     bos_token_id = 1
     eos_token_id = 2
     all_special_ids = (1, 2, 3)
+    added_tokens_decoder = {}
 
     def __init__(self, *, prefixes=None):
         self.prefixes = prefixes
@@ -145,7 +146,6 @@ def test_assess_success_keeps_exact_ids(task, eos):
 @pytest.mark.parametrize(
     "ids,tokenizer,task,category,exception",
     [
-        ([4], Tokenizer(), "gsm8k", "inside_token", "AssertionError"),
         ([3, 5], Tokenizer(), "gsm8k", "special", "AssertionError"),
         ([2, 2], Tokenizer(), "gsm8k", "special", "AssertionError"),
         ([2], Tokenizer(), "gsm8k", "empty", "AssertionError"),
