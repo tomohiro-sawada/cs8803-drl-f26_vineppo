@@ -23,4 +23,12 @@ python3 experiments/training/pace_ice/handoff_20261120/vp-format-report-20261121
 
 `vp-check-restore.py` (added 2026-11-24, job 7288364) loads a real compact checkpoint with its frozen base reached through a hard link and through a symlink. The hard link loads; the symlink is refused.
 
-`vp-olmo-baseline-tables.py RUNS_DIR` (added 2026-11-24) prints the OLMo baseline tables of the 2026-11-24 report from the frozen test records and training metrics: Pass@1 with question-clustered intervals, paired gains, the strict and lenient GSM8K readings, and training health.
+`vp-olmo-baseline-tables.py RUNS_DIR [TASK:ARM:RUN_NAME ...]` (added 2026-11-24) prints the OLMo baseline tables of the 2026-11-24 report from the frozen test records and training metrics: Pass@1 with question-clustered intervals, paired gains, the strict and lenient GSM8K readings, and training health. Extra arguments add arms such as `gsm8k:VinePPO:handoff-olmo3-gsm8k-vineppo-50-s42-30`.
+
+`vp-link-frozen-base.py RUN BASE SHA256` (added 2026-11-24) re-hashes a completed run's frozen bases and hard-links them to the verified canonical copy, so that `hf_bucket_sync.py --linked-frozen-base` can upload the run without them.
+
+`vp-critic-rank-results.py RUN_ROOT [RUN_ROOT ...]` (added 2026-11-24) prints one JSON line per completed PPO run: validation and test Pass@1, mean critic loss, phase times, selected-checkpoint size and GPU wall time. Given the three seed-42 RhoMath LoRA-critic runs, it first prints the rank with the highest validation Pass@1, the smaller rank on a tie.
+
+`vp-vineppo-mc-rate.py RUN_ROOT` (added 2026-11-24) prints a completed VinePPO run's Monte Carlo tokens per primary token and Monte Carlo tokens per generation second.
+
+`vp-math-splitter-{failures,cause,whatif}.py` (added 2026-11-24, jobs 7289868, 7289925 and 7289968) are the read-only evidence for the pending MATH splitter change. They replay the 512 stored OLMo MATH responses: which ones the vendored splitter rejects, why (nested placeholders restored in insertion order), and what restoring in reverse order would do. Run them with `PYTHONPATH=src:.`. Nothing in `src` is changed by them.
