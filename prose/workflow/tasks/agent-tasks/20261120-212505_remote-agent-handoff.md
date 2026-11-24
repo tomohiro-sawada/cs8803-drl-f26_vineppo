@@ -603,3 +603,82 @@ Watcher 7210728 stopped at 23:47 after Slurm rejected an `afterok` dependency on
 
 - Slurm 7251113 tried the smallest wholly missing mirror directory from audit 7251094, the 228,760,255-byte VinePPO 650 recovery root. The private bucket returned HTTP 403 requiring automatic credit recharge in 7s. The attempt produced no verification receipt. Thirteen of 21 required lineages retain full verification. The other eight require a change to available write quota on the designated bucket.
 - Slurm is clear. The clean audit worktree was removed and the local run directories were retained.
+
+### 20261124-082337 · `4c924f8`
+
+Written by the reviewing agent (Zed session), not the Codex agent that wrote the entries above.
+
+- **Push.** Tom asked for the 35 local commits to be pushed. `origin/tom/work` is at `4c924f8`.
+- **Bucket state.** Tom's cleanup removed nothing that anything depends on: all 192 upload receipts on scratch still point to objects of the recorded size. The bucket held 857.9 GB before this session against the account's 1 TB of included private storage. It holds 983.9 GB now, and Hugging Face refuses further large uploads with the same 403.
+- **Archives.** Jobs 7279858 and 7280637–7280644 pushed and SHA256-verified nine of the eleven outstanding directories from a clean worktree at `4c924f8`: the four RhoMath 650 arms (`-03` and `-11` for VinePPO), PPO 200 seed 43 `-03`, PPO 200 seed 44 `-03` and `-07`, and OLMo MATH GRPO. Each prints a `verified` line. PPO 200 seed 43 `-07` was already verified by audit 7251094. Receipts are in `$SCRATCH_PROJECT/handoff-20261120/control-20/`.
+- **OLMo GSM8K GRPO.** Its upload (7281442) was refused with the 403. Job 7282681 then pushed and verified its 157 other files (2,611,336,310 bytes) through a hard-link view. Its `frozen-lora.pt` is not under its own prefix. Job 7280645 showed that file has SHA256 `7a574b6997d1acb19ec12204c10522f106b94ea5ee303417a78c0faa3c1c646a`, identical to the OLMo MATH GRPO copy that is verified in the bucket, so restoring the run needs that copy placed at the GSM8K path. The local copy is kept.
+- **Deleted.** `archive_run.slurm` pruned 95 checkpoint files, 82,384,020,018 bytes, from the six runs that have `COMPLETE` and a full verification. Paths and sizes are in `control-20/*.pruned.jsonl`. The three interrupted roots without `COMPLETE` and OLMo GSM8K GRPO keep every local file. Job 7282682 replaced the `handoff-olmo3-math-smoke-07` frozen blob with a hard link to the identical GSM8K GRPO one after re-hashing both. Scratch went from 252 to 148 GiB before the new runs.
+- **Re-grade.** `scripts/diagnostics/regrade_evaluation.py` (uncommitted, with tests; the full CPU suite passed 1,619 tests in job 7283245) re-graded the stored OLMo evaluations with the current verifier. No grade changed: 16,000 MATH responses (7283551) and 84,416 GSM8K responses (7282389). The MATH gain of +1.27 [0.38, 2.17] stands. The GSM8K analysis is in [the format note](../../../agent-reports/20261124-080354_olmo-gsm8k-format-vs-accuracy.md).
+- **OLMo baselines launched** at `4c924f8`, seed 42, on H200, W&B group `handoff-20261120`, roots `handoff-olmo3-{gsm8k,math}-{rloo-50,restem-match}-s42-20`.
+  - RLOO: jobs 7282894 (GSM8K) and 7282898 (MATH), with the OLMo GRPO settings and KL 3e-3.
+  - RestEM: jobs 7282896 (GSM8K) and 7282900 (MATH). Ten rounds of 80 prompts with eight samples each, eight epochs, minibatch 64, constant LR 1e-5 and no KL. That is 6,400 samples, matching OLMo GRPO, with the RhoMath matched recipe otherwise unchanged.
+  - After each run, a link job re-hashes its frozen blob and hard-links it to the canonical copy, and an archive job uploads everything else and verifies it (7284130, 7284132, 7284133, 7284852).
+  - MATH RestEM was resubmitted as 7284850 with a 15-hour limit before it started. GSM8K RestEM runs at about 20 minutes per round, and MATH responses are 2.7 times longer, so I expect about 11 hours (estimate) against the 8 first requested.
+  - First result: OLMo GSM8K RLOO finished in 1:27:01 with 88.01% test Pass@1 on validation-selected iteration 40 (94.84% validation). Its 157 non-frozen files are verified in the bucket (7284130).
+- **OLMo VinePPO and PPO were not launched.**
+  - VinePPO cannot run. The OLMo tokenizer lists `<|im_start|>` and `<|im_end|>` as added special tokens and not in `all_special_ids`, so the allowlist assertion at `src/core/segmentation.py:88` rejects every sample. Jobs 7281443 and 7281444 sampled 512 training responses per task and the production splitter rejected all 1,024.
+  - A what-if replay with those tokens allowlisted (7283244, `vp-olmo-splitter-replay.py`) segmented 505 of 512 MATH responses, with 22.3 steps on average. On GSM8K 414 of 512 fail because a step boundary falls inside a sampled token, such as `.\n\n`. With the MATH rounding rule applied to GSM8K all 512 segment, at 9.4 steps on average. Extending that rule to GSM8K is a segmentation decision for Tom.
+  - PPO does not fit on one H200 as designed. The critic is a fully trainable FP32 copy of the 7.34B-parameter model: weights, gradients and two Adam moments come to about 117 GB, and the BF16 actor and reference add 29 GB, against 150 GB of GPU memory before activations and the sampling replica (estimate from the parameter count). Its checkpoint would be about 88 GB. It was not attempted.
+- **Still in `/tmp` on `login-ice-gnr-1`.** Nine `vp-report-*` drafts. The formatter in `experiments/training/pace_ice/handoff_20261120/` reproduces the final tables byte for byte, and every other line that differs from the committed reports belongs to an earlier draft.
+
+### 20261124-095625 · `4c924f8`
+
+Written by the reviewing agent (Zed session). Nothing has been deleted from the bucket.
+
+- **Request.** Tom asked for the bucket to be thinned by triage once a Skynet agent has copied it to flash storage and written `SYNC_RECEIPT.json` to the bucket root. At 09:48 there was no receipt. The bucket held 11,107 files and 986.5 GB.
+- **The Skynet copy is a snapshot from before this morning's uploads.** Its listing had 8,149 files and 857.9 GB. The archive jobs in the entry above added 2,958 files and 128.6 GB afterwards. `hf buckets sync` lists the bucket once at the start, so the first pass will not contain them, and the receipt check as described compares against a fresh listing and will find them missing.
+- **Content that exists only in the bucket.** This morning's pruning removed the last local copy of 90 checkpoint files, 39.5 GB, whose content is in neither the Skynet snapshot nor on PACE scratch. They are the final PPO critics for PPO 200 seed 44 and PPO 650 (12.4 GB each), and candidate checkpoints of the four 650 runs and OLMo MATH GRPO. All but four resume slots (0.6 GB) are on the keep list below.
+- **Plan.** `experiments/training/pace_ice/handoff_20261120/vp-bucket-triage.py` (read-only) wrote `$SCRATCH_PROJECT/handoff-20261120/control-21/triage-plan.json`. It assigns every file its tier, size, content hash and upload time, and names the kept copy for each duplicate.
+
+| Tier | What | Files | GB | Not in the Skynet snapshot |
+|---|---|---:|---:|---:|
+| 1 | Byte-identical copy of a kept file; 304 GB is 69 extra copies of the RhoMath frozen base | 101 | 321.2 | 22.0 GB |
+| 2 | Weights of smoke, dry-run, benchmark, pilot and probe runs (50 run prefixes) | 162 | 249.9 | 0 |
+| 3 | Resume slots and full-format non-selected checkpoints of finished runs | 10 | 14.7 | 1.1 GB |
+| 4 | Intermediate PPO critic snapshots of the three PPO 200 seeds | 20 | 248.3 | 0 |
+| Keep | Everything else | 10,814 | 152.5 | 105.6 GB |
+
+- **Kept.** Every result, record, metric and log file. One copy of each of the 31 validation-selected checkpoints, the other compact validation checkpoints (35.0 GB), the last-iteration checkpoints, the served adapters, five PPO critics (62.1 GB: the one paired with the selected checkpoint of each PPO 200 seed, plus the final critics of PPO 200 seed 44 and PPO 650; PPO 650 saved no intermediate critic) and one copy of each frozen base (4.4 GB RhoMath, 29.2 GB OLMo).
+- **Tier 4 is the one tier that costs something for the report.** Those critics are needed to resume PPO training from an intermediate iteration or to measure value-prediction accuracy over training (the paper's Figure 3). Recreating them costs about 2.5 GPU-hours per seed and does not reproduce the same run. After a deletion they exist on Skynet only.
+- **Deleting a kept copy's duplicates breaks in-place restore.** A compact checkpoint records the absolute path and SHA256 of its run's own `frozen-lora.pt`. After tier 1, restoring a run means placing the kept frozen file at that path first.
+- **Archive jobs 7284132, 7284133 and 7284852 are held** so that nothing more is added to the bucket while the Skynet check runs.
+
+### 20261124-110114 · `4c924f8`
+
+Written by the reviewing agent (Zed session). Review of the plan above. Nothing has been deleted from the bucket. The table in the entry above is superseded by the one here.
+
+- **The receipt arrived and covers the old snapshot only.** `SYNC_RECEIPT.json` (verified `20261124-102608` on `sky1.cc.gatech.edu`, commit `fefee7e`) lists 8,149 files and 857,892,740,114 bytes. All 8,149 are still in the bucket with the same size and content hash. The bucket holds 11,108 files and 986,535,145,558 bytes. The 2,958 files uploaded this morning (128.6 GB) are not in the receipt.
+- **Where the uncovered 128.6 GB lives.**
+  - 2,820 result, record and log files (0.46 GB): all still on PACE scratch at the same paths.
+  - 15 weight files (28.1 GB): identical content is on Skynet under another path.
+  - 32 weight files (31.4 GB): still on PACE scratch at the same paths.
+  - The OLMo frozen base (29.2 GB): on PACE scratch under other run paths. Job 7286740 hashed the local file and got the bucket's content hash.
+  - **90 weight files (39.5 GB) exist only in the bucket.** They include the selected checkpoints of GRPO 650, RLOO 650 and PPO 650 and the final critics of PPO 200 seed 44 and PPO 650. The plan keeps all 90.
+- **Changes to the plan.**
+  - Resume slots of finished runs moved from tier 3 to keep (7 files, 1.1 GB). None is in the receipt and four exist only in the bucket.
+  - A tier 2–4 path must be in the receipt with the same size and hash. The triage script now asserts this.
+  - `SYNC_RECEIPT.json` is kept.
+
+| Tier | What | Files | Bytes | In the receipt |
+|---|---|---:|---:|---:|
+| 1 | Byte-identical copy of a kept file | 101 | 321,176,837,546 | 96 |
+| 2 | Weights of smoke, dry-run, benchmark, pilot and probe runs | 162 | 249,854,973,850 | 162 |
+| 3 | Full-format non-selected checkpoints of the two earliest seed-42 runs | 3 | 13,657,255,503 | 3 |
+| 4 | Intermediate PPO critic snapshots of the three PPO 200 seeds | 20 | 248,288,705,900 | 20 |
+| Keep | Everything else | 10,822 | 153,557,372,759 | 7,868 |
+
+- **Checks that passed.**
+  - All 33 W&B runs linked from the final report map to run directories the plan protects, and no tier-2 run shares a lineage with a report row.
+  - No tier 2–4 file has the content of a kept file, and no deletion tier contains a non-weight file.
+  - The bucket's content hash identifies content: 192 upload receipts map 172 distinct SHA256 values to 172 distinct bucket hashes, one to one, and 73 paths uploaded twice have identical hashes.
+  - Compact checkpoints of the two model families expect frozen bases with SHA256 `086cc6d3…` (RhoMath) and `7a574b69…` (OLMo), and the kept RhoMath base has the first (job 7286729).
+  - No planned path is a string prefix of another bucket path.
+- **Tools.** `scripts/remote_sync/delete_planned.py` deletes single named paths after checking each against a fresh listing, the kept copy (tier 1) or the receipt (tiers 2–4), and appends each deletion to a record. Job 7287041 regenerated the plan against the receipt and ran the tool without `--apply` on all four tiers: every check passed and nothing was deleted. The plan is `control-21/triage-plan.json`, SHA256 `cbabd663…`. The first draft is kept beside it as `triage-plan-superseded-20261124-0959.json`.
+- **Tier 1 costs convenience, not data.** It removes 69 of the 70 copies of the RhoMath frozen base, so 47 runs (25 of them reported runs) keep no base under their own prefix. A compact checkpoint records the absolute path and SHA256 of that file, so evaluating one later means placing the kept base at that path first.
+- **Tests.** The full CPU suite passed 1,628 tests with the new tool and its test in place (job 7287083).
+- **Tier 4 is Tom's decision.** After tiers 1–3 the bucket holds 401.8 GB with 598 GB free under the 1 TB allowance. The three pending OLMo uploads need about 15 GB.
