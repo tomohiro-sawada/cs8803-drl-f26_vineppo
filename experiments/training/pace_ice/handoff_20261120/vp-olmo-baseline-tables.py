@@ -12,14 +12,17 @@ import hashlib
 import json
 import subprocess
 import sys
-from collections import defaultdict
-from math import sqrt
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path[:0] = [str(ROOT), str(ROOT / "src")]
 
-from scripts.diagnostics.regrade_evaluation import lenient, load
+from scripts.diagnostics.regrade_evaluation import (
+    interval,
+    lenient,
+    load,
+    question_means,
+)
 
 RUNS = {
     "math": {
@@ -50,21 +53,6 @@ def strict(record):
     return record["correct"]
 
 
-def by_question(records, grade):
-    scores = defaultdict(list)
-    for record in records:
-        scores[record["example_id"]].append(float(grade(record)))
-    assert all(len(rounds) == 16 for rounds in scores.values())
-    return {key: sum(rounds) / 16 for key, rounds in scores.items()}
-
-
-def interval(values):
-    mean = sum(values) / len(values)
-    spread = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
-    half = 1.96 * sqrt(spread / len(values))
-    return 100 * mean, 100 * (mean - half), 100 * (mean + half)
-
-
 def gain(run, baseline):
     assert run.keys() == baseline.keys(), "Evaluations cover different questions"
     return interval([run[key] - baseline[key] for key in run])
@@ -89,7 +77,7 @@ def describe(root):
     assert result["complete"] and result["rounds_completed"] == 16
     assert result["split"] == "test"
     records = load(Path(pointer["result"]).parent)
-    assert len(records) == result["total_count"]
+    assert len(records) == result["total_count"] == 16 * result["num_examples"]
     assert sum(map(strict, records)) == result["total_correct"]
     metrics = [
         json.loads(line)
@@ -153,7 +141,7 @@ def main(runs_dir):
             {"lenient": lenient} if task == "gsm8k" else {}
         )
         scores = {
-            (arm, name): by_question(data[arm]["records"], grade)
+            (arm, name): question_means(data[arm]["records"], grade)
             for arm in data
             for name, grade in readings.items()
         }

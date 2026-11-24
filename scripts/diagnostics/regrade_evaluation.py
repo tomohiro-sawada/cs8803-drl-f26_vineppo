@@ -84,19 +84,25 @@ def report(records):
     }
 
 
-def paired(treated, baseline, grade):
-    def by_question(records):
-        scores = defaultdict(list)
-        for record in records:
-            scores[record["example_id"]].append(float(grade(record)))
-        return {key: sum(values) / len(values) for key, values in scores.items()}
+def question_means(records, grade):
+    scores = defaultdict(list)
+    for record in records:
+        scores[record["example_id"]].append(float(grade(record)))
+    return {key: sum(values) / len(values) for key, values in scores.items()}
 
-    a, b = by_question(treated), by_question(baseline)
-    assert a.keys() == b.keys(), "Evaluations cover different questions"
-    gaps = [a[key] - b[key] for key in a]
-    mean = sum(gaps) / len(gaps)
-    error = sqrt(sum((gap - mean) ** 2 for gap in gaps) / (len(gaps) - 1) / len(gaps))
+
+def interval(values):
+    """Mean and 95% interval in points, one value per question."""
+    mean = sum(values) / len(values)
+    spread = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+    error = sqrt(spread / len(values))
     return [round(100 * x, 2) for x in (mean, mean - 1.96 * error, mean + 1.96 * error)]
+
+
+def paired(treated, baseline, grade):
+    a, b = question_means(treated, grade), question_means(baseline, grade)
+    assert a.keys() == b.keys(), "Evaluations cover different questions"
+    return interval([a[key] - b[key] for key in a])
 
 
 def main(directories):

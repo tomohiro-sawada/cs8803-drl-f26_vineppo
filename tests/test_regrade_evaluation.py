@@ -41,3 +41,7 @@ def test_paired_gap_clusters_rounds_by_question():
 
     with pytest.raises(AssertionError, match="different questions"):
         regrade.paired(treated, baseline[:2], lambda r: r["correct"])
+
+
+def test_interval_is_the_question_mean_with_its_standard_error():
+    assert regrade.interval([1.0, 0.5, 0.0]) == [50.0, -6.58, 106.58]
