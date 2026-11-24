@@ -29,6 +29,9 @@ These are sequential scheduler observations, not an atomic snapshot, GPU compute
   reviewed plan names, after checking each against the live listing and the
   off-site backup receipt; without `--apply` it only runs the checks.
 - `paper_artifact_replications` reproduces the paper's evaluation artifacts.
+- `figures` draws report figures. `collect_results_summary.py` reads run
+  directories into one JSON file (run it under Slurm);
+  `plot_results_summary.py` draws the PNGs from that file.
 
 Run `python3 scripts/codebase_hygiene/check_file_sizes.py` to audit every
 tracked file in `HEAD`. Pull-request CI checks newly added or modified Git
