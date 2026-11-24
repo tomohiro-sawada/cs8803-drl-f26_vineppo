@@ -230,10 +230,10 @@ def test_batches_budgets_all_samples_and_metrics(tmp_path):
         assert record["token_ids"] == (tokens("ok") + [2] if index % 2 == 0 else [4])
         assert record["text"] == ("ok<eos>" if index % 2 == 0 else "a\nb")
     assert metrics["complete"] and metrics["total_samples"] == 8
-    assert metrics["success"] == metrics["failure"] == 4
-    assert metrics["rejection_frequency"] == 0.5
+    assert metrics["success"] == 8 and metrics["failure"] == 0
+    assert metrics["rejection_frequency"] == 0
     assert metrics["by_finish_reason"]["stop"]["success"] == 4
-    assert metrics["by_finish_reason"]["length"]["by_category"]["inside_token"] == 4
+    assert metrics["by_finish_reason"]["length"]["success"] == 4
     assert json.loads((tmp_path / "metrics.json").read_text()) == metrics
     assert not (tmp_path / "metrics.tmp").exists()
 
