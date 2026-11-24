@@ -67,7 +67,6 @@ from algorithms.vineppo import MC_PREFIX_POLICY, VinePPOConfig
 from core.data import Example
 from core.inference import HFInference
 from core.lora import apply_lora, lora_identity
-from core.optimization import trainable_fp32_parameters
 from core.prompt_protocol import OLMO3, PROMPT, RHOMATH, prompt_protocol
 from core.segmentation import MATH_SEGMENTATION_POLICY
 from core.vllm_inference import VLLMClient, VLLMInference, gpu_identity, slurm_attempt
@@ -829,7 +828,7 @@ def main(argv=None):
             lora_rank=args.critic_lora_rank,
         )
         critic_optimizer = torch.optim.AdamW(
-            trainable_fp32_parameters(critic),
+            [p for p in critic.parameters() if p.requires_grad],
             lr=args.critic_learning_rate,
             weight_decay=0.0,
         )
@@ -1015,7 +1014,8 @@ def main(argv=None):
             },
             "start_iteration": trainer.iteration,
             "precision": (
-                "FP32 trainable weights, gradients and AdamW moments. "
+                "FP32 actor adapters, trainable critic weights, gradients "
+                "and AdamW moments. "
                 "Frozen model weights use dtype."
                 if args.finetuning == "lora"
                 else "FP32 parameters, gradients and AdamW moments"

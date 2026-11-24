@@ -507,9 +507,9 @@ def test_retention_only_prunes_owned_files_after_success(monkeypatch, tmp_path, 
 
 
 @pytest.mark.parametrize(
-    "algorithm,task,finetuning,dtype",
+    "algorithm,task,finetuning,dtype,critic_rank",
     [
-        (algorithm, task, finetuning, dtype)
+        (algorithm, task, finetuning, dtype, None)
         for algorithm, task in (
             ("vineppo", "gsm8k"),
             ("ppo", "math"),
@@ -520,11 +520,12 @@ def test_retention_only_prunes_owned_files_after_success(monkeypatch, tmp_path, 
             ("full", "float32"),
             ("lora", "bfloat16"),
         )
-    ],
+    ] + [("ppo", "math", "lora", "bfloat16", 16)],
 )
 @pytest.mark.parametrize("tracking_mode", ["disabled", "offline"])
 def test_main_local_model_assembly_and_real_warmup_summary(
-    cli, tmp_path, monkeypatch, clock, algorithm, task, finetuning, dtype, tracking_mode
+    cli, tmp_path, monkeypatch, clock, algorithm, task, finetuning, dtype,
+    critic_rank, tracking_mode,
 ):
     tracked_run = SimpleNamespace(
         id="fake-run",
@@ -584,6 +585,9 @@ def test_main_local_model_assembly_and_real_warmup_summary(
         return value
 
     actor, reference, backbone, critic = [model() for _ in range(4)]
+    if critic_rank is not None:
+        frozen = critic.parameters()[0].requires_grad_(False)
+        critic.parameters.return_value = [frozen, torch.nn.Parameter(torch.ones(5))]
 
     def freeze_reference(enabled):
         reference.parameters()[0].requires_grad_(enabled)
@@ -674,6 +678,8 @@ def test_main_local_model_assembly_and_real_warmup_summary(
     ]
     if finetuning == "lora":
         options += ["--lora-rank", "8", "--lora-alpha", "12.5"]
+    if critic_rank is not None:
+        options += ["--critic-lora-rank", str(critic_rank)]
     runner.main(cli + options + ["--wandb-mode", tracking_mode])
     if tracking_mode == "offline":
         sdk.init.assert_called_once()
@@ -751,15 +757,15 @@ def test_main_local_model_assembly_and_real_warmup_summary(
     )
     assert assembly.call_args.kwargs["warmup_iterations"] == 1
     if algorithm == "ppo":
+        critic_dtype = torch.float32 if critic_rank is None else getattr(torch, dtype)
         load_backbone.assert_called_once_with(
-            str(model_path.resolve()), **(kwargs | {"dtype": torch.float32})
+            str(model_path.resolve()), **(kwargs | {"dtype": critic_dtype})
         )
-        make_critic.assert_called_once_with(backbone)
+        make_critic.assert_called_once_with(backbone, lora_rank=critic_rank)
         assert assembly.call_args.kwargs["critic"] is critic
         assert optimizer.call_count == 2
-        assert all(p.requires_grad for p in critic.parameters())
         assert [id(p) for p in optimizer.call_args_list[1].args[0]] == [
-            id(p) for p in critic.parameters()
+            id(p) for p in critic.parameters() if p.requires_grad
         ]
         assert optimizer.call_args_list[1].kwargs == {"lr": 1e-5, "weight_decay": 0.0}
     else:

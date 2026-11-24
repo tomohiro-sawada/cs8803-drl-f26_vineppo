@@ -1175,7 +1175,7 @@ class PPOTrainer:
             }
             if self.critic is not None:
                 actual.update(
-                    critic=self._critic_checkpoint_state()[0],
+                    critic=dict(self._critic_checkpoint_state()[0]),
                     critic_optimizer=self.critic_optimizer.state_dict(),
                 )
             if self.schedule is not None:
