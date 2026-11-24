@@ -709,3 +709,8 @@ Written by the reviewing agent (Zed session).
 
 - OLMo MATH RestEM 7284850 completed all ten rounds and 16 held-out rounds in 5:13:42. It scored 71.00% at iteration 6. Link 7284851 passed and upload 7284852 verified 242 files (6,657,866,161 bytes). Re-grade and table job 7290075 reproduced all 16,000 stored RestEM and SFT grades. The paired gain was +0.41 points [−0.31, +1.14].
 - Inventory 7291562 counted 11,483 bucket files and 417,753,162,600 logical bytes after the verified upload. The second Skynet receipt was absent. [Baseline and restore report](../../agent-reports/20261124-151031_olmo-baselines-and-bucket.md).
+
+### 20261124-151618 · `8f2c355`
+
+- Implemented the approved added-special-token allowlist and forward-rounded GSM8K boundaries on original sampled IDs. Both are departures from upstream. Historical strict replay is still available. MATH placeholder restoration and the single-step policy remain pending approval.
+- Submitted full CPU suite 7291940 and four-iteration, one-H200 GSM8K VinePPO smoke 7291955, pinned to the segmentation commit. The smoke retains the 128-completion training batch and nine MC samples per state and uses one validation round.

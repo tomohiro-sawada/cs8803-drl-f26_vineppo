@@ -4,6 +4,8 @@ PACE-ICE scratch has a 300 GB quota and is purged storage, not an archive. This
 mirrors run directories (checkpoints, selections, evaluation records, metrics)
 under hf://buckets/<bucket>/<path relative to --root>. W&B's local run folders
 are skipped: their content already lives on the W&B server.
+Use --linked-frozen-base to omit frozen LoRA blobs already hard-linked to the
+canonical copy of a separately verified archive.
 
 Nothing is ever deleted, locally or remotely. Free local space separately, and
 only after `verify` has passed for that run:
@@ -36,6 +38,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BUCKET = "tsawada/cs8803-drl-f26_vineppo"
 RUNS = Path("/home/hice1/tsawada7/scratch/cs8803-drl-f26_vineppo")
 EXCLUDE = ("wandb/**", "*/wandb/**")
+FROZEN_BLOB = "frozen-lora.pt"
 
 
 def file_sha256(path: Path) -> str:
@@ -82,14 +85,20 @@ def hf(*args: str, online: bool = False) -> str:
     return result.stdout
 
 
-def local_files(run: Path) -> dict[str, int]:
+def local_files(run: Path, *, linked_frozen_base: Path | None = None) -> dict[str, int]:
     """Relative path -> size for everything `push` uploads from this run."""
     files = {}
+    found_frozen = False
     for path in sorted(run.rglob("*")):
         relative = path.relative_to(run)
         if path.is_file() and "wandb" not in relative.parts[:-1]:
+            if linked_frozen_base is not None and path.name == FROZEN_BLOB:
+                assert path.samefile(linked_frozen_base), f"Unlinked frozen base: {path}"
+                found_frozen = True
+                continue
             files[relative.as_posix()] = path.stat().st_size
     assert files, f"Nothing to archive under {run}"
+    assert linked_frozen_base is None or found_frozen, f"No frozen base under {run}"
     return files
 
 
@@ -113,25 +122,28 @@ def targets(args) -> list[tuple[Path, str]]:
     return result
 
 
-def push(args) -> None:
+def push(args, *, linked_frozen_base: Path | None = None) -> None:
+    exclude = EXCLUDE
+    if linked_frozen_base is not None:
+        exclude += (FROZEN_BLOB, f"*/{FROZEN_BLOB}")
     for run, prefix in targets(args):
-        expected = local_files(run)
+        expected = local_files(run, linked_frozen_base=linked_frozen_base)
         hf(
             "buckets",
             "sync",
             str(run),
             f"hf://buckets/{BUCKET}/{prefix}",
-            *(part for pattern in EXCLUDE for part in ("--exclude", pattern)),
+            *(part for pattern in exclude for part in ("--exclude", pattern)),
         )
         assert remote_files(prefix) == expected, f"Bucket listing differs: {prefix}"
         print(f"pushed {prefix}: {len(expected)} files, {sum(expected.values())} bytes")
 
 
-def verify(args) -> None:
+def verify(args, *, linked_frozen_base: Path | None = None) -> None:
     with TemporaryDirectory(dir=node_local_tmpdir(), prefix="bucket-verify-") as tmp:
         copy = Path(tmp) / "download"
         for run, prefix in targets(args):
-            expected = local_files(run)
+            expected = local_files(run, linked_frozen_base=linked_frozen_base)
             assert remote_files(prefix) == expected, f"Bucket listing differs: {prefix}"
             for relative in expected:
                 hf(
@@ -157,8 +169,11 @@ def main() -> None:
     parser.add_argument("action", choices=("push", "verify"))
     parser.add_argument("runs", nargs="+", type=Path, help="Run directories")
     parser.add_argument("--root", type=Path, default=RUNS, help="Bucket path origin")
+    parser.add_argument("--linked-frozen-base", type=Path)
     args = parser.parse_args()
-    {"push": push, "verify": verify}[args.action](args)
+    {"push": push, "verify": verify}[args.action](
+        args, linked_frozen_base=args.linked_frozen_base
+    )
 
 
 if __name__ == "__main__":
