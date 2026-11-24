@@ -19,4 +19,8 @@ python3 experiments/training/pace_ice/handoff_20261120/vp-format-report-20261121
 
 `vp-review-olmo-frozen-xet.py FILE` (added 2026-11-24, job 7286740) prints the bucket content hash of a local file without uploading it, to compare with a bucket listing.
 
+`vp-check-kept-bases.py` (added 2026-11-24, job 7287784) downloads the two frozen bases the thinned bucket keeps to node-local disk and asserts their SHA256. Run it with `PYTHONPATH` set to the repo root.
+
+`vp-check-restore.py` (added 2026-11-24, job 7288364) loads a real compact checkpoint with its frozen base reached through a hard link and through a symlink. The hard link loads; the symlink is refused.
+
 `vp-olmo-baseline-tables.py RUNS_DIR` (added 2026-11-24) prints the OLMo baseline tables of the 2026-11-24 report from the frozen test records and training metrics: Pass@1 with question-clustered intervals, paired gains, the strict and lenient GSM8K readings, and training health.
