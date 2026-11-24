@@ -704,3 +704,8 @@ Written by the reviewing agent (Zed session).
 - **OLMo MATH RLOO finished.** Job 7282898 took 3:04:06 in one H200 allocation. Test Pass@1 is 71.41% on validation-selected iteration 40 (68.00% validation). The link job 7282899 confirmed its frozen base is the verified OLMo base, and 7284133 pushed and SHA256-verified its 157 other files (2,623,387,653 bytes). Re-grading 8,000 responses changed no grade (7287977). The paired gain over SFT is +0.83 points [−0.04, 1.69].
 - **OLMo GSM8K RestEM finished.** Job 7282896 took 4:17:52. Test Pass@1 is 84.49% on validation-selected round 10 (92.43% validation). Link job 7282897 succeeded and upload 7284132 has pushed 242 files (6,625,830,127 bytes) and is verifying. Re-grading changed no grade (7288220). The paired gain over SFT is +22.84 [21.31, 24.37] by the official grader and +6.01 [5.00, 7.02] by the lenient reading.
 - **OLMo MATH RestEM is on round 5 of 10** (job 7284850, 15-hour limit) at about 27 minutes per round. I expect about 2.7 more hours of training plus the 16-round test (estimate).
+
+### 20261124-151031 · `ca57462`
+
+- OLMo MATH RestEM 7284850 completed all ten rounds and 16 held-out rounds in 5:13:42. It scored 71.00% at iteration 6. Link 7284851 passed and upload 7284852 verified 242 files (6,657,866,161 bytes). Re-grade and table job 7290075 reproduced all 16,000 stored RestEM and SFT grades. The paired gain was +0.41 points [−0.31, +1.14].
+- Inventory 7291562 counted 11,483 bucket files and 417,753,162,600 logical bytes after the verified upload. The second Skynet receipt was absent. The baseline report is .
