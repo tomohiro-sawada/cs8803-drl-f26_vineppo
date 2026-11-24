@@ -50,6 +50,12 @@ def describe(root):
         "validation_pass_at_1": winner["accuracy"],
         "test_pass_at_1": run["test_pass_at_1"],
         "critic_loss": run["training_health_mean"]["critic/value_loss"],
+        "critic_loss_last_25": run["training_health_tail_mean"]["critic/value_loss"],
+        # Population std over tokens of return minus rollout value (gamma = lambda = 1).
+        "value_residual_std": run["training_health_mean"]["raw_advantage_token_std"],
+        "value_residual_std_last_25": run["training_health_tail_mean"][
+            "raw_advantage_token_std"
+        ],
         "mean_iteration_seconds": phases["iteration_seconds"] / n,
         "mean_critic_update_seconds": phases["critic_update_seconds"] / n,
         "mean_actor_update_seconds": phases["actor_update_seconds"] / n,

@@ -82,6 +82,7 @@ def extract(root):
     quality_keys = (
         "reward_mean", "reference_kl", "clip_frac", "grad_norm", "truncation_fraction",
         "response_length_mean", "raw_advantage_token_zero_fraction",
+        "raw_advantage_token_std",
         "group_zero_reward_variance_fraction", "critic/value_loss",
         "vineppo/mc_prefix_value_mean", "vineppo/mc_prefix_value_std",
         "restem/accepted_episodes",
