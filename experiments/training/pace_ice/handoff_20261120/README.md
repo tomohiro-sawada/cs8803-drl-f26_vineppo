@@ -18,3 +18,5 @@ python3 experiments/training/pace_ice/handoff_20261120/vp-format-report-20261121
 `vp-review-frozen-specs.py [FILE ...]` (added 2026-11-24, job 7286729) prints the frozen-base path and SHA256 that the newest local compact checkpoint of each reported run expects, then the SHA256 of each FILE. It is read-only.
 
 `vp-review-olmo-frozen-xet.py FILE` (added 2026-11-24, job 7286740) prints the bucket content hash of a local file without uploading it, to compare with a bucket listing.
+
+`vp-olmo-baseline-tables.py RUNS_DIR` (added 2026-11-24) prints the OLMo baseline tables of the 2026-11-24 report from the frozen test records and training metrics: Pass@1 with question-clustered intervals, paired gains, the strict and lenient GSM8K readings, and training health.

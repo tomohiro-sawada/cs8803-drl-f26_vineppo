@@ -682,3 +682,25 @@ Written by the reviewing agent (Zed session). Review of the plan above. Nothing 
 - **Tier 1 costs convenience, not data.** It removes 69 of the 70 copies of the RhoMath frozen base, so 47 runs (25 of them reported runs) keep no base under their own prefix. A compact checkpoint records the absolute path and SHA256 of that file, so evaluating one later means placing the kept base at that path first.
 - **Tests.** The full CPU suite passed 1,628 tests with the new tool and its test in place (job 7287083).
 - **Tier 4 is Tom's decision.** After tiers 1–3 the bucket holds 401.8 GB with 598 GB free under the 1 TB allowance. The three pending OLMo uploads need about 15 GB.
+
+### 20261124-114344 · `0389489`
+
+Written by the reviewing agent (Zed session), executing the `/goal` prompt Tom approved.
+
+- **Committed and pushed.** `a811d0c` (bucket deletion tool and test), `4f9f996` (re-grade diagnostic and test) and `0389489` (handoff scripts, the format note, this log and the two plan documents). `origin/tom/work` is at `0389489`. The full CPU suite passed 1,628 tests before the commits (job 7287646).
+- **Bucket thinned: tiers 1, 2 and 3 are deleted.** 266 files, 584,689,066,899 bytes. The bucket holds 10,842 files and 401,846,078,659 bytes, with 598.2 GB free under the 1 TB allowance.
+  - Each tier ran as its own job from a clean worktree at `0389489`, with a preview that had to print the expected counts before the deletion: tier 1 in 7287731 (101 files, 321,176,837,546 bytes), tier 2 in 7287869 (162 files, 249,854,973,850 bytes), tier 3 in 7287942 (3 files, 13,657,255,503 bytes).
+  - Between tiers 1 and 2, job 7287784 downloaded both kept frozen bases from the bucket to node-local disk. Their SHA256 values are `086cc6d3…b9fbf` (RhoMath) and `7a574b69…c646a` (OLMo), as expected.
+  - Audit after tier 3: the 266 deleted paths are exactly the plan's tiers 1–3. Every surviving path has its planned size and content hash, and there are no new paths. All 20 tier-4 critics and all 10,822 kept files are present, including `SYNC_RECEIPT.json`.
+  - All 165 tier 2–3 paths are in the Skynet receipt with the same size and hash. Their content now exists on Skynet only, at `sky1.cc.gatech.edu:/coc/flash13/tsawada7/data/hf_buckets/cs8803-drl-f26_vineppo`. A later sync to Skynet must not use `--delete`.
+  - The record is `$SCRATCH_PROJECT/handoff-20261120/control-21/deleted.jsonl`, one line per deleted path with its tier, size and content hash (SHA256 of the file `277ed398…`).
+- **Not deleted.** Tier 4 (20 intermediate PPO critics, 248.3 GB) and everything on PACE scratch.
+- **Uploads released.** 7284132, 7284133 and 7284852 are released now that the bucket has room.
+
+### 20261124-115611 · `0389489`
+
+Written by the reviewing agent (Zed session).
+
+- **OLMo MATH RLOO finished.** Job 7282898 took 3:04:06 in one H200 allocation. Test Pass@1 is 71.41% on validation-selected iteration 40 (68.00% validation). The link job 7282899 confirmed its frozen base is the verified OLMo base, and 7284133 pushed and SHA256-verified its 157 other files (2,623,387,653 bytes). Re-grading 8,000 responses changed no grade (7287977). The paired gain over SFT is +0.83 points [−0.04, 1.69].
+- **OLMo GSM8K RestEM finished.** Job 7282896 took 4:17:52. Test Pass@1 is 84.49% on validation-selected round 10 (92.43% validation). Link job 7282897 succeeded and upload 7284132 has pushed 242 files (6,625,830,127 bytes) and is verifying. Re-grading changed no grade (7288220). The paired gain over SFT is +22.84 [21.31, 24.37] by the official grader and +6.01 [5.00, 7.02] by the lenient reading.
+- **OLMo MATH RestEM is on round 5 of 10** (job 7284850, 15-hour limit) at about 27 minutes per round. I expect about 2.7 more hours of training plus the 16-round test (estimate).
