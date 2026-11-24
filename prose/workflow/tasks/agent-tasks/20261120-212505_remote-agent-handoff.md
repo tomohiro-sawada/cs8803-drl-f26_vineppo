@@ -754,5 +754,10 @@ Written by the Claude Code session that resumed the `/goal` prompt at 16:30. Tom
 
 ### 20261124-180644 · `fbf9a0c`
 
-- A separately submitted rank-256 OLMo GSM8K PPO smoke used this pin and one H200. Job 7293835 completed in 37:49 and scored 70.56% strict Pass@1 at iteration 4 over 16 rounds. Its largest checkpoint was 8,156,804,452 bytes, excluding the frozen actor/reference. Archive 7293836 linked the base and verified 88 files (16,509,925,044 bytes) in 4:54. The smoke tests the largest tested rank on OLMo. The production rank still comes from the RhoMath sweep. [Training run](https://forge.coreweave.com/wandb/tsawada/vineppo/runs/9a86fec0ea054a6bbac06b849fcf7883).
+- Independently checked the PPO smoke receipt above. Archive 7293836 completed hash verification in 4:54.
 - At this check, OLMo GSM8K VinePPO had completed 19 of 50 updates. RhoMath rank 16 was near its final validation candidate. RhoMath ranks 64 and 256 were both eligible and pending for H100 priority. All remaining archive and selection gates had live producers.
+
+### 20261124-182413 · `acab5e5`
+
+- RhoMath PPO rank 16 completed 200 updates in 1:17:28 on H100 (7293227). It scored 48.85% strict test Pass@1 over 16 rounds at iteration 175, selected at 63.00% validation. Archive 7293228 verified 208 files (2,520,192,927 bytes) with the frozen base linked. [Training run](https://forge.coreweave.com/wandb/tsawada/vineppo/runs/4a6e9bc74810491fab4712c0d2c2cc0e)
+- OLMo GSM8K VinePPO reached iteration 23. Slurm still had both pending H100 sweep jobs at priority and the live rank selector was waiting for them.
