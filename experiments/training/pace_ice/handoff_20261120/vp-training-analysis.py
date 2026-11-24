@@ -116,14 +116,18 @@ def extract(root):
     rec["seed"] = int(match.group(1)) if match else 42
     return rec, scores
 
-root = Path(sys.argv[1])
-patterns = ["long-*", "sft-baseline-test-rhomath-*", "handoff-rho-*", "handoff-olmo3-*-sft-*", "handoff-olmo3-*-grpo-50-*"]
-folders = sorted({p for pattern in patterns for p in root.glob(pattern) if p.is_dir()})
-folders = [p for p in folders if any((p / name).is_file() for name in ("COMPLETE", "final-evaluation.json", "result.json"))]
-runs = {p.name: extract(p) for p in folders}
-pairs = {}
-for (an, (a, sa)), (bn, (b, sb)) in combinations(runs.items(), 2):
-    if a["task"] == b["task"] and a["seed"] == b["seed"]:
-        assert sa.keys() == sb.keys()
-        pairs[f"{an} minus {bn}"] = ci([sa[q] - sb[q] for q in sa])
-print(json.dumps({"runs": {key: result for key, (result, _) in runs.items()}, "same_seed_differences": pairs}, indent=2))
+def main(root):
+    patterns = ["long-*", "sft-baseline-test-rhomath-*", "handoff-rho-*", "handoff-olmo3-*-sft-*", "handoff-olmo3-*-grpo-50-*"]
+    folders = sorted({p for pattern in patterns for p in root.glob(pattern) if p.is_dir()})
+    folders = [p for p in folders if any((p / name).is_file() for name in ("COMPLETE", "final-evaluation.json", "result.json"))]
+    runs = {p.name: extract(p) for p in folders}
+    pairs = {}
+    for (an, (a, sa)), (bn, (b, sb)) in combinations(runs.items(), 2):
+        if a["task"] == b["task"] and a["seed"] == b["seed"]:
+            assert sa.keys() == sb.keys()
+            pairs[f"{an} minus {bn}"] = ci([sa[q] - sb[q] for q in sa])
+    print(json.dumps({"runs": {key: result for key, (result, _) in runs.items()}, "same_seed_differences": pairs}, indent=2))
+
+
+if __name__ == "__main__":
+    main(Path(sys.argv[1]))

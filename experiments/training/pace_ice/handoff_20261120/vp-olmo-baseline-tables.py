@@ -1,6 +1,6 @@
 """Print the OLMo baseline tables for the 2026-11-24 report.
 
-    python vp-olmo-baseline-tables.py RUNS_DIR
+    python vp-olmo-baseline-tables.py RUNS_DIR [TASK:ARM:RUN_NAME ...]
 
 RUNS_DIR is .../training/pace_ice. Reads the eight OLMo runs' frozen test
 records and training metrics. Every percentage averages 16 rounds per held-out
@@ -133,9 +133,14 @@ def health(metrics):
     return cells
 
 
-def main(runs_dir):
+def main(runs_dir, *additional_runs):
     runs_dir = Path(runs_dir)
-    for task, arms in RUNS.items():
+    runs = {task: arms.copy() for task, arms in RUNS.items()}
+    for argument in additional_runs:
+        task, arm, name = argument.split(":")
+        assert arm not in runs[task] and Path(name).name == name, argument
+        runs[task][arm] = name
+    for task, arms in runs.items():
         data = {arm: describe(runs_dir / name) for arm, name in arms.items()}
         readings = {"strict": strict} | (
             {"lenient": lenient} if task == "gsm8k" else {}
