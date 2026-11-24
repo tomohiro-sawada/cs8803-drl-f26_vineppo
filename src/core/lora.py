@@ -2,6 +2,7 @@
 
 from enum import Enum
 from math import isfinite
+from typing import Literal
 
 import torch
 from peft import LoraConfig, PeftModel, get_peft_model
@@ -10,8 +11,14 @@ from peft.tuners.tuners_utils import BaseTunerLayer
 from transformers import PreTrainedModel
 
 
-def apply_lora(model, *, rank: int = 16, alpha: float = 32.0) -> PeftModel:
-    """Wrap an exclusively owned actor in place; keep its reference model separate.
+def apply_lora(
+    model,
+    *,
+    rank: int = 16,
+    alpha: float = 32.0,
+    task_type: Literal["CAUSAL_LM", "FEATURE_EXTRACTION"] = "CAUSAL_LM",
+) -> PeftModel:
+    """Wrap an exclusively owned decoder in place.
 
     Only adapters are trainable and cast to FP32; frozen base weights retain their
     dtype. Checkpoints preserve the frozen tensors either inline or in a
@@ -33,7 +40,7 @@ def apply_lora(model, *, rank: int = 16, alpha: float = 32.0) -> PeftModel:
         lora_dropout=0.0,
         bias="none",
         target_modules="all-linear",
-        task_type="CAUSAL_LM",
+        task_type=task_type,
     )
     wrapped = get_peft_model(model, config, autocast_adapter_dtype=True)
     adapters = {

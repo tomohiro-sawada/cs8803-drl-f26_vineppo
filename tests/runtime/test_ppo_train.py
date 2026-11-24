@@ -71,7 +71,14 @@ def ppo_case(tmp_path, monkeypatch):
         "formatter": str,
     }
 
-    def make(name="run", *, polynomial_schedule=False, compact_lora=False, **overrides):
+    def make(
+        name="run",
+        *,
+        polynomial_schedule=False,
+        compact_lora=False,
+        critic_lora_rank=None,
+        **overrides,
+    ):
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(17)
             config = GPT2Config(
@@ -88,7 +95,10 @@ def ppo_case(tmp_path, monkeypatch):
                 attn_implementation="eager",
             )
             actor = GPT2LMHeadModel(deepcopy(config)).cpu()
-            critic = TokenCritic(GPT2Model(deepcopy(config))).cpu()
+            backbone = GPT2Model(deepcopy(config))
+            if critic_lora_rank is not None:
+                backbone.to(dtype=torch.bfloat16)
+            critic = TokenCritic(backbone, lora_rank=critic_lora_rank)
             reference = deepcopy(actor)
             if compact_lora:
                 actor = apply_lora(actor, rank=2, alpha=4)
@@ -116,7 +126,9 @@ def ppo_case(tmp_path, monkeypatch):
             ),
             reference_policy=reference,
             critic=critic,
-            critic_optimizer=torch.optim.AdamW(critic.parameters(), lr=0.003),
+            critic_optimizer=torch.optim.AdamW(
+                [p for p in critic.parameters() if p.requires_grad], lr=0.003
+            ),
             polynomial_schedule=polynomial_schedule,
             compact_lora_checkpoints=compact_lora,
         )
@@ -393,6 +405,42 @@ def test_split_critic_round_trip(ppo_case):
     resumed.load_checkpoint(path, **inputs, audit=True)
     assert_exact(states(resumed), states(source))
     assert resumed.critic_checkpoint == source.critic_checkpoint
+
+
+def test_lora_critic_trains_and_resumes_with_its_frozen_base(ppo_case):
+    make, inputs = ppo_case
+    opts = {"compact_lora": True, "num_iterations": 2, "checkpoint_every": 2}
+    source = make(critic_lora_rank=2, **opts)
+    parameters = dict(source.critic.named_parameters())
+    trainable = {
+        name for name in parameters if "lora_" in name or name.startswith("value_head.")
+    }
+    assert trainable == {name for name, p in parameters.items() if p.requires_grad}
+    assert all(
+        p.dtype == (torch.float32 if name in trainable else torch.bfloat16)
+        for name, p in parameters.items()
+    )
+    initial = {name: p.detach().clone() for name, p in parameters.items()}
+    source.train(**inputs, stop_at_boundary=lambda: source.iteration == 1)
+    changes = {name for name, p in parameters.items() if not torch.equal(initial[name], p)}
+    assert changes <= trainable
+    assert {"value_head.weight", "value_head.bias"} <= changes
+    assert any("lora_B" in name for name in changes)
+    path = source.save_checkpoint()
+    saved = torch.load(path, weights_only=True)
+    assert saved["critic"].keys() == trainable
+    assert len(saved["critic_frozen_sha256"]) == 64
+    resumed = make("resumed", critic_lora_rank=2, **opts)
+    resumed.load_checkpoint(path, **inputs, audit=True)
+    assert_exact(states(resumed), states(source))
+    wrong_base = make("wrong-base", critic_lora_rank=2, **opts)
+    frozen = next(p for p in wrong_base.critic.parameters() if not p.requires_grad)
+    frozen.add_(1)
+    with pytest.raises(AssertionError, match="Frozen critic fingerprint mismatch"):
+        wrong_base.load_checkpoint(path, **inputs)
+    wrong_rank = make("wrong-rank", critic_lora_rank=4, **opts)
+    with pytest.raises(AssertionError, match="Model execution identity mismatch"):
+        wrong_rank.load_checkpoint(path, **inputs)
 
 
 @pytest.mark.parametrize(

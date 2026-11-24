@@ -67,6 +67,7 @@ from algorithms.vineppo import MC_PREFIX_POLICY, VinePPOConfig
 from core.data import Example
 from core.inference import HFInference
 from core.lora import apply_lora, lora_identity
+from core.optimization import trainable_fp32_parameters
 from core.prompt_protocol import OLMO3, PROMPT, RHOMATH, prompt_protocol
 from core.segmentation import MATH_SEGMENTATION_POLICY
 from core.vllm_inference import VLLMClient, VLLMInference, gpu_identity, slurm_attempt
@@ -168,6 +169,11 @@ def parse_args(argv=None):
         help="Default: 1e-6 full tuning, 1e-5 LoRA; tune independently",
     )
     parser.add_argument("--critic-learning-rate", type=positive_float, default=1e-5)
+    parser.add_argument(
+        "--critic-lora-rank",
+        type=positive_int,
+        help="PPO only. Freeze the critic base and train LoRA adapters and value head.",
+    )
     parser.add_argument("--kl-coef", type=float)
     parser.add_argument(
         "--lr-schedule", choices=("constant", POLYNOMIAL), default="constant"
@@ -279,6 +285,8 @@ def parse_args(argv=None):
         parser.error("RestEM requires LoRA, zero KL, and a constant learning rate")
     if args.algorithm in ("grpo", "rloo") and args.num_samples < 2:
         parser.error("GRPO/RLOO require --num-samples >= 2 per prompt")
+    if args.critic_lora_rank is not None and args.algorithm != "ppo":
+        parser.error("--critic-lora-rank requires --algorithm ppo")
     if args.warmup_iterations < 0 or not 0 <= args.seed < 2**64:
         parser.error("warmup must be nonnegative; seed must be in [0, 2**64)")
     if args.kl_coef is not None and (
@@ -452,6 +460,7 @@ class MeasuredTrainer(PPOTrainer):
         self.archived_frozen = False
         self.split_critic = (
             self.critic is not None
+            and self.critic.lora_rank is None
             and self.compact_lora_checkpoints
             and (archive or deadline is not None)
         )
@@ -810,13 +819,19 @@ def main(argv=None):
     )
     critic = critic_optimizer = None
     if args.algorithm == "ppo":
+        critic_dtype = (
+            torch.float32 if args.critic_lora_rank is None else model_kwargs["dtype"]
+        )
         critic = TokenCritic(
             AutoModel.from_pretrained(
-                str(args.model_path), **(model_kwargs | {"dtype": torch.float32})
-            ).to("cuda:0")
+                str(args.model_path), **(model_kwargs | {"dtype": critic_dtype})
+            ).to("cuda:0"),
+            lora_rank=args.critic_lora_rank,
         )
         critic_optimizer = torch.optim.AdamW(
-            critic.parameters(), lr=args.critic_learning_rate, weight_decay=0.0
+            trainable_fp32_parameters(critic),
+            lr=args.critic_learning_rate,
+            weight_decay=0.0,
         )
     meter = Meter()
     workers = client = None
@@ -1000,8 +1015,8 @@ def main(argv=None):
             },
             "start_iteration": trainer.iteration,
             "precision": (
-                "FP32 actor adapters/gradients/moments; frozen base/reference use dtype; "
-                "PPO critic uses FP32"
+                "FP32 trainable weights, gradients and AdamW moments. "
+                "Frozen model weights use dtype."
                 if args.finetuning == "lora"
                 else "FP32 parameters, gradients and AdamW moments"
             ),

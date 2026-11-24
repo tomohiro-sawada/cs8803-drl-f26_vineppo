@@ -1,5 +1,6 @@
 """Immutable checkpoint publication and explicit full/compact format readers."""
 
+import json
 import os
 from hashlib import sha256
 from pathlib import Path
@@ -22,6 +23,16 @@ def file_sha256(path: Path) -> str:
 def file_identity(path: Path) -> tuple:
     stat = path.stat()
     return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def tensor_state_sha256(weights: dict) -> str:
+    """Fingerprint named tensors without retaining a CPU copy of the whole model."""
+    digest = sha256()
+    for name, value in sorted(weights.items()):
+        digest.update(json.dumps((name, str(value.dtype), list(value.shape))).encode())
+        bytes_view = value.detach().cpu().contiguous().reshape(-1).view(torch.uint8)
+        digest.update(memoryview(bytes_view.numpy()))
+    return digest.hexdigest()
 
 
 def publish_checkpoint(path: Path, state: dict) -> None:

@@ -69,6 +69,7 @@ from runtime.checkpoints import (
     file_sha256,
     load_verified_blob,
     publish_checkpoint,
+    tensor_state_sha256,
     trainable_state_keys,
     validate_tensor_state,
 )
@@ -200,6 +201,7 @@ class PPOTrainer:
                 self.steps_per_iteration * config.num_iterations,
             )
         self._frozen_checkpoint = None
+        self._frozen_critic = None
         self.critic_checkpoint = None
         self.iteration = 0  # Number of fully completed iterations.
         self._generator: torch.Generator | None = None
@@ -871,7 +873,9 @@ class PPOTrainer:
                 "config": model.config.to_dict(),
                 **(
                     {"lora": identity}
-                    if (identity := lora_identity(model)) is not None
+                    if (identity := lora_identity(
+                        model.backbone if model is self.critic else model
+                    )) is not None
                     else {}
                 ),
                 "dtypes": {
@@ -904,6 +908,23 @@ class PPOTrainer:
         }
         return {key: policy[key] for key in sorted(trainable)}, frozen, signature
 
+    def _critic_checkpoint_state(self):
+        weights = self.critic.state_dict()
+        if self.critic.lora_rank is None:
+            return weights, None
+        trainable = trainable_state_keys(self.critic)
+        assert trainable and trainable < weights.keys()
+        frozen = {name: tensor for name, tensor in weights.items() if name not in trainable}
+        signature = {
+            name: (tensor.data_ptr(), tensor._version, tensor.dtype, tensor.shape)
+            for name, tensor in frozen.items()
+        }
+        if self._frozen_critic is None:
+            self._frozen_critic = signature, tensor_state_sha256(frozen)
+        original, fingerprint = self._frozen_critic
+        assert signature == original, "Frozen critic parameters or buffers changed"
+        return {name: weights[name] for name in sorted(trainable)}, fingerprint
+
     def save_checkpoint(
         self, path: str | Path | None = None, *, split_critic=False
     ) -> Path:
@@ -912,6 +933,7 @@ class PPOTrainer:
         Tensor/state-dict payloads plus primitive metadata only; no model objects,
         tokenizer, formatter, examples, diagnostics or global Python/NumPy RNGs.
         Compact LoRA checkpoints share a verified frozen actor/reference file.
+        A LoRA critic saves its trainable state and a frozen-base fingerprint.
         """
         assert self._at_boundary and self._identity is not None, (
             "Checkpoint requires a completed training boundary"
@@ -963,10 +985,13 @@ class PPOTrainer:
                 reference=self.reference_policy.state_dict(),
             )
         if self.critic is not None:
+            critic_weights, critic_fingerprint = self._critic_checkpoint_state()
             critic_state = {
-                "critic": self.critic.state_dict(),
+                "critic": critic_weights,
                 "critic_optimizer": self.critic_optimizer.state_dict(),
             }
+            if critic_fingerprint is not None:
+                state["critic_frozen_sha256"] = critic_fingerprint
             if split_critic:
                 assert self.compact_lora_checkpoints
                 critic_path = (path.parent / f"critic-{self.iteration}.pt").resolve()
@@ -1091,7 +1116,15 @@ class PPOTrainer:
         validate_tensor_state(self.policy, policy)
         validate_tensor_state(self.reference_policy, reference)
         if self.critic is not None:
-            validate_tensor_state(self.critic, state["critic"])
+            critic_weights, critic_fingerprint = self._critic_checkpoint_state()
+            assert state.get("critic_frozen_sha256") == critic_fingerprint, (
+                "Frozen critic fingerprint mismatch"
+            )
+            assert critic_weights.keys() == state["critic"].keys(), (
+                "Critic state keys mismatch"
+            )
+            full_critic_state = self.critic.state_dict()
+            validate_tensor_state(self.critic, full_critic_state | state["critic"])
         self._at_boundary = False
         self.policy.load_state_dict(policy, strict=True)
         self.reference_policy.load_state_dict(reference, strict=True)
@@ -1108,7 +1141,11 @@ class PPOTrainer:
         self.optimizer.load_state_dict(state["optimizer"])
         self.optimizer.zero_grad(set_to_none=True)
         if self.critic is not None:
-            self.critic.load_state_dict(state["critic"], strict=True)
+            missing, unexpected = self.critic.load_state_dict(
+                state["critic"], strict=critic_fingerprint is None
+            )
+            assert set(missing) == full_critic_state.keys() - critic_weights.keys()
+            assert not unexpected
             self.critic_optimizer.load_state_dict(state["critic_optimizer"])
             self.critic_optimizer.zero_grad(set_to_none=True)
         if self.schedule is not None:
@@ -1138,7 +1175,7 @@ class PPOTrainer:
             }
             if self.critic is not None:
                 actual.update(
-                    critic=dict(self.critic.state_dict()),
+                    critic=self._critic_checkpoint_state()[0],
                     critic_optimizer=self.critic_optimizer.state_dict(),
                 )
             if self.schedule is not None:

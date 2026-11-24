@@ -53,6 +53,16 @@ def cli(tmp_path):
     ]
 
 
+def test_critic_lora_rank_only_accepts_positive_ppo_ranks(cli):
+    assert runner.parse_args(cli + ["--algorithm", "ppo"]).critic_lora_rank is None
+    rank = ["--critic-lora-rank", "64"]
+    assert runner.parse_args(cli + ["--algorithm", "ppo"] + rank).critic_lora_rank == 64
+    with pytest.raises(SystemExit):
+        runner.parse_args(cli + rank)
+    with pytest.raises(SystemExit):
+        runner.parse_args(cli + ["--algorithm", "ppo", "--critic-lora-rank", "0"])
+
+
 def test_bf16_requires_lora(cli, capsys):
     with pytest.raises(SystemExit) as error:
         runner.parse_args(

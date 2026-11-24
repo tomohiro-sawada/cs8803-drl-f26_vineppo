@@ -36,7 +36,7 @@ while (( $# )); do
         --worker-placement) placement=$2 ;;
         --max-sequence-length) context=$2 ;;
         --lora-rank) rank=$2 ;;
-        --num-iterations|--warmup-iterations|--prompts-per-iteration|--num-samples|--mc-num-samples|--update-epochs|--minibatch-size|--microbatch-size|--max-new-tokens|--learning-rate|--critic-learning-rate|--kl-coef|--math-grader-workers|--seed|--checkpoint-every|--resume-checkpoint-every|--checkpoint-format|--keep-checkpoints|--dtype|--finetuning|--lora-alpha) ;;
+        --num-iterations|--warmup-iterations|--prompts-per-iteration|--num-samples|--mc-num-samples|--update-epochs|--minibatch-size|--microbatch-size|--max-new-tokens|--learning-rate|--critic-learning-rate|--critic-lora-rank|--kl-coef|--math-grader-workers|--seed|--checkpoint-every|--resume-checkpoint-every|--checkpoint-format|--keep-checkpoints|--dtype|--finetuning|--lora-alpha) ;;
         *) fail "Unsupported option: $1 (mode is fixed by the SLURM wrapper; use --option value)" ;;
     esac
     shift 2

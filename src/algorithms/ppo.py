@@ -14,6 +14,7 @@ from transformers import PreTrainedModel
 
 from algorithms.base import AlgorithmConfig
 from core.data import CriticBatch
+from core.lora import apply_lora
 from core.optimization import assert_fp32_optimizer_state, trainable_fp32_parameters
 
 
@@ -30,19 +31,33 @@ class PPOConfig(AlgorithmConfig):
 
 
 class TokenCritic(nn.Module):
-    """Scalar value head on a caller-supplied decoder-only base AutoModel."""
+    """Scalar value head on a caller-supplied decoder-only base AutoModel.
 
-    def __init__(self, backbone: PreTrainedModel):
+    With a LoRA rank, only the FP32 adapters and FP32 value head train. The
+    backbone keeps its loaded precision and is independent of the actor.
+    """
+
+    def __init__(self, backbone: PreTrainedModel, *, lora_rank: int | None = None):
         super().__init__()
         assert isinstance(backbone, PreTrainedModel)
         assert not backbone.config.is_encoder_decoder, "Expected a decoder-only model"
-        self.backbone = backbone
+        self.lora_rank = lora_rank
         parameter = next(backbone.parameters())
+        self.backbone = (
+            backbone
+            if lora_rank is None
+            else apply_lora(
+                backbone,
+                rank=lora_rank,
+                alpha=2 * lora_rank,
+                task_type="FEATURE_EXTRACTION",
+            )
+        )
         self.value_head = nn.Linear(
             backbone.config.hidden_size,
             1,
             device=parameter.device,
-            dtype=parameter.dtype,
+            dtype=parameter.dtype if lora_rank is None else torch.float32,
         )
 
     @property
@@ -64,7 +79,7 @@ class TokenCritic(nn.Module):
             return_dict=True,
         ).last_hidden_state
         assert hidden.shape == (*input_ids.shape, self.config.hidden_size)
-        return self.value_head(hidden).squeeze(-1)
+        return self.value_head(hidden.to(self.value_head.weight.dtype)).squeeze(-1)
 
 
 def token_values(
