@@ -28,6 +28,7 @@ On 2026-11-24 I deleted 266 weight files (584.7 GB) from the bucket. No result, 
 - **Tier 2** covers 50 run prefixes: PPO smokes (100.9 GB), other smokes and dry runs (79.7 GB), pilots (36.7 GB), benchmarks and HF controls (32.2 GB) and probes (0.4 GB).
 - **Tier 3** is `iteration-175.pt` and `iteration-200.pt` of `long-grpo-rhomath-gsm8k-seed42-vllm-h100-200iter-01`, and `iteration-200.pt` of `long-vineppo-rhomath-gsm8k-seed42-vllm-h100-200iter-01`.
 - **Skynet copy:** `sky1.cc.gatech.edu:/coc/flash13/tsawada7/data/hf_buckets/cs8803-drl-f26_vineppo`, same relative paths. Its receipt lists every tier 2 and tier 3 file with the same size and content hash. I cannot see that machine; I rely on the receipt.
+- **Added 20261124-133500:** 261 of the 266 deleted files (562.7 GB) are in the Skynet receipt. The other 5 (22.0 GB) were uploaded after Skynet's snapshot and were never on Skynet. All 5 are tier 1 copies of the RhoMath frozen base, with the same content hash as the kept copy, so nothing is lost. They are the `frozen-lora.pt` of `handoff-rho-{grpo,ppo,rloo}-650-s42-07` and `handoff-rho-ppo-200-{s43,s44}-03`.
 
 ## What the bucket holds now
 
