@@ -740,3 +740,14 @@ Written by the reviewing agent (Zed session).
 - Report-table job 7293331 read all three historical PPO runs and regenerated the OLMo tables with the verified smoke. Rank-selector job 7293376 waits on the three seed-42 training jobs.
 - Real-backbone CPU probe 7293470 completed in 2:21. It ran rank-16 critic forward/backward on the frozen RhoMath and OLMo checkpoints and observed nonzero LoRA gradients, a value-head gradient and no base gradients. The probe found 12,617,729 trainable critic parameters for RhoMath and 39,981,057 for OLMo.
 - While the GPUs waited for priority, reduced the OLMo VinePPO allocation limit to six hours and each RhoMath sweep allocation to 3:30 for backfill. The positive CPU and smoke gates remain satisfied. The chains can roll over from their last saved boundary.
+
+### 20261124-180055 · `56c8d3e`
+
+Written by the Claude Code session that resumed the `/goal` prompt at 16:30. Tom did not approve the MATH splitter change in this session, so MATH VinePPO stays pending.
+
+- **Evidence scripts.** The three MATH splitter replays moved from scratch into `experiments/training/pace_ice/handoff_20261120/vp-math-splitter-{failures,cause,whatif}.py`. Jobs 7293872 and 7294305 reproduced the recorded outputs: 7 of 512 responses rejected across 4 prompts, all 7 restored by reverse-order recovery, all 505 accepted responses unchanged. `vp-vineppo-mc-rate.py` reproduced the smoke's 62.55 MC tokens per primary token.
+- **Rank summary.** `vp-critic-rank-results.py` now also prints the last-25-iteration critic loss and the token spread of return minus rollout value. Explained variance is not logged. Job 7294334 gave 0.437–0.443 for that spread over the three full-critic RhoMath runs.
+- **OLMo PPO smoke.** Job 7293835 ran four GSM8K updates at critic rank 256, the largest candidate, from a clean worktree at `dac9c6e`. It completed in 37:49 on H200 with 70.56% strict test Pass@1 at iteration 4. Iterations without a checkpoint took 117 and 140 seconds, the critic update 40–68 seconds, and peak reserved GPU memory was 68.5 GB. Each rank-256 checkpoint is 8,156,804,452 bytes. Upload 7293836 verified 88 files (16,509,925,044 bytes) with the frozen base linked to the verified OLMo copy. [Training run](https://forge.coreweave.com/wandb/tsawada/vineppo/runs/9a86fec0ea054a6bbac06b849fcf7883)
+- **Critic quality in the smoke.** The spread of return minus rollout value was 0.72–0.85 over the four iterations, above the spread of the rewards themselves. The LoRA critic starts worse than a constant baseline at the unchanged 1e-5 critic learning rate.
+- **Queue at 18:00.** OLMo GSM8K VinePPO 7292545 and RhoMath rank 16 (7293227) are running. Ranks 64 and 256 (7293229, 7293231) still wait for an H100.
+- **Another session** created the untracked `scripts/figures/collect_results_summary.py` in this checkout at 17:07–17:23 and cancelled its own job 7294872. This session did not touch it.
