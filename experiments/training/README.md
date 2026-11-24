@@ -162,7 +162,7 @@ arguments are:
 --num-iterations --warmup-iterations --prompts-per-iteration
 --num-samples --mc-num-samples --update-epochs --minibatch-size
 --microbatch-size --max-sequence-length --max-new-tokens
---learning-rate --critic-learning-rate --math-grader-workers --seed
+--learning-rate --critic-learning-rate --critic-lora-rank --math-grader-workers --seed
 --kl-coef --lr-schedule --model-protocol
 --checkpoint-every --checkpoint-format --keep-checkpoints --resume --dtype
 --resume-checkpoint-every --archive-checkpoints
@@ -172,20 +172,25 @@ arguments are:
 ```
 
 `--dtype float32` is required for full tuning. LoRA also accepts
-`--dtype bfloat16` for the frozen base and reference. The PPO critic is
-loaded in FP32, independently of the actor. Trainable parameters,
-gradients, and AdamW moments use FP32 in both cases. Learning rates default to `1e-6` (full actor),
+`--dtype bfloat16` for the frozen base and reference. PPO loads a separate
+FP32 critic by default. With `--critic-lora-rank`, the critic freezes its
+backbone at the requested dtype and trains all-linear LoRA adapters with
+alpha twice the rank, plus a scalar value head. Its checkpoints store the
+trainable critic, optimizer and frozen-backbone fingerprint. Resume needs the
+same initial critic weights. Trainable parameters, gradients, and AdamW
+moments use FP32. Learning rates default to `1e-6` (full actor),
 `1e-5` (LoRA actor), and `1e-5` (critic); seed is `42`. Explicit learning rates win. Numeric ranges and shape consistency are
 validated by the runner; the launchers do not duplicate its validation logic.
 For example, append `--num-iterations 200 --checkpoint-every 20` to a training
 command. Resource/time overrides belong to `sbatch`, not the runner; requesting
 more time does not guarantee the cluster QoS allows it.
 
-MATH VinePPO assigns a token spanning a reasoning-step cut to the earlier
+MATH and GSM8K VinePPO assign a token spanning a reasoning-step cut to the earlier
 step. It advances the cut to the next complete sampled-token boundary and
 merges coincident cuts. Both MC branching and PPO credit use those boundaries
 on the original token IDs. Invalid token alignment and MATH splitter errors
-still abort the run. GSM8K retains exact character cuts.
+still abort the run. Prompt controls marked special in the added-token
+registry must be explicitly allowed by the prompt protocol.
 
 `--math-grader-workers` defaults to 1. With more workers, training grades
 distinct answer tuples concurrently within a primary or Monte Carlo sample
