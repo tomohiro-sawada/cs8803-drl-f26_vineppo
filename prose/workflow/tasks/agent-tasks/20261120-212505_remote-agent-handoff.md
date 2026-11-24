@@ -734,3 +734,9 @@ Written by the reviewing agent (Zed session).
 - Initial critic suite 7293130 caught a legacy OrderedDict resume-audit regression and runner mock assumptions. Full suite 7293226 passed 1,633 tests at `95de38c` after preserving the audit contract and testing both runner assembly modes.
 - RhoMath seed-42 ranks 16, 64 and 256 use one H100 each in jobs 7293227, 7293229 and 7293231. The corresponding archive jobs are 7293228, 7293230 and 7293232. They use the 200×128 full-critic training recipe with KL 1e-4. We retain all eight validation candidates and mirror once on completion, omitting the shared frozen base. This changes checkpoint I/O timing relative to the full-critic reference.
 - The sweep will select the highest validation Pass@1, breaking a tie by smaller rank. Held-out results are reserved for reporting. No MATH VinePPO run was submitted.
+
+### 20261124-162626 · `5b2970c`
+
+- Report-table job 7293331 read all three historical PPO runs and regenerated the OLMo tables with the verified smoke. Rank-selector job 7293376 waits on the three seed-42 training jobs.
+- Real-backbone CPU probe 7293470 completed in 2:21. It ran rank-16 critic forward/backward on the frozen RhoMath and OLMo checkpoints and observed nonzero LoRA gradients, a value-head gradient and no base gradients. The probe found 12,617,729 trainable critic parameters for RhoMath and 39,981,057 for OLMo.
+- While the GPUs waited for priority, reduced the OLMo VinePPO allocation limit to six hours and each RhoMath sweep allocation to 3:30 for backfill. The positive CPU and smoke gates remain satisfied. The chains can roll over from their last saved boundary.
