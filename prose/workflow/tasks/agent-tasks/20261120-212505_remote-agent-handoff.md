@@ -751,3 +751,8 @@ Written by the Claude Code session that resumed the `/goal` prompt at 16:30. Tom
 - **Critic quality in the smoke.** The spread of return minus rollout value was 0.72–0.85 over the four iterations, above the spread of the rewards themselves. The LoRA critic starts worse than a constant baseline at the unchanged 1e-5 critic learning rate.
 - **Queue at 18:00.** OLMo GSM8K VinePPO 7292545 and RhoMath rank 16 (7293227) are running. Ranks 64 and 256 (7293229, 7293231) still wait for an H100.
 - **Another session** created the untracked `scripts/figures/collect_results_summary.py` in this checkout at 17:07–17:23 and cancelled its own job 7294872. This session did not touch it.
+
+### 20261124-180644 · `fbf9a0c`
+
+- A separately submitted rank-256 OLMo GSM8K PPO smoke used this pin and one H200. Job 7293835 completed in 37:49 and scored 70.56% strict Pass@1 at iteration 4 over 16 rounds. Its largest checkpoint was 8,156,804,452 bytes, excluding the frozen actor/reference. Archive 7293836 linked the base and verified 88 files (16,509,925,044 bytes) in 4:54. The smoke tests the largest tested rank on OLMo. The production rank still comes from the RhoMath sweep. [Training run](https://forge.coreweave.com/wandb/tsawada/vineppo/runs/9a86fec0ea054a6bbac06b849fcf7883).
+- At this check, OLMo GSM8K VinePPO had completed 19 of 50 updates. RhoMath rank 16 was near its final validation candidate. RhoMath ranks 64 and 256 were both eligible and pending for H100 priority. All remaining archive and selection gates had live producers.
