@@ -714,3 +714,9 @@ Written by the reviewing agent (Zed session).
 
 - Implemented the approved added-special-token allowlist and forward-rounded GSM8K boundaries on original sampled IDs. Both are departures from upstream. Historical strict replay is still available. MATH placeholder restoration and the single-step policy remain pending approval.
 - Submitted full CPU suite 7291940 and four-iteration, one-H200 GSM8K VinePPO smoke 7291955, pinned to the segmentation commit. The smoke retains the 128-completion training batch and nine MC samples per state and uses one validation round.
+
+### 20261124-152320 · `b708baa`
+
+- CPU job 7291940 found a diagnostic metrics test that still expected a token-straddling GSM8K cut to fail. The revised suite 7292017 passed 1,629 tests. The first smoke allocation 7291955 was cancelled before it ran. Replacement 7292018 and its archive 7292021 use the tested pin.
+- Stored-token replay 7292025 accepted all 512 GSM8K responses with rounding (9.4 mean steps), against 98 with the historical strict policy. It reproduced the seven known MATH failures. The MATH splitter remains unchanged.
+- Slurm job 7291989 verified the existing 242-file MATH RestEM archive directly from its run directory with the new linked-base exclusion. Verification downloads to node-local disk. The new archive recipe does not create or remove scratch checkpoint views.
