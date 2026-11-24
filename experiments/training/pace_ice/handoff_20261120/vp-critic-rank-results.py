@@ -27,7 +27,9 @@ def describe(root):
     if rank is None:
         critic = actor.with_name(f"critic-{iteration}.pt")
         checkpoint_bytes = sum(
-            read(path.with_suffix(".archive.json"))["bytes"] for path in (actor, critic)
+            path.stat().st_size if path.is_file() else
+            read(path.with_suffix(".archive.json"))["bytes"]
+            for path in (actor, critic)
         )
     else:
         assert run["logged_iterations"] == run["expected_iterations"]
