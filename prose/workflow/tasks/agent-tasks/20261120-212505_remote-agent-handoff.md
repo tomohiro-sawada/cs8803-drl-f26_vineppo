@@ -825,3 +825,8 @@ Written by the Claude Code session that resumed the first `/goal` at 16:30 and r
 
 - The two GRPO 650 continuations reached COMPLETE. Job 7317398 verified seed 44 and job 7317397 linked seed 43 and is verifying its mirror. Both links checked the canonical RhoMath base hash before replacement.
 - Refined the MATH PPO peak estimate to 33.5 GiB using the measured 29.2 GB frozen snapshot, up to six 960,937,164-byte checkpoint files during a boundary write, and allowance for evaluations and adapter staging. At release, Lustre showed 56,326,264 KiB free (53.7 GiB), including the 20 GiB margin. Released MATH PPO 7301434 to H200. Archive 7301435 and final tables and inventory 7321042 are queued.
+
+### 20261125-162145 · `04a670e`
+
+- RhoMath GRPO seed 43 archive 7317397 verified 527 files (4,277,365,879 bytes). Both GRPO archives are verified. MATH PPO started from the clean `95de38c` pin and reached nine updates. Its original archive and results gates remain live.
+- Final-code CPU suite 7324786 passed 1,637 tests at this pin. Wall-clock audit 7324782 reproduced the old report and the new rank table after restoring pre-metadata Slurm allocations to the latter. Full-critic seed 44 totals 2:44:17 including job 7229238. The first audit's historical formatter needed the main checkout's archived log directory as its input location.
