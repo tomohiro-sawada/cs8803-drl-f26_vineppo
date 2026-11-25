@@ -771,3 +771,9 @@ Written by the Claude Code session that resumed the first `/goal` at 16:30 and r
 - **Same as seed 42:** every training option of jobs 7226476 and 7234240 (KL 1e-4 for VinePPO, 3e-3 for GRPO, polynomial schedule, 64 prompts × 8, minibatch 64).
 - **Different from seed 42:** both arms keep all 26 candidates on scratch and upload once at the end without the frozen base. Seed-42 VinePPO archived candidates during the run, which would add a copy of the frozen base to the bucket. The code now rounds GSM8K cuts forward; seed 42 required exact cuts and never failed.
 - **Scratch** is at 238.6 of 300 GB by `pace-quota`. Each unlinked OLMo run holds a 29.2 GB frozen base, so OLMo launches are sequenced around link jobs.
+
+### 20261124-201438 · `1e62933`
+
+- The `vp32` session is handling the selected-rank replicas and the OLMo PPO runs. The separate submission session owns its MATH VinePPO smoke and production runs.
+- The H100 backfill limit for ranks 64 and 256 was reduced to 2:30 after rank 16 finished in 1:17:28. Rank 64 completed in 1:17:21 with 47.68% test at iteration 200 (62.53% validation). Archive 7293230 verified 208 files (6,153,392,990 bytes). Rank 256 completed in 1:19:22 with 47.53% test at iteration 125 (60.52% validation). Archive 7293232 is in progress.
+- Selector 7293376 chose rank 16 on 63.00% validation. RhoMath seeds 43 and 44 are jobs 7298729 and 7298731 at `95de38c`. Archives 7298730 and 7298732 are queued. To reserve space for the extra jobs sharing scratch, the replicas wait for VinePPO archive 7292546, which will link its duplicate frozen base. The OLMo GSM8K PPO launch follows the replicas.
