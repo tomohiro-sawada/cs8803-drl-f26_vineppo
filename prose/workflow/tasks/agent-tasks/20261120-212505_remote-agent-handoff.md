@@ -788,3 +788,8 @@ Written by the Claude Code session that resumed the first `/goal` at 16:30 and r
 
 - Post-sweep CPU suite 7300547 passed 1,637 tests at this clean pin. Both rank-16 replicas remain eligible and queued with Slurm's `ReqNodeNotAvail` reason. Their result-summary job is 7299954 and waits for both verified archives.
 - Staged rank-16 OLMo GSM8K PPO as H200 job 7300739 at `95de38c` with an `afterok` dependency on both verified replica archives. Archive job 7300740 follows it. The GPU job is held until the dependencies pass and at least 55 GiB is free, including the 20 GiB margin. The run uses the OLMo 50×128 recipe and keeps all five validation candidates.
+
+### 20261124-220613 · `67fcafb`
+
+- Staged the conditional rank-16 OLMo MATH PPO job 7301434 at `95de38c`, with archive 7301435. It is held and depends on verification of GSM8K PPO archive 7300740. Release requires enough time and at least 55 GiB free. The held precursor 7301193 and its archive 7301194 were cancelled before start after checking the MATH dataset's actual path. The replacement uses the same dataset and four grading workers as MATH RLOO 7282898.
+- At the check, the eligible short RhoMath replicas still showed Slurm's `ReqNodeNotAvail`, while a separate long H100 run had started. Both replica gates remain live.
