@@ -798,3 +798,8 @@ Written by the Claude Code session that resumed the first `/goal` at 16:30 and r
 
 - Restore probe 7301847 reconstructed actual rank-16 RhoMath and rank-256 OLMo critics from the checkpoints at iterations 175 and 4. The fresh BF16 bases matched the saved fingerprints and the loaded adapters and value heads produced finite values. Training resume with optimizer and RNG state is tested separately in the CPU suite.
 - Both RhoMath replica jobs remain eligible. Slurm reports every H100 in the partition allocated. The GSM8K and MATH PPO dependencies and holds remain as recorded above.
+
+### 20261125-022705 · `b46222d`
+
+- The rank-16 replicas completed without rollover. Seed 43 scored 46.82% test at iteration 200 (62.27% validation) in 1:13:32. Seed 44 scored 48.06% test at iteration 175 (61.86% validation) in 1:14:54. Archives 7298730 and 7298732 each verified 208 files. Metrics job 7299954 completed with all eight RhoMath rows. The shorter 1:50 backfill limits were sufficient. A six-CPU edit on seed 43 was reverted when Slurm reported `BadConstraints`, so both ran with 12 CPUs.
+- The GSM8K PPO dependencies passed. It remains held while the older MATH VinePPO smoke (7298013 and archive 7298014) waits for H200 admission. Lustre showed about 63.1 GiB free. The two runs' estimated transient footprints plus the 20 GiB margin exceed that. Release only after the smoke has linked or equivalent headroom is available. MATH PPO remains behind verified GSM8K PPO.
