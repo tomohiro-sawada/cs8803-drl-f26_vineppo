@@ -48,9 +48,29 @@ Use this when drafting the report. Numbers are test Pass@1 unless marked.
 - **Why our GRPO and RLOO are stronger than the paper's is not established.** Candidates: training temperature 1.0 with no top-p (upstream configs use 0.6 and 0.9), LoRA with LR 1e-5, the truncation penalty, and our own loss definitions (the paper's code has neither method). The trainer rejects any temperature but 1.0, so that one cannot be ablated cheaply.
 - **Support for LoRA from outside:** Schulman et al., [LoRA Without Regret](https://thinkingmachines.ai/blog/lora/) (2025), report that LoRA matches full fine-tuning for a GRPO-like policy gradient on GSM8K and MATH, with an optimal learning rate about 10× higher. Ours is 1e-5 against the paper's 1e-6. We have not tested the claim ourselves; item 6 below would.
 
-## Decisions Tom owes
+## Tom's decisions (20261124-192730, final)
 
-In blocking order. My recommendation follows each.
+| Question | Decision |
+|---|---|
+| The modification | **The LoRA critic for PPO.** Nothing fancier; there is no time. OLMo is the extension to a new model |
+| MATH splitter fix | **Approved.** Implement it |
+| Seeds at the paper's budget | **Run seeds 43 and 44 for VinePPO and GRPO** at 650 × 512 |
+| RLOO | **Footnote**, no rerun |
+| Merge into `main` | **Tom does it by hand.** Do not open a pull request |
+| RhoMath on MATH, W&B fragmentation | Not answered. Leave both alone |
+
+What the decisions change:
+
+- **Options C and D below are dropped.** Do not build an adaptive MC budget or a prefix-caching experiment.
+- **The report's comparison is LoRA-critic PPO against full-critic PPO**, with VinePPO as the reference that needs no critic. Its analysis needs the value-estimate replay (item 5 below), which is now required.
+- **The full fine-tuning GRPO control (item 6 below) is optional.** It tests the LoRA policy, which is a deviation, not the modification. Run it only if GPUs are idle. This is my reading of Tom's answer; he did not rule on it.
+- **RLOO footnote text:** "RLOO clips 29–49% of sequence ratios and its gradient norm before clipping is 15–17 against a limit of 1.0 on RhoMath, so it is probably under-tuned and its scores are a lower bound for the method." Put it under every table or figure that shows RLOO.
+- **Seed launches:** copy the seed-42 submissions (`sacct -X -P -j 7226476,7234240 -o SubmitLine%8000`), changing the seed and the run name. Launch from a clean worktree at the current commit, not the old pin.
+  - The code has changed since seed 42: GSM8K cuts now round forward. The seed-42 run required exact cuts and never failed, so its boundaries are unchanged (inference). State this in the report.
+  - Launch these first. They are the longest jobs: 15:37 and 10:34 of GPU time at seed 42, plus queueing.
+- **MATH splitter:** restore placeholders in reverse insertion order in `src/core/vendor/vineppo/math_extract_steps_inplace.py`. A response the splitter still rejects becomes one step, counted in a logged metric. Update the file's `AGENT INSTRUCTIONS`, the pinned corpus fingerprint in `tests/core/test_segmentation.py`, and the docs. Then launch OLMo MATH VinePPO.
+
+The options as they stood before the decisions, kept for the record:
 
 1. **What is "the modification"?** The report needs one, compared against the original method.
 
@@ -100,11 +120,10 @@ In blocking order. My recommendation follows each.
 
 | Work | Gate |
 |---|---|
-| OLMo MATH VinePPO | Decision 2, and the measured GSM8K rate |
-| Seeds 43 and 44 at 650 × 512 | Decision 3 |
-| Adaptive MC budget | Decision 1, and item 5's data |
-| RhoMath on MATH | Decision 5 |
-| Pull request to `main` | Decision 7 |
+| OLMo MATH VinePPO | The splitter fix, tested. About 15 GPU-hours (estimate) |
+| OLMo MATH PPO with a LoRA critic | The rank choice, and OLMo GSM8K PPO finishing cleanly |
+| Full fine-tuning GRPO control | Idle GPUs only |
+| RhoMath on MATH | Not decided; do not start |
 
 ## Compute and storage
 
