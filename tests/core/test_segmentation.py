@@ -8,10 +8,12 @@ from itertools import pairwise
 import pytest
 
 from core.segmentation import (
+    SplitterRejection,
     gsm8k_step_boundaries,
     math_step_boundaries,
     step_boundaries_from_tokens,
 )
+from core.vendor.vineppo import math_extract_steps_inplace as vendored
 from core.vendor.vineppo.math_extract_steps_inplace import split_solution_inplace
 
 
@@ -87,20 +89,60 @@ def _parity_corpus():
     ]
 
 
-def _fingerprint(splitter):
+def _outcomes(texts):
     outcomes = []
-    for text in _parity_corpus():
+    for text in texts:
         try:
-            outcomes.append(["ok", splitter(text)])
+            outcomes.append(["ok", split_solution_inplace(text)])
         except AssertionError:
             outcomes.append(["error", "AssertionError"])
+    return outcomes
+
+
+def _fingerprint(outcomes):
     return hashlib.sha256(json.dumps(outcomes).encode()).hexdigest()
 
 
-def test_pinned_upstream_corpus_fingerprint():
+def _upstream_recover(text, placeholders):
+    """Upstream restores placeholders in insertion order."""
+    for key, value in placeholders.items():
+        text = text.replace(key, value)
+    return text
+
+
+def test_pinned_upstream_corpus_fingerprint(monkeypatch):
     # Computed from the original Git blob 2c37633a..., not from this refactor.
-    assert _fingerprint(split_solution_inplace) == (
+    monkeypatch.setattr(vendored, "_recover", _upstream_recover)
+    assert _fingerprint(_outcomes(_parity_corpus())) == (
         "bf8b192ce89466a4f4c50894705ddae8721572eb8405a1254bc787e8853e4251"
+    )
+
+
+# A \( \) span inside a \[ \] span, as in the OLMo MATH responses upstream rejects.
+NESTED = (
+    r"We start from the substitution. \[ q(x) = y^2 + 4y + 4 \text{ (with \( y = x^2 \))}. \]"
+    " Therefore the range is the interval starting at four."
+)
+
+
+def test_reverse_recovery_departs_from_upstream_only_on_rejected_texts(monkeypatch):
+    corpus = _parity_corpus()
+    repaired = _outcomes(corpus)
+    assert split_solution_inplace(NESTED) == [0, 74, 141]
+    with monkeypatch.context() as patch:
+        patch.setattr(vendored, "_recover", _upstream_recover)
+        upstream = _outcomes(corpus)
+        with pytest.raises(AssertionError):
+            split_solution_inplace(NESTED)
+    changed = [i for i, pair in enumerate(zip(upstream, repaired)) if pair[0] != pair[1]]
+    for i in changed:
+        assert upstream[i] == ["error", "AssertionError"]
+        status, cuts = repaired[i]
+        assert status == "ok" and cuts[0] == 0 and cuts[-1] == len(corpus[i])
+        assert cuts == sorted(cuts)
+    assert len(changed) == 456
+    assert _fingerprint(repaired) == (
+        "82ffb476eab7be1526b6959b46a4150a3257ae548b6d8c783b14e087c31081eb"
     )
 
 
@@ -431,10 +473,12 @@ def test_token_entry_point_preserves_segmentation_failures(
     byte_tokenizer, dataset, text
 ):
     ids = byte_tokenizer.encode(text, add_special_tokens=False)
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError) as error:
         step_boundaries_from_tokens(
             ids, byte_tokenizer, dataset=dataset, eos_token_ids=[]
         )
+    # Only a vendored MATH splitter failure is the trainer's single-step case.
+    assert isinstance(error.value, SplitterRejection) == (dataset == "math")
 
 
 def test_noncanonical_sampled_ids_keep_their_boundaries(byte_tokenizer):

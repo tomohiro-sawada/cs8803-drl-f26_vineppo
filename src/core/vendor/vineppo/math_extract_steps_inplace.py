@@ -8,10 +8,15 @@ Copyright (c) 2024 McGill NLP. MIT license: adjacent LICENSE.VinePPO.
 
 Local changes: inline hashing, remove unused placeholder types/helpers, factor
 balanced splitting and cumulative offsets, retain the stage order and quirks.
-In particular, placeholder length is 60, recovery is insertion-ordered, repeated
-placeholders use str.replace, and the math exclusion range uses LOCAL offsets.
-These are compatibility semantics, not fixes. Short inputs can fail upstream's final assertion; empty text returns [0].
-The public token adapter requires a nonempty, complete partition.
+In particular, placeholder length is 60, repeated placeholders use str.replace,
+and the math exclusion range uses LOCAL offsets. These are compatibility
+semantics, not fixes. Short inputs can fail upstream's final assertion; empty
+text returns [0]. The public token adapter requires a nonempty, complete partition.
+
+Departure from upstream (approved 2026-11-24): placeholders are restored in
+reverse insertion order. Upstream restores in insertion order, which never
+restores a math span captured inside a later-matched span and then fails its
+final assertion. Texts upstream accepts keep their boundaries.
 """
 
 import hashlib
@@ -61,7 +66,8 @@ def _disguise(text):
 
 
 def _recover(text, placeholders):
-    for key, value in placeholders.items():
+    # A later placeholder's value can contain earlier keys, never the reverse.
+    for key, value in reversed(placeholders.items()):
         text = text.replace(key, value)
     return text
 
@@ -186,13 +192,16 @@ def _break_long(part):
 
 
 def split_solution_inplace(reasoning_latex: str) -> list[int]:
-    """Return upstream character indices verbatim, including degenerate results.
+    """Return upstream character indices, including degenerate results.
 
     Compatibility, not a total parser: "x", "Short.", and some repeated
     multiline placeholders raise AssertionError; empty text returns [0].
     The token adapters reject empty/degenerate partitions. AGENT INSTRUCTIONS:
-    do not silently repair these quirks here; tests/core/test_segmentation.py
-    pins upstream outcomes, including failures, with a corpus fingerprint.
+    the one approved repair is reverse-order placeholder recovery (module
+    docstring). Do not silently repair any other quirk here.
+    tests/core/test_segmentation.py pins the upstream outcomes, including
+    failures, with a corpus fingerprint, and pins that the repair changes
+    only texts upstream rejects.
     """
     disguised, placeholders = _disguise(reasoning_latex)
     indices = _tail_indices(disguised, _initial_indices(disguised), placeholders)

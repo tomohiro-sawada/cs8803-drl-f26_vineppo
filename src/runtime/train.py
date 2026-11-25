@@ -58,7 +58,7 @@ from core.data import (
 from core.inference import Completion, HFInference, token_logprobs
 from core.lora import lora_identity
 from core.optimization import assert_fp32_optimizer_state, trainable_fp32_parameters
-from core.segmentation import step_boundaries_from_tokens
+from core.segmentation import SplitterRejection, step_boundaries_from_tokens
 from core.verifier import verify_math_responses, verify_response
 from runtime.checkpoints import (
     COMPACT_LORA,
@@ -507,6 +507,7 @@ class PPOTrainer:
             episodes = []
             prefix_values = _Moments()
             step_counts = _Moments()
+            splitter_rejected = []
             raw_episodes, episode_ids, scorers = [], [], []
             for index, groups in zip(indices, completions, strict=True):
                 example = examples[index]
@@ -571,20 +572,34 @@ class PPOTrainer:
                     episode_ids.append(f"{self.iteration}:{example.id}:{sample_index}")
                     scorers.append(score_responses)
             if isinstance(algorithm, VinePPOConfig):
+
+                def step_boundaries(episode_id, episode):
+                    """One step for a response the MATH splitter rejects.
+
+                    AGENT INSTRUCTIONS: approved departure from upstream, which
+                    drops such responses. Its advantage is reward minus the
+                    prompt's value. Count every use; catch nothing else.
+                    """
+                    try:
+                        return step_boundaries_from_tokens(
+                            episode.response_ids,
+                            tokenizer,
+                            dataset=task,
+                            eos_token_ids=eos_ids,
+                            context_ids=episode.prompt_ids,
+                            context_special_ids=self.prompt_special_ids,
+                        )
+                    except SplitterRejection:
+                        splitter_rejected.append(episode_id)
+                        return 0, len(episode.response_ids)
+
                 # Segment every primary response, then queue all MC work at once.
                 estimates = self.estimate_vineppo_batch(
                     [
                         (
                             episode_id,
                             episode,
-                            step_boundaries_from_tokens(
-                                episode.response_ids,
-                                tokenizer,
-                                dataset=task,
-                                eos_token_ids=eos_ids,
-                                context_ids=episode.prompt_ids,
-                                context_special_ids=self.prompt_special_ids,
-                            ),
+                            step_boundaries(episode_id, episode),
                             scorer,
                         )
                         for episode_id, episode, scorer in zip(
@@ -641,6 +656,9 @@ class PPOTrainer:
             if isinstance(algorithm, VinePPOConfig):
                 diagnostics.update(step_counts.metrics("vineppo/steps_per_response"))
                 diagnostics["vineppo/step_count"] = float(prefix_values.count)
+                diagnostics["vineppo/splitter_rejected_responses"] = float(
+                    len(splitter_rejected)
+                )
                 diagnostics.update(prefix_values.metrics("vineppo/mc_prefix_value"))
             if supervised:
                 kept = keep_correct(

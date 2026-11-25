@@ -89,12 +89,24 @@ the same environment.
 
 VinePPO calls `step_boundaries_from_tokens()` in `src/core/segmentation.py`.
 It decodes successive prefixes in prompt context and maps each character cut
-to an index in the original sampled response. MATH moves cuts that fall
-inside tokens to the next complete token boundary and merges coincident cuts.
-The crossing token belongs to the earlier step. MC branching and PPO credit
-use the same response-relative offsets. GSM8K uses exact newline cuts and
+to an index in the original sampled response. For MATH and GSM8K, a cut that
+falls inside a token moves to the next complete token boundary, and coincident
+cuts merge. The crossing token belongs to the earlier step. MC branching and
+PPO credit use the same response-relative offsets. GSM8K cuts at newlines and
 keeps the suffix from the first answer marker together. Sampled EOS belongs
 to the final step.
+
+Three departures from the upstream splitters, each needed to train on the
+exact sampled tokens of a chat model:
+
+- Tokens marked special in the tokenizer's added-token registry count as
+  special even when `all_special_ids` omits them.
+- Cuts round forward to sampled-token boundaries for both tasks.
+- The vendored MATH splitter restores nested math placeholders in reverse
+  insertion order. Upstream restores in insertion order and rejects such
+  responses. A response the splitter still rejects trains as one step, whose
+  advantage is its reward minus the prompt's value, and is counted in
+  `vineppo/splitter_rejected_responses`. Upstream drops it.
 
 ## HF inference
 

@@ -10,6 +10,8 @@ from algorithms.grpo import GRPOConfig
 from algorithms.rloo import RLOOConfig
 from core.data import EpisodeWithAdvantages
 from core.inference import Completion
+from core.segmentation import SplitterRejection
+from runtime import train as train_module
 from runtime.train import _Moments, _training_diagnostics
 from tests.runtime import test_ppo_train, test_train
 
@@ -98,6 +100,33 @@ def test_group_training_metrics(training_case, monkeypatch, algorithm):
     assert all(isfinite(value) for value in metrics.values())
 
 
+def test_splitter_rejection_trains_as_one_counted_step(training_case, monkeypatch):
+    make, inputs = training_case
+    run = make()
+    segment, estimate = train_module.step_boundaries_from_tokens, run.estimate_vineppo_batch
+    expected, items = [], []
+
+    def reject_first(response_ids, *args, **kwargs):
+        expected.append(segment(response_ids, *args, **kwargs))
+        if len(expected) == 1:
+            expected[0] = (0, len(response_ids))
+            raise SplitterRejection("nested placeholder")
+        return expected[-1]
+
+    def capture(batch, **kwargs):
+        items.extend(batch)
+        return estimate(batch, **kwargs)
+
+    monkeypatch.setattr(train_module, "step_boundaries_from_tokens", reject_first)
+    monkeypatch.setattr(run, "estimate_vineppo_batch", capture)
+    metrics = run.train(**inputs)[0]
+    assert metrics["vineppo/splitter_rejected_responses"] == 1
+    assert [boundaries for _, _, boundaries, _ in items] == expected
+    assert len(expected[1]) > 2 and metrics["vineppo/step_count"] == sum(
+        len(boundaries) - 1 for boundaries in expected
+    )
+
+
 def test_vine_metrics_stream_estimates_without_enabling_prefix_payloads(
     training_case, monkeypatch
 ):
@@ -120,6 +149,7 @@ def test_vine_metrics_stream_estimates_without_enabling_prefix_payloads(
     )
     assert logged == [metrics]
     assert metrics["vineppo/step_count"] == len(values)
+    assert metrics["vineppo/splitter_rejected_responses"] == 0
     assert metrics["vineppo/steps_per_response_mean"] == len(values) / len(estimates)
     assert metrics["vineppo/mc_prefix_value_mean"] == pytest.approx(
         values.mean().item()

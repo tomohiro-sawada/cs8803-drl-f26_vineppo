@@ -188,9 +188,16 @@ more time does not guarantee the cluster QoS allows it.
 MATH and GSM8K VinePPO assign a token spanning a reasoning-step cut to the earlier
 step. It advances the cut to the next complete sampled-token boundary and
 merges coincident cuts. Both MC branching and PPO credit use those boundaries
-on the original token IDs. Invalid token alignment and MATH splitter errors
-still abort the run. Prompt controls marked special in the added-token
-registry must be explicitly allowed by the prompt protocol.
+on the original token IDs. Invalid token alignment still aborts the run.
+Prompt controls marked special in the added-token registry must be explicitly
+allowed by the prompt protocol.
+
+The vendored MATH splitter restores nested math placeholders in reverse
+insertion order, a departure from upstream, which rejects a math span captured
+inside a later-matched span. A response the splitter still rejects becomes one
+step in training: its advantage is its reward minus the prompt's value.
+Upstream drops such responses. `metadata.json` records the policy as
+`math_segmentation_policy`.
 
 `--math-grader-workers` defaults to 1. With more workers, training grades
 distinct answer tuples concurrently within a primary or Monte Carlo sample
@@ -451,6 +458,8 @@ Additional cheap diagnostics use existing rollouts only:
 - `vineppo/step_count`, `vineppo/steps_per_response_mean/std`, and
   `vineppo/mc_prefix_value_mean/std` describe step structure and prefix-weighted
   values. Prefix-value dispersion is **not** Monte Carlo standard error.
+- `vineppo/splitter_rejected_responses` counts the iteration's responses that
+  the MATH splitter rejected and that trained as one step.
 
 Actor/critic iteration diagnostics average optimizer-step metrics. `approx_kl`
 is relative to the old policy; RLOO uses sequence log-ratios, GRPO/PPO/VinePPO

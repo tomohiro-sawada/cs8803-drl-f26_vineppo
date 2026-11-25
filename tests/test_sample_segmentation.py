@@ -150,7 +150,7 @@ def test_assess_success_keeps_exact_ids(task, eos):
         ([2, 2], Tokenizer(), "gsm8k", "special", "AssertionError"),
         ([2], Tokenizer(), "gsm8k", "empty", "AssertionError"),
         ([], Tokenizer(), "gsm8k", "empty", "AssertionError"),
-        (tokens("x"), Tokenizer(), "math", "upstream_or_span", "AssertionError"),
+        (tokens("x"), Tokenizer(), "math", "upstream_or_span", "SplitterRejection"),
         (tokens("\n\n"), Tokenizer(), "gsm8k", "upstream_or_span", "AssertionError"),
     ],
 )

@@ -15,7 +15,8 @@ padding, normalization, tokenization or decoding is performed by those adapters.
 
 Both tasks assign tokens spanning character cuts to the earlier step and
 advance the cuts to complete sampled-token boundaries. Coincident cuts merge.
-Empty/degenerate partitions and upstream segmentation failures raise.
+Empty/degenerate partitions and upstream segmentation failures raise; a MATH
+text the vendored splitter rejects raises SplitterRejection.
 
 GSM8K logic condensed from McGill-NLP/VinePPO, revision
 9f716e68bb934e71da86c226c1699c36b5553faf, src/treetune/tasks/gsm8k.py,
@@ -34,7 +35,11 @@ if TYPE_CHECKING:
 
 from core.vendor.vineppo.math_extract_steps_inplace import split_solution_inplace
 
-MATH_SEGMENTATION_POLICY = "first_character_sampled_tokens_v1"
+MATH_SEGMENTATION_POLICY = "first_character_sampled_tokens_v2_reverse_recovery"
+
+
+class SplitterRejection(AssertionError):
+    """The vendored MATH splitter rejected the response text."""
 
 
 def step_boundaries_from_tokens(
@@ -64,14 +69,18 @@ def step_boundaries_from_tokens(
         decoded text differently. Derive offsets from decoded sampled prefixes.
         Preserve the pinned upstream splitters' behavior except that GSM8K
         treats everything from the first answer marker onward as one suffix,
-        including repeated markers. MATH splitter errors and degenerate GSM8K
-        whitespace-only partitions propagate.
+        including repeated markers. MATH splitter errors propagate as
+        SplitterRejection and degenerate GSM8K whitespace-only partitions as
+        AssertionError. Do not substitute a partition here: the trainer alone
+        turns a SplitterRejection into one counted single step.
         Departures from upstream: recognize special added tokens even when
         absent from all_special_ids. Only explicitly allowlisted controls may
         appear in the prompt after an optional leading BOS. For both MATH and
         GSM8K, advance cuts inside tokens and merge coincident cuts on the
         sampled sequence. Use those boundaries for both MC states and PPO
-        credit. Alignment and upstream partition failures still raise.
+        credit. The vendored MATH splitter restores nested placeholders in
+        reverse insertion order. Alignment and upstream partition failures
+        still raise.
     """
     assert dataset in ("math", "gsm8k"), "Unsupported segmentation dataset"
     assert tokenizer.is_fast, "Segmentation requires a fast tokenizer"
@@ -137,17 +146,24 @@ def math_step_boundaries(
 
     Implements MATH's answer_prefix=None path. See the module's token-span
     contract; the same validation and exact-token mapping apply to GSM8K.
-    Upstream failures (including short inputs such as "x" and "Short.")
-    propagate as AssertionError. No single-step fallback is substituted.
+    Splitter failures (including short inputs such as "x" and "Short.")
+    raise SplitterRejection. No single-step fallback is substituted here.
     Pass round_forward=False only to replay historical strict diagnostics.
     """
     return _token_step_boundaries(
         text,
         response_ids,
         token_spans,
-        split_solution_inplace,
+        _math_character_boundaries,
         round_forward=round_forward,
     )
+
+
+def _math_character_boundaries(text: str) -> list[int]:
+    try:
+        return split_solution_inplace(text)
+    except AssertionError as error:
+        raise SplitterRejection(*error.args) from error
 
 
 def gsm8k_step_boundaries(
