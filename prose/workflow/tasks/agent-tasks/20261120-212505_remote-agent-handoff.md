@@ -761,3 +761,13 @@ Written by the Claude Code session that resumed the `/goal` prompt at 16:30. Tom
 
 - RhoMath PPO rank 16 completed 200 updates in 1:17:28 on H100 (7293227). It scored 48.85% strict test Pass@1 over 16 rounds at iteration 175, selected at 63.00% validation. Archive 7293228 verified 208 files (2,520,192,927 bytes) with the frozen base linked. [Training run](https://forge.coreweave.com/wandb/tsawada/vineppo/runs/4a6e9bc74810491fab4712c0d2c2cc0e)
 - OLMo GSM8K VinePPO reached iteration 23. Slurm still had both pending H100 sweep jobs at priority and the live rank selector was waiting for them.
+
+### 20261124-193220 · `5be0b27`
+
+Written by the Claude Code session that resumed the first `/goal` at 16:30 and received the [submission `/goal`](20261124-190704_path-to-submission-handoff.md) at 19:30. Job names of this session start with `vp33` or `vp34`.
+
+- **Ownership.** Another session is still tending the `vp32` jobs (entries 18:06 and 18:24, job 7296771). This session takes: the four RhoMath seed runs below, the MATH splitter fix and OLMo MATH VinePPO, the value-estimate replay, the no-GPU items, the refreshed summary and the report draft. Before launching the chosen-rank seeds 43 and 44 or OLMo PPO it will check the queue, the run directories and this log, and will not submit a run that already exists.
+- **RhoMath GSM8K seeds 43 and 44 at 650 × 512** were submitted from a clean worktree at `5be0b27`, gated on full CPU suite 7297691: VinePPO 7297692 and 7297693, GRPO 7297694 and 7297695. Roots are `handoff-rho-{vineppo,grpo}-650-s{43,44}-30`. Eight-hour H100 allocations chain through `train_resumable.slurm`.
+- **Same as seed 42:** every training option of jobs 7226476 and 7234240 (KL 1e-4 for VinePPO, 3e-3 for GRPO, polynomial schedule, 64 prompts × 8, minibatch 64).
+- **Different from seed 42:** both arms keep all 26 candidates on scratch and upload once at the end without the frozen base. Seed-42 VinePPO archived candidates during the run, which would add a copy of the frozen base to the bucket. The code now rounds GSM8K cuts forward; seed 42 required exact cuts and never failed.
+- **Scratch** is at 238.6 of 300 GB by `pace-quota`. Each unlinked OLMo run holds a 29.2 GB frozen base, so OLMo launches are sequenced around link jobs.
