@@ -15,6 +15,7 @@ recreate the trainer and load the last completed checkpoint.
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import asdict
+from functools import partial
 from hashlib import sha256
 from math import ceil, isfinite, sqrt
 from pathlib import Path
@@ -437,6 +438,58 @@ class PPOTrainer:
             add([asdict(example), prompt, ids])
         return prompts, digest.hexdigest()
 
+    def _score_responses(
+        self,
+        responses: Sequence[Completion],
+        *,
+        example: Example,
+        tokenizer: PreTrainedTokenizerBase,
+        task: Literal["math", "gsm8k"],
+        reference_is_solution: bool,
+    ) -> list[float]:
+        """Training reward: verified correctness if stopped, else truncation_reward."""
+        rewards = [float(self.config.truncation_reward)] * len(responses)
+        stopped = {}
+        for sample, response in enumerate(responses):
+            assert response.finish_reason in ("stop", "length"), (
+                "Unsupported finish reason"
+            )
+            if response.finish_reason == "stop":
+                stopped[sample] = tokenizer.decode(
+                    response.token_ids,
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=False,
+                )
+        try:
+            if task == "math" and self.math_grader_workers > 1:
+                verified = verify_math_responses(
+                    list(stopped.values()),
+                    example.reference_answer,
+                    question=example.question,
+                    reference_is_solution=reference_is_solution,
+                    workers=self.math_grader_workers,
+                )
+            else:
+                verified = [
+                    verify_response(
+                        text,
+                        example.reference_answer,
+                        task=task,
+                        question=example.question,
+                        reference_is_solution=reference_is_solution,
+                    )
+                    for text in stopped.values()
+                ]
+        except Exception as error:
+            error.add_note(
+                f"Verification example {example.id}; stopped samples "
+                f"{list(stopped.items())!r:.512}"
+            )
+            raise
+        for sample, result in zip(stopped, verified, strict=True):
+            rewards[sample] = float(result.correct)
+        return rewards
+
     def train(
         self,
         examples: Sequence[Example],
@@ -512,52 +565,13 @@ class PPOTrainer:
             for index, groups in zip(indices, completions, strict=True):
                 example = examples[index]
 
-                def score_responses(
-                    responses: Sequence[Completion],
-                    example: Example = example,
-                ) -> list[float]:
-                    rewards = [float(self.config.truncation_reward)] * len(responses)
-                    stopped = {}
-                    for sample, response in enumerate(responses):
-                        assert response.finish_reason in ("stop", "length"), (
-                            "Unsupported finish reason"
-                        )
-                        if response.finish_reason == "stop":
-                            stopped[sample] = tokenizer.decode(
-                                response.token_ids,
-                                skip_special_tokens=True,
-                                clean_up_tokenization_spaces=False,
-                            )
-                    try:
-                        if task == "math" and self.math_grader_workers > 1:
-                            verified = verify_math_responses(
-                                list(stopped.values()),
-                                example.reference_answer,
-                                question=example.question,
-                                reference_is_solution=reference_is_solution,
-                                workers=self.math_grader_workers,
-                            )
-                        else:
-                            verified = [
-                                verify_response(
-                                    text,
-                                    example.reference_answer,
-                                    task=task,
-                                    question=example.question,
-                                    reference_is_solution=reference_is_solution,
-                                )
-                                for text in stopped.values()
-                            ]
-                    except Exception as error:
-                        error.add_note(
-                            f"Verification example {example.id}; stopped samples "
-                            f"{list(stopped.items())!r:.512}"
-                        )
-                        raise
-                    for sample, result in zip(stopped, verified, strict=True):
-                        rewards[sample] = float(result.correct)
-                    return rewards
-
+                score_responses = partial(
+                    self._score_responses,
+                    example=example,
+                    tokenizer=tokenizer,
+                    task=task,
+                    reference_is_solution=reference_is_solution,
+                )
                 rewards = score_responses(groups)
                 for sample_index, (completion, reward) in enumerate(
                     zip(groups, rewards, strict=True)

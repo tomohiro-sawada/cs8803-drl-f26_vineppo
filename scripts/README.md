@@ -29,6 +29,13 @@ These are sequential scheduler observations, not an atomic snapshot, GPU compute
   reviewed plan names, after checking each against the live listing and the
   off-site backup receipt; without `--apply` it only runs the checks.
 - `paper_artifact_replications` reproduces the paper's evaluation artifacts.
+- `diagnostics/value_estimate_replay.py` measures a PPO critic against
+  256-sample Monte Carlo values on fresh rollouts of the same checkpoint's
+  actor. It takes the training runner's options through `launch.sh`
+  (`TRAINING_ENTRY`), needs a GPU, and changes no weights.
+  `diagnostics/value_estimate_analysis.py` scores its output: mean absolute
+  error by reasoning depth and explained variance, for the critic and for
+  1, 3 and 9 Monte Carlo samples.
 - `figures` draws report figures. `collect_results_summary.py` reads run
   directories into one JSON file (run it under Slurm);
   `plot_results_summary.py` draws the PNGs from that file.
