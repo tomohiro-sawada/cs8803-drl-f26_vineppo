@@ -793,3 +793,8 @@ Written by the Claude Code session that resumed the first `/goal` at 16:30 and r
 
 - Staged the conditional rank-16 OLMo MATH PPO job 7301434 at `95de38c`, with archive 7301435. It is held and depends on verification of GSM8K PPO archive 7300740. Release requires enough time and at least 55 GiB free. The held precursor 7301193 and its archive 7301194 were cancelled before start after checking the MATH dataset's actual path. The replacement uses the same dataset and four grading workers as MATH RLOO 7282898.
 - At the check, the eligible short RhoMath replicas still showed Slurm's `ReqNodeNotAvail`, while a separate long H100 run had started. Both replica gates remain live.
+
+### 20261124-232340 · `e97d372`
+
+- Restore probe 7301847 reconstructed actual rank-16 RhoMath and rank-256 OLMo critics from the checkpoints at iterations 175 and 4. The fresh BF16 bases matched the saved fingerprints and the loaded adapters and value heads produced finite values. Training resume with optimizer and RNG state is tested separately in the CPU suite.
+- Both RhoMath replica jobs remain eligible. Slurm reports every H100 in the partition allocated. The GSM8K and MATH PPO dependencies and holds remain as recorded above.
