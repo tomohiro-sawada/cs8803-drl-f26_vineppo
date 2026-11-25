@@ -5,7 +5,7 @@
 RUNS_DIR is .../training/pace_ice. Each run is read through the script that
 produced the 2026-11-22 report tables, so the figures and those tables share
 one source: the frozen 16-round test, the validation manifest and the training
-metrics. Percentages are in points and intervals cluster by question. "Lenient"
+metrics. Test scores are unrounded points with intervals clustered by question. "Lenient"
 is the GSM8K reading defined in scripts/diagnostics/regrade_evaluation.py.
 A validation point's hours sum iteration_seconds over the logged iterations up
 to it, so they include sampling, updates, checkpoints and earlier validations.
@@ -16,15 +16,11 @@ import runpy
 import sys
 from pathlib import Path
 
-from scripts.diagnostics.regrade_evaluation import (
-    interval,
-    lenient,
-    load,
-    question_means,
-)
+from scripts.diagnostics.regrade_evaluation import lenient, load, question_means
 
 ANALYSIS = "experiments/training/pace_ice/handoff_20261120/vp-training-analysis.py"
-extract = runpy.run_path(str(Path(__file__).resolve().parents[2] / ANALYSIS))["extract"]
+analysis = runpy.run_path(str(Path(__file__).resolve().parents[2] / ANALYSIS))
+extract, ci = analysis["extract"], analysis["ci"]
 
 
 RUNS = {
@@ -91,7 +87,7 @@ def describe(runs_dir, task, name):
         "run": name,
         "seed": run["seed"],
         "selected": run["selection_iteration"],
-        "test": interval(list(scores.values())),
+        "test": [100 * x for x in run["test_pass_at_1"]],
         "validation": [[i, round(100 * a, 2), hours(i)] for i, a in run["validation"]],
         "primary_tokens": run["primary_tokens"],
         "mc_tokens": run["mc_tokens"],
@@ -102,7 +98,7 @@ def describe(runs_dir, task, name):
     if task == "olmo-gsm8k":
         grades = question_means(test_records(runs_dir / name), lenient)
         assert grades.keys() == scores.keys(), name
-        record["test_lenient"] = interval(list(grades.values()))
+        record["test_lenient"] = [100 * x for x in ci(list(grades.values()))]
     return record
 
 
@@ -119,7 +115,7 @@ def main(runs_dir, out):
     for task, arms in data.items():
         for arm, runs in arms.items():
             for run in runs:
-                print(task, arm, run["seed"], run["selected"], run["test"])
+                print(task, arm, run["seed"], run["selected"], f"{run['test'][0]:.4f}")
 
 
 if __name__ == "__main__":
