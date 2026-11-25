@@ -820,3 +820,8 @@ Written by the Claude Code session that resumed the first `/goal` at 16:30 and r
 - Rank-16 OLMo GSM8K PPO 7300739 completed 50 updates and 16 held-out rounds in 2:03:01 on H200. The 3:15 backfill limit was sufficient. Validation selected iteration 50 at 94.84%. Test Pass@1 was 88.83% strict and 90.01% lenient. The checkpoint was 960,937,164 bytes excluding the shared frozen base. [Training run](https://forge.coreweave.com/wandb/tsawada/vineppo/runs/ed6aa7cae74e4ab2942d7b5db541a179)
 - Archive 7300740 verified 157 files (5,013,821,201 bytes). Audit 7315725 reproduced all GSM8K table rows. VinePPO minus PPO was +0.35 points [−0.17, +0.88] strict and +0.07 [−0.43, +0.56] lenient with question-clustered 95% intervals.
 - MATH PPO 7301434 has a verified GSM8K archive prerequisite and remains held because free scratch is about 49.8 GiB. Queued nondeleting link-and-verify jobs 7317397 and 7317398 after the two separate GRPO 650 successors, 7305599 and 7305598. Each completed link can reclaim about 4.1 GiB of duplicated frozen weights. Their training configuration and jobs were left in place.
+
+### 20261125-151725 · `bca9893`
+
+- The two GRPO 650 continuations reached COMPLETE. Job 7317398 verified seed 44 and job 7317397 linked seed 43 and is verifying its mirror. Both links checked the canonical RhoMath base hash before replacement.
+- Refined the MATH PPO peak estimate to 33.5 GiB using the measured 29.2 GB frozen snapshot, up to six 960,937,164-byte checkpoint files during a boundary write, and allowance for evaluations and adapter staging. At release, Lustre showed 56,326,264 KiB free (53.7 GiB), including the 20 GiB margin. Released MATH PPO 7301434 to H200. Archive 7301435 and final tables and inventory 7321042 are queued.
