@@ -34,13 +34,15 @@ def describe(root):
     else:
         assert run["logged_iterations"] == run["expected_iterations"]
         checkpoint_bytes = actor.stat().st_size
+    extra_jobs = analysis["EXTRA_SLURM_JOBS"].get(root.name, ())
+    jobs = sorted(set(run["slurm"]).union(extra_jobs))
     accounting = subprocess.check_output(
-        ["sacct", "-X", "-n", "-P", "-j", ",".join(run["slurm"])]
+        ["sacct", "-X", "-n", "-P", "-j", ",".join(jobs)]
         + ["-o", "JobIDRaw,ElapsedRaw"],
         text=True,
     )
     elapsed = dict(line.split("|") for line in accounting.splitlines())
-    assert elapsed.keys() == set(run["slurm"]), accounting
+    assert elapsed.keys() == set(jobs), accounting
     n = run["logged_iterations"]
     phases = run["phase_seconds"]
     return {
@@ -63,7 +65,7 @@ def describe(root):
         "selected_checkpoint_bytes": checkpoint_bytes,
         "gpu_wall_seconds": sum(map(int, elapsed.values())),
         "primary_tokens": run["primary_tokens"],
-        "jobs": run["slurm"], "wandb": run["wandb"],
+        "jobs": jobs, "wandb": run["wandb"],
     }
 
 

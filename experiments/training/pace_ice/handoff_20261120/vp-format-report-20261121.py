@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 import re
+import runpy
 from statistics import mean, stdev
 import subprocess
 import sys
@@ -27,15 +28,9 @@ partial = {
     "handoff-olmo3-math-grpo-50-s42-10": "Winner and test",
     "handoff-rho-vineppo-650-s42-11": "Winner",
 }
-extra_jobs = {
-    "sft-baseline-test-rhomath-gsm8k-vllm-h100-01": ("7204554",),
-    "handoff-olmo3-math-sft-04": ("7228515",),
-    "handoff-olmo3-gsm8k-sft-10": ("7236066",),
-    "handoff-rho-ppo-200-s43-07": ("7231548",),
-    "handoff-rho-ppo-200-s44-07": ("7229238",),
-    "handoff-rho-vineppo-650-s42-11": ("7234149",),
-    "handoff-olmo3-math-grpo-50-s42-10": ("7232689", "7233011", "7233190"),
-}
+extra_jobs = runpy.run_path(
+    str(Path(__file__).with_name("vp-training-analysis.py"))
+)["EXTRA_SLURM_JOBS"]
 ids = set(i for name, row in runs.items() for i in row["slurm"] + list(extra_jobs.get(name, ())))
 assert ids
 account = subprocess.check_output([

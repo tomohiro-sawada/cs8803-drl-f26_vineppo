@@ -7,6 +7,17 @@ import re
 from statistics import mean, stdev
 import sys
 
+# Allocations from the execution log that ended before recording metadata.
+EXTRA_SLURM_JOBS = {
+    "sft-baseline-test-rhomath-gsm8k-vllm-h100-01": ("7204554",),
+    "handoff-olmo3-math-sft-04": ("7228515",),
+    "handoff-olmo3-gsm8k-sft-10": ("7236066",),
+    "handoff-rho-ppo-200-s43-07": ("7231548",),
+    "handoff-rho-ppo-200-s44-07": ("7229238",),
+    "handoff-rho-vineppo-650-s42-11": ("7234149",),
+    "handoff-olmo3-math-grpo-50-s42-10": ("7232689", "7233011", "7233190"),
+}
+
 def read(path):
     return json.loads(path.read_text())
 
