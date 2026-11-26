@@ -85,6 +85,54 @@ Then validate FlashAttention forward/backward kernels and vLLM generation before
 using the stack for experiments. Do not run another installer concurrently in
 the same environment.
 
+## Reproduce the experiments
+
+The experiments ran on PACE-ICE, one H100 (RhoMath 1.1B) or H200 (OLMo 3 7B)
+per job. Each step has its own documentation; this is the order.
+
+1. **Environments.** `uv sync`, then the inference environment above
+   (`scripts/setup/install.py --inference`), which provides vLLM for sampling.
+2. **Models and data.** `uv run python scripts/setup/download_model_weights.py`
+   downloads the paper's RhoMath SFT checkpoints and its GSM8K and MATH splits.
+   See [`scripts/setup/README.md`](scripts/setup/README.md).
+3. **Train and test.** One command trains, selects a checkpoint on validation
+   and scores it on the test split with 16 rounds. Submit it from the
+   repository root with `PYTHON`, `VLLM_PYTHON`, `TRAINING_CACHE` and
+   `PACE_CHAIN_LOG_DIR` set to absolute paths:
+
+   ```sh
+   sbatch --time=08:00:00 --constraint=gpu-h100 \
+     experiments/training/pace_ice/train_resumable.slurm /abs/path/to/run-root \
+     --algorithm vineppo --task gsm8k --model-protocol rhomath \
+     --model-path "$MODEL" --dataset-path "$DATA" \
+     --dtype bfloat16 --finetuning lora --lora-rank 16 --lora-alpha 32 \
+     --learning-rate 0.00001 --backend vllm --num-workers 1 \
+     --worker-placement colocated --seed 42 --num-iterations 200 \
+     --prompts-per-iteration 16 --num-samples 8 --minibatch-size 32 \
+     --microbatch-size 4 --update-epochs 2 --mc-num-samples 9 \
+     --checkpoint-every 25 --resume-checkpoint-every 5 \
+     --checkpoint-format compact-lora --keep-checkpoints 8 \
+     --evaluation validation-test --validation-rounds 4 --eval-seed 42 \
+     --eval-batch-size 256 --lr-schedule constant --kl-coef 0.0001 \
+     --archive-checkpoints no --wandb-mode disabled
+   ```
+
+   `--algorithm` is `vineppo`, `ppo`, `grpo`, `rloo` or `restem`. GRPO and
+   RLOO use `--kl-coef 0.003`. `--critic-lora-rank 16` gives PPO the LoRA
+   critic, the modification studied in the report. The long runs use
+   `--num-iterations 650 --prompts-per-iteration 64 --minibatch-size 64
+   --lr-schedule polynomial`. All options, the resume chain and the logged
+   metrics are in [`experiments/training/README.md`](experiments/training/README.md).
+4. **Figures and tables.** `scripts/figures/collect_results_summary.py` reads
+   the run directories into one JSON file and
+   `scripts/figures/plot_results_summary.py` draws the figures from it. See
+   [`scripts/README.md`](scripts/README.md).
+5. **Critic accuracy.** `scripts/diagnostics/value_estimate_replay.py` compares
+   a PPO critic with 256-rollout Monte Carlo values, and
+   `scripts/diagnostics/value_estimate_analysis.py` scores the result.
+
+Results and the report draft are in [`prose/agent-reports`](prose/agent-reports).
+
 ## Step segmentation
 
 VinePPO calls `step_boundaries_from_tokens()` in `src/core/segmentation.py`.
