@@ -1,6 +1,11 @@
-"""Evaluate the pinned unadapted model on the test split via the PACE launcher."""
+"""Evaluate the pinned unadapted model via the PACE launcher.
+
+BASELINE_SPLIT selects the split: test (default, 16 rounds) or validation
+(--validation-rounds rounds, the checkpoint-selection protocol).
+"""
 
 import hashlib
+import os
 import sys
 from pathlib import Path
 
@@ -14,6 +19,8 @@ from experiments.training import evaluate
 from experiments.training.resume import atomic_record
 from experiments.training.run import git, parse_args, write_json
 
+SPLIT = os.environ.get("BASELINE_SPLIT", "test")
+
 
 def main():
     args = parse_args()
@@ -23,6 +30,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_path, local_files_only=True, trust_remote_code=False
     )
+    rounds = 16 if SPLIT == "test" else args.validation_rounds
     args.output.mkdir(parents=True)
     write_json(
         args.output / "metadata.json",
@@ -45,14 +53,14 @@ def main():
     )
     options = [
         "--split",
-        "test",
+        SPLIT,
         "--baseline",
         "--training-output",
         str(args.output),
         "--output",
-        str(args.output / "test"),
+        str(args.output / SPLIT),
         "--rounds",
-        "16",
+        str(rounds),
         "--seed",
         str(args.eval_seed),
         "--batch-size",
@@ -73,9 +81,9 @@ def main():
         if value is not None:
             options.extend((f"--{key.replace('_', '-')}", str(value)))
     result = evaluate.main(options)
-    assert result["complete"] and result["rounds_completed"] == 16
+    assert result["complete"] and result["rounds_completed"] == rounds
     atomic_record(
-        args.output / "COMPLETE", {"result": str(args.output / "test/result.json")}
+        args.output / "COMPLETE", {"result": str(args.output / SPLIT / "result.json")}
     )
 
 
