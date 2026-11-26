@@ -830,3 +830,10 @@ Written by the Claude Code session that resumed the first `/goal` at 16:30 and r
 
 - RhoMath GRPO seed 43 archive 7317397 verified 527 files (4,277,365,879 bytes). Both GRPO archives are verified. MATH PPO started from the clean `95de38c` pin and reached nine updates. Its original archive and results gates remain live.
 - Final-code CPU suite 7324786 passed 1,637 tests at this pin. Wall-clock audit 7324782 reproduced the old report and the new rank table after restoring pre-metadata Slurm allocations to the latter. Full-critic seed 44 totals 2:44:17 including job 7229238. The first audit's historical formatter needed the main checkout's archived log directory as its input location.
+
+### 20261125-194404 · `71b4ce5`
+
+- Rank-16 OLMo MATH PPO 7301434 completed 50 updates and 16 held-out rounds in 4:01:11 on H200. Validation selected iteration 30 at 66.90%. Test Pass@1 was 71.12%, a paired +0.54 points over SFT [−0.20, +1.28]. Archive 7301435 verified 157 files (5,025,610,106 bytes) in 7:23. [Training run](https://forge.coreweave.com/wandb/tsawada/vineppo/runs/fc606b322413426b8239e69a2598e07a)
+- Final audit 7321042 read both OLMo PPO runs with the other baseline and smoke results. The bucket inventory counted 14,853 files and 496,813,613,168 logical bytes and found the second Skynet receipt. The 12 new OLMo and RhoMath runs in the report were checked for COMPLETE, a 16-round test, online W&B and byte-level archive verification. Production MATH VinePPO remains pending under the measured cost gate.
+- The separate VinePPO 650 seed-43 root finished and archive 7326918 verified 539 files (4,478,982,763 bytes). Its seed-44 continuation 7317553 and archive 7326919 remained live in the queue.
+- [Final OLMo and LoRA critic report](../../agent-reports/20261125-194309_olmo-baseline-set-and-lora-critic.md).
