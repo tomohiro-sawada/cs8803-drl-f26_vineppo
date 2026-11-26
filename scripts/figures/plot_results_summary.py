@@ -3,7 +3,7 @@
     uv run --no-project --with matplotlib python \
         scripts/figures/plot_results_summary.py RESULTS.json OUT_DIR
 
-Writes four PNGs to OUT_DIR. matplotlib is not a project dependency, hence
+Writes the PNGs to OUT_DIR. matplotlib is not a project dependency, hence
 the uv invocation.
 """
 
@@ -173,6 +173,32 @@ def cost_figure(rho, out):
     figure.savefig(out / "rhomath-650-cost.png", dpi=150)
 
 
+def generalization_figure(rho, out):
+    """Validation against training accuracy per checkpoint (the paper's Figure 5)."""
+    figure, axis = plt.subplots(figsize=(6.4, 4.6))
+    for arm in ("RLOO 650", "GRPO 650", "PPO 650", "VinePPO 650"):
+        for index, run in enumerate(rho[arm]):
+            validation = {i: score for i, score, _ in run["validation"]}
+            train, scores = zip(
+                *((accuracy, validation[i]) for i, accuracy in run["train_accuracy"])
+            )
+            axis.plot(
+                train,
+                scores,
+                marker="o",
+                markersize=3,
+                linewidth=1,
+                color=color(arm),
+                label=None if index else arm.split()[0],
+            )
+    style(axis, "Validation Pass@1 (%)", "Validation against training accuracy")
+    axis.set_xlabel("Training accuracy over the preceding 25 iterations (%)")
+    axis.legend(frameon=False)
+    figure.suptitle("RhoMath 1.1B on GSM8K, 650 iterations x 512, one line per run")
+    figure.tight_layout()
+    figure.savefig(out / "rhomath-650-generalization.png", dpi=150)
+
+
 def olmo_figure(data, out):
     figure, (math, gsm) = plt.subplots(
         1, 2, figsize=(11, 4), gridspec_kw={"width_ratios": [1, 1.6]}
@@ -208,6 +234,7 @@ def main(results, out):
     test_figure(rho, out)
     curve_figure(rho, out)
     cost_figure(rho, out)
+    generalization_figure(rho, out)
     olmo_figure(data, out)
 
 

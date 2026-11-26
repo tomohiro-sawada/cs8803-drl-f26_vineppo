@@ -84,6 +84,7 @@ def test_analysis_scores_estimators_on_distinct_states_without_shared_samples():
     ]
     result = analysis.summarize(rows)
     assert result["states"] == 3 and result["continuations_per_state"] == 20
+    assert result["responses"] == 3  # Episode "ep" appears twice.
     assert result["continuation_tokens"] == 180
     critic = result["critic"]
     assert critic["mean_absolute_error"] == pytest.approx(0.5 / 3)

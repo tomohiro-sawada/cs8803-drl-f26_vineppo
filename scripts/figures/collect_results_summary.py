@@ -9,6 +9,9 @@ metrics. Test scores are unrounded points with intervals clustered by question. 
 is the GSM8K reading defined in scripts/diagnostics/regrade_evaluation.py.
 A validation point's hours sum iteration_seconds over the logged iterations up
 to it, so they include sampling, updates, checkpoints and earlier validations.
+Its training accuracy is the mean stopped_correctness_mean of the iterations
+since the previous validation point: correctness of the stopped training
+responses, sampled at temperature 1 on training questions.
 """
 
 import json
@@ -83,6 +86,13 @@ def describe(runs_dir, task, name):
         seconds = (r["iteration_seconds"] for i, r in rows.items() if i <= iteration)
         return round(sum(seconds) / 3600, 3)
 
+    def train_accuracy(start, stop):
+        scores = [
+            r["stopped_correctness_mean"] for i, r in rows.items() if start < i <= stop
+        ]
+        return round(100 * sum(scores) / len(scores), 2)
+
+    points = [i for i, _ in run["validation"]]
     record = {
         "run": name,
         "seed": run["seed"],
@@ -94,6 +104,10 @@ def describe(runs_dir, task, name):
         "phase_seconds": run["phase_seconds"],
         "wandb": run["wandb"],
         "reward": [[i, rows[i]["reward_mean"]] for i in sorted(rows)],
+        "train_accuracy": [
+            [stop, train_accuracy(start, stop)]
+            for start, stop in zip(points, points[1:])
+        ],
     }
     if task == "olmo-gsm8k":
         grades = question_means(test_records(runs_dir / name), lenient)

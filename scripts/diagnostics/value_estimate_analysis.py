@@ -54,13 +54,14 @@ def estimator_pairs(row, name):
 
 
 def summarize(rows):
+    responses = len({row["episode"] for row in rows})
     rows = states(rows)
     samples = {len(row["continuation_rewards"]) for row in rows}
     assert len(samples) == 1 and min(samples) > max(KS), samples
     depths = sorted({min(row["step"], DEEPEST) for row in rows})
     result = {
         "states": len(rows),
-        "responses": len({row["episode"] for row in rows}),
+        "responses": responses,
         "continuations_per_state": samples.pop(),
         "reference_mean": fmean(fmean(row["continuation_rewards"]) for row in rows),
         "reference_standard_error": fmean(
