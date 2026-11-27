@@ -850,3 +850,17 @@ Written by the submission session (job names `vp33`–`vp35`). It was idle from 
 - **Figures.** The collector now records training accuracy between validation points, and the plotter draws validation against it for the 650 runs (the paper's Figure 5).
 - **Tests.** The full CPU suite passed 1,637 tests at `5e9d86d` (job 7360359).
 - **Scratch** is at 244.3 of 300 GB by `pace-quota`. The MATH VinePPO run adds a 29.2 GB frozen base until it completes and is linked.
+
+### 20261126-193259 · `9c90d83`
+
+Written by the submission session (job names `vp35`).
+
+- **Reports.** [Results summary 2](../../../agent-reports/20261126-192403_results-summary-seeds-critic-replay.md) and [the final report draft](../../../agent-reports/20261126-192724_final-report-draft.md) (`9c90d83`). Figures, `results.json` and `tables.md` are in `artifacts/training/pace_ice/results-summary-20261126/` (`4613b20`). `scripts/figures/print_results_tables.py` prints every report table from the JSON.
+- **Value replays** 7360492–7360496 are complete. Against 256 rollouts per state the critics have explained variance 0.25 (full, seed 43), 0.42 and 0.26 (rank 16, seeds 43 and 42), 0.34 (rank 64) and 0.32 (rank 256); MC with K = 9 has 0.95–0.96.
+- **SFT validation-protocol checks** 7360497–7360500 are complete. RhoMath SFT: 53.69% on validation, 59.12% on 373 training questions, 40.15% on test. OLMo SFT, official grader: 68.77%, 63.34% and 61.65%.
+- **Collector** job 7366315 wrote `results.json`; rerun 7366467 after a refactor gave an identical file.
+- **Bucket.** Job 7366410 pushed and verified the five replay directories (9 files each, 55.2–55.8 MB) and the four SFT-check directories (14 files each, 1.5–2.3 MB).
+- **OLMo MATH VinePPO** (7360491, successor 7361315) is running: 3 of 50 iterations logged, zero splitter rejections. The first three took 1,810 s, 5,072 s and 2,272 s. Expected finish November 28 or 29 (estimate). When COMPLETE exists: link the frozen base to the OLMo canonical copy, push, verify, rerun the collector (the arm is under `PENDING` there and joins by itself), and write a new dated summary. `scancel 7360491 7361315` stops it.
+- **Not run:** the full fine-tuning GRPO control. Scratch has too little room for full-weight checkpoints without deleting anything, and the cluster's GPUs were not idle.
+- **Tests.** The full CPU suite passed 1,637 tests at `9c90d83` (job 7366671).
+- **Scratch** is at 272.5 of 300 GB by `pace-quota`; 29.2 GB of it is the running run's frozen base.
