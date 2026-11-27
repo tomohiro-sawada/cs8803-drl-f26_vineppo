@@ -38,7 +38,8 @@ These are sequential scheduler observations, not an atomic snapshot, GPU compute
   1, 3 and 9 Monte Carlo samples.
 - `figures` draws report figures. `collect_results_summary.py` reads run
   directories into one JSON file (run it under Slurm);
-  `plot_results_summary.py` draws the PNGs from that file.
+  `plot_results_summary.py` draws the PNGs from that file and
+  `print_results_tables.py` prints the reports' tables from it.
 
 Run `python3 scripts/codebase_hygiene/check_file_sizes.py` to audit every
 tracked file in `HEAD`. Pull-request CI checks newly added or modified Git

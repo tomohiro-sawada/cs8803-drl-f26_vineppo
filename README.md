@@ -125,7 +125,8 @@ per job. Each step has its own documentation; this is the order.
    metrics are in [`experiments/training/README.md`](experiments/training/README.md).
 4. **Figures and tables.** `scripts/figures/collect_results_summary.py` reads
    the run directories into one JSON file and
-   `scripts/figures/plot_results_summary.py` draws the figures from it. See
+   `scripts/figures/plot_results_summary.py` draws the figures from it and
+   `scripts/figures/print_results_tables.py` prints the report tables. See
    [`scripts/README.md`](scripts/README.md).
 5. **Critic accuracy.** `scripts/diagnostics/value_estimate_replay.py` compares
    a PPO critic with 256-rollout Monte Carlo values, and

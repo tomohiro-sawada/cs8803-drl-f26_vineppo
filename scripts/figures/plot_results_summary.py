@@ -10,7 +10,7 @@ the uv invocation.
 import json
 import sys
 from pathlib import Path
-from statistics import mean
+from statistics import linear_regression, mean
 
 import matplotlib
 
@@ -41,6 +41,14 @@ def color(arm):
     return COLORS[arm.split()[0]]
 
 
+def label(arm):
+    """Tick label: the method, with the critic rank for LoRA-critic PPO."""
+    method, *rest = arm.split()
+    return (
+        f"{method}\n{rest[0]}" if rest[0:1] and rest[0].startswith("rank") else method
+    )
+
+
 def style(axis, ylabel=None, title=None):
     axis.spines[["top", "right"]].set_visible(False)
     axis.grid(axis="y", color="#dddddd", linewidth=0.8)
@@ -65,31 +73,60 @@ def interval_bars(axis, arms, key="test", offset=0.0, width=0.6, **kwargs):
             linewidth=1,
         )
         axis.text(index + offset, high + 0.3, f"{score:.1f}", ha="center", fontsize=8)
-    axis.set_xticks(range(len(arms)), [arm.split()[0] for arm in arms])
+    axis.set_xticks(range(len(arms)), [label(arm) for arm in arms])
+
+
+def seed_bars(axis, rho, arms):
+    """Bar: mean over seeds. Dots: seeds. One seed: its 95% interval by question."""
+    for index, arm in enumerate(arms):
+        runs = rho[arm]
+        scores = [run["test"][0] for run in runs]
+        top = max(scores)
+        axis.bar(
+            index,
+            mean(scores),
+            0.6,
+            color=color(arm),
+            alpha=0.35,
+            hatch="//" if "rank" in arm else None,
+        )
+        axis.scatter([index] * len(scores), scores, color=color(arm), zorder=3)
+        if len(runs) == 1:
+            score, low, top = runs[0]["test"]
+            axis.errorbar(
+                index,
+                score,
+                yerr=[[score - low], [top - score]],
+                color="black",
+                capsize=3,
+                linewidth=1,
+            )
+        axis.text(index, top + 0.4, f"{mean(scores):.1f}", ha="center", fontsize=8)
+    axis.set_xticks(range(len(arms)), [label(arm) for arm in arms])
 
 
 def test_figure(rho, out):
-    figure, (short, long) = plt.subplots(1, 2, figsize=(11, 4), sharey=True)
+    figure, (short, long) = plt.subplots(
+        1, 2, figsize=(12, 4.2), sharey=True, gridspec_kw={"width_ratios": [1.4, 1]}
+    )
     baseline = rho["SFT"][0]["test"][0]
-    arms = ["RestEM matched", "RLOO 200", "GRPO 200", "PPO 200", "VinePPO 200"]
-    for index, arm in enumerate(arms):
-        scores = [run["test"][0] for run in rho[arm]]
-        short.bar(index, mean(scores), 0.6, color=color(arm), alpha=0.35)
-        short.scatter([index] * len(scores), scores, color=color(arm), zorder=3)
-        short.text(
-            index, max(scores) + 0.4, f"{mean(scores):.1f}", ha="center", fontsize=8
-        )
-    short.set_xticks(range(len(arms)), [arm.split()[0] for arm in arms])
-    style(short, "Test Pass@1 (%)", "25,600 primary samples (dots: seeds)")
-    interval_bars(long, {arm: rho[arm] for arm in rho if arm.endswith("650")})
-    style(long, title="332,800 primary samples (seed 42; bars: 95% CI)")
+    seed_bars(
+        short,
+        rho,
+        ["RestEM matched", "RLOO 200", "GRPO 200", "PPO 200", "PPO rank-16 200"]
+        + ["VinePPO 200"],
+    )
+    style(short, "Test Pass@1 (%)", "25,600 primary samples")
+    seed_bars(long, rho, ["RLOO 650", "GRPO 650", "PPO 650", "VinePPO 650"])
+    style(long, title="332,800 primary samples")
     for axis in (short, long):
         axis.axhline(baseline, color=COLORS["SFT"], linestyle="--", linewidth=1)
         axis.set_xlim(left=-1.1)
         axis.text(-1.05, baseline + 0.3, f"SFT {baseline:.1f}", fontsize=8)
-    short.set_ylim(36, 60)
+    short.set_ylim(36, 62)
     figure.suptitle(
-        "RhoMath 1.1B on GSM8K: validation-selected checkpoint, 16 test rounds"
+        "RhoMath 1.1B on GSM8K: validation-selected checkpoint, 16 test rounds. "
+        "Dots: seeds; error bars: one seed's 95% CI"
     )
     figure.tight_layout()
     figure.savefig(out / "rhomath-gsm8k-test.png", dpi=150)
@@ -118,19 +155,22 @@ def curve_figure(rho, out):
         )
     style(axes[0], "Validation Pass@1 (%)", "200 iterations x 128 (mean of 3 seeds)")
     for arm in ("RLOO 650", "GRPO 650", "PPO 650", "VinePPO 650"):
-        (run,) = rho[arm]
-        steps, scores, _ = zip(*run["validation"])
-        axes[1].plot(steps, scores, marker="o", markersize=3, color=color(arm))
-        axes[1].scatter(
-            [run["selected"]],
-            [scores[steps.index(run["selected"])]],
-            s=90,
-            facecolors="none",
-            edgecolors=color(arm),
-        )
-        steps, rewards = zip(*run["reward"])
-        axes[2].plot(steps, smooth(rewards), color=color(arm))
-    style(axes[1], title="650 iterations x 512 (seed 42; ring: selected)")
+        for index, run in enumerate(rho[arm]):
+            faint = {"alpha": 0.45, "linewidth": 1} if index else {}
+            steps, scores, _ = zip(*run["validation"])
+            axes[1].plot(
+                steps, scores, marker="o", markersize=3, color=color(arm), **faint
+            )
+            axes[1].scatter(
+                [run["selected"]],
+                [scores[steps.index(run["selected"])]],
+                s=90,
+                facecolors="none",
+                edgecolors=color(arm),
+            )
+            steps, rewards = zip(*run["reward"])
+            axes[2].plot(steps, smooth(rewards), color=color(arm), **faint)
+    style(axes[1], title="650 iterations x 512 (faint: seeds 43, 44; ring: selected)")
     style(axes[2], "Mean training reward", "650 x 512: reward, 25-iteration mean")
     for axis in axes:
         axis.set_xlabel("Training iteration")
@@ -174,34 +214,135 @@ def cost_figure(rho, out):
 
 
 def generalization_figure(rho, out):
-    """Validation against training accuracy per checkpoint (the paper's Figure 5)."""
-    figure, axis = plt.subplots(figsize=(6.4, 4.6))
+    """Validation against training accuracy per checkpoint (the paper's Figure 5).
+
+    Each arm's line is the least-squares fit over all its seeds' checkpoints.
+    """
+    figure, axis = plt.subplots(figsize=(6.8, 4.6))
     for arm in ("RLOO 650", "GRPO 650", "PPO 650", "VinePPO 650"):
-        for index, run in enumerate(rho[arm]):
-            validation = {i: score for i, score, _ in run["validation"]}
-            train, scores = zip(
-                *((accuracy, validation[i]) for i, accuracy in run["train_accuracy"])
-            )
-            axis.plot(
-                train,
-                scores,
-                marker="o",
-                markersize=3,
-                linewidth=1,
-                color=color(arm),
-                label=None if index else arm.split()[0],
-            )
+        points = [
+            (accuracy, {i: score for i, score, _ in run["validation"]}[i])
+            for run in rho[arm]
+            for i, accuracy in run["train_accuracy"]
+        ]
+        train, scores = zip(*points)
+        slope, intercept = linear_regression(train, scores)
+        axis.scatter(train, scores, s=12, color=color(arm), alpha=0.6)
+        ends = [min(train), max(train)]
+        axis.plot(
+            ends,
+            [intercept + slope * x for x in ends],
+            color=color(arm),
+            label=f"{arm.split()[0]}: slope {slope:.2f}, {len(rho[arm])} seed(s)",
+        )
     style(axis, "Validation Pass@1 (%)", "Validation against training accuracy")
     axis.set_xlabel("Training accuracy over the preceding 25 iterations (%)")
-    axis.legend(frameon=False)
-    figure.suptitle("RhoMath 1.1B on GSM8K, 650 iterations x 512, one line per run")
+    axis.legend(frameon=False, fontsize=8)
+    figure.suptitle(
+        "RhoMath 1.1B on GSM8K, 650 iterations x 512, one dot per checkpoint"
+    )
     figure.tight_layout()
     figure.savefig(out / "rhomath-650-generalization.png", dpi=150)
 
 
+CRITICS = {
+    "PPO 200": "Full FP32",
+    "PPO rank-16 200": "LoRA 16",
+    "PPO rank-64 200": "LoRA 64",
+    "PPO rank-256 200": "LoRA 256",
+}
+REPLAY_STYLE = {
+    "Full critic, seed 43": ("#d98c2b", "-"),
+    "Rank 16, seed 43": ("#8c510a", "--"),
+    "Rank 16, seed 42": ("#8c510a", ":"),
+    "Rank 64, seed 42": ("#bf812d", ":"),
+    "Rank 256, seed 42": ("#dfc27d", ":"),
+}
+
+
+def critic_figure(data, out):
+    """Full against LoRA critics: accuracy, time per update and value error."""
+    rho, replay = data["rhomath-gsm8k"], data["value_replay"]
+    figure, (test, seconds, error) = plt.subplots(
+        1, 3, figsize=(16, 4.4), gridspec_kw={"width_ratios": [1, 1, 1.5]}
+    )
+    for index, (arm, name) in enumerate(CRITICS.items()):
+        scores = [run["test"][0] for run in rho[arm]]
+        test.bar(index, mean(scores), 0.6, color=color(arm), alpha=0.35)
+        test.scatter([index] * len(scores), scores, color=color(arm), zorder=3)
+        test.text(
+            index, max(scores) + 0.3, f"{mean(scores):.1f}", ha="center", fontsize=8
+        )
+        per_update = {
+            key: mean(run["phase_seconds"][key] / run["iterations"] for run in rho[arm])
+            for key in ("critic_update_seconds", "actor_update_seconds")
+        }
+        bottom = 0.0
+        for key, shade in (
+            ("critic_update_seconds", 1.0),
+            ("actor_update_seconds", 0.4),
+        ):
+            seconds.bar(
+                index,
+                per_update[key],
+                0.6,
+                bottom=bottom,
+                color=color(arm),
+                alpha=shade,
+            )
+            bottom += per_update[key]
+        seconds.text(
+            index,
+            bottom + 0.4,
+            f"{per_update['critic_update_seconds']:.1f} + "
+            f"{per_update['actor_update_seconds']:.1f}",
+            ha="center",
+            fontsize=8,
+        )
+    for axis in (test, seconds):
+        axis.set_xticks(range(len(CRITICS)), list(CRITICS.values()))
+    test.set_ylim(40, 52)
+    style(test, "Test Pass@1 (%)", "PPO, 200 x 128 (dots: seeds)")
+    style(seconds, "Seconds per update", "Critic update (dark) + actor update")
+    for name, (shade, line) in REPLAY_STYLE.items():
+        critic = replay[name]["critic"]
+        depths = sorted(critic["by_depth"], key=int)
+        error.plot(
+            [int(depth) for depth in depths],
+            [critic["by_depth"][depth]["mean_absolute_error"] for depth in depths],
+            color=shade,
+            linestyle=line,
+            marker="o",
+            markersize=3,
+            label=f"{name} (EV {critic['explained_variance']:.2f})",
+        )
+    reference = replay["Full critic, seed 43"]
+    for k, shade in ((1, "#f4a582"), (3, "#d6604d"), (9, "#b2182b")):
+        estimate = reference[f"mc_{k}"]
+        depths = sorted(estimate["by_depth"], key=int)
+        error.plot(
+            [int(depth) for depth in depths],
+            [estimate["by_depth"][depth]["mean_absolute_error"] for depth in depths],
+            color=shade,
+            marker="s",
+            markersize=3,
+            label=f"MC, K = {k} (EV {estimate['explained_variance']:.2f})",
+        )
+    style(error, "Mean absolute value error", "Value error by reasoning depth")
+    error.set_xlabel("Step the state precedes (last point: that step or later)")
+    error.set_ylim(0, 0.6)
+    error.legend(frameon=False, fontsize=7, ncols=2, loc="upper center")
+    figure.suptitle(
+        "RhoMath 1.1B on GSM8K: full and LoRA critics at iteration 200. "
+        "Value error is against 256 rollouts per state"
+    )
+    figure.tight_layout()
+    figure.savefig(out / "rhomath-lora-critic.png", dpi=150)
+
+
 def olmo_figure(data, out):
     figure, (math, gsm) = plt.subplots(
-        1, 2, figsize=(11, 4), gridspec_kw={"width_ratios": [1, 1.6]}
+        1, 2, figsize=(13, 4.2), gridspec_kw={"width_ratios": [1, 1.6]}
     )
     interval_bars(math, data["olmo-math"])
     math.set_ylim(60, 80)
@@ -235,6 +376,7 @@ def main(results, out):
     curve_figure(rho, out)
     cost_figure(rho, out)
     generalization_figure(rho, out)
+    critic_figure(data, out)
     olmo_figure(data, out)
 
 
