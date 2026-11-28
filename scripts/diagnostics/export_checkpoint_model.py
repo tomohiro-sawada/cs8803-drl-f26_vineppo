@@ -6,9 +6,11 @@ The vLLM replicas serve a base model plus LoRA adapters, so the vLLM evaluator
 cannot publish a full-weights checkpoint. OUT holds the selected checkpoint's
 actor weights in their own dtype and MODEL_PATH's tokenizer files, so
 evaluate_model_baseline.py can serve it as a base model and run the same
-16-round test as every LoRA run. export.json records the source checkpoint.
+16-round test as every LoRA run. export.json records the source checkpoint
+and the SHA256 of the weights written, which the test result records too.
 """
 
+import hashlib
 import json
 import shutil
 import sys
@@ -29,12 +31,12 @@ def main(selection, model_path, out):
     assert info["finetuning"] == "full", info["finetuning"]
     out.mkdir(parents=True)
     model.save_pretrained(out, safe_serialization=True, max_shard_size="64GB")
-    assert (out / "model.safetensors").is_file()
+    with (out / "model.safetensors").open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
     for path in model_path.glob("*token*"):
         shutil.copy2(path, out / path.name)
-    (out / "export.json").write_text(
-        json.dumps({"checkpoint": best, "dtype": info["dtype"]}, indent=2) + "\n"
-    )
+    record = {"checkpoint": best, "dtype": info["dtype"], "model_sha256": digest}
+    (out / "export.json").write_text(json.dumps(record, indent=2) + "\n")
 
 
 if __name__ == "__main__":
