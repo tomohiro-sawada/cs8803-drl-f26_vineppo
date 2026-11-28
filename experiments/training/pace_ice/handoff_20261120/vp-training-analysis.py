@@ -41,15 +41,22 @@ def extract(root):
         pointer = read(root / "final-evaluation.json")
     elif root.name.startswith("handoff-olmo3-") and "-sft-" in root.name:
         pointer = {"result": read(root / "COMPLETE")["result"]}
+    elif (root / "exported-test").is_dir():  # vp-full-finetuning-grpo.slurm tests the exported selected actor
+        tested = root / "exported-test"
+        pointer = {"result": str(tested / "test/result.json"), "selection": str(root / "selection.json"), "export": read(tested / "export.json")}
     else:
         pointer = {"result": str(root / "result.json")}
     result = Path(pointer["result"])
     test = read(result)
     assert test["complete"] and test["rounds_completed"] == 16 and test["split"] == "test"
+    selected = test["checkpoint"]
+    if "export" in pointer:
+        assert pointer["export"]["model_sha256"] == selected["sha256"]
+        selected = pointer["export"]["checkpoint"]
     validation = []
     if "selection" in pointer:
         manifest = read(Path(pointer["selection"]))
-        assert manifest["best"]["checkpoint"] == test["checkpoint"]
+        assert manifest["best"]["checkpoint"] == selected
         validation = [(row["checkpoint"]["iteration"], row["accuracy"]) for row in manifest["candidates"]]
         if manifest["baseline"]:
             validation.insert(0, (0, manifest["baseline"]["accuracy"]))
@@ -110,7 +117,7 @@ def extract(root):
         slurm.add(read(root / "status.json")["job"])
     rec = {
         "task": test["task"], "test_pass_at_1": ci(scores.values()),
-        "selection_iteration": test["checkpoint"]["iteration"] if "selection" in pointer else None,
+        "selection_iteration": selected["iteration"] if "selection" in pointer else None,
         "lineage": [r.name for r in lineage],
         "slurm": sorted(slurm), "resume_iterations": resume_points,
         "changes_across_resumes": resume_changes, "validation": validation,

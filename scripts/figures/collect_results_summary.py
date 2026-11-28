@@ -40,6 +40,9 @@ RUNS = {
         "RestEM matched": ["handoff-rho-restem-match-s42-03"],
         "RLOO 200": [f"handoff-rho-rloo-200-s{seed}-03" for seed in (42, 43, 44)],
         "GRPO 200": [f"handoff-rho-grpo-200-s{seed}-03" for seed in (42, 43, 44)],
+        "GRPO full 200": [
+            f"handoff-rho-grpo-full-200-s{seed}-40" for seed in (42, 43, 44)
+        ],
         "PPO 200": [
             "handoff-rho-ppo-200-s42-03",
             "handoff-rho-ppo-200-s43-07",
@@ -59,6 +62,7 @@ RUNS = {
             "handoff-rho-grpo-650-s44-30",
         ],
         "PPO 650": ["handoff-rho-ppo-650-s42-07"],
+        "PPO rank-16 650": ["handoff-rho-ppo-lora-critic-rank16-650-s42-30"],
         "VinePPO 650": [
             "handoff-rho-vineppo-650-s42-11",
             "handoff-rho-vineppo-650-s43-30",
@@ -71,6 +75,7 @@ RUNS = {
         "RLOO 50": ["handoff-olmo3-math-rloo-50-s42-20"],
         "GRPO 50": ["handoff-olmo3-math-grpo-50-s42-10"],
         "PPO rank-16 50": ["handoff-olmo3-math-ppo-rank16-50-s42-30"],
+        "VinePPO 50": ["handoff-olmo3-math-vineppo-50-s42-30"],
     },
     "olmo-gsm8k": {
         "SFT": ["handoff-olmo3-gsm8k-sft-10"],
@@ -81,14 +86,14 @@ RUNS = {
         "VinePPO 50": ["handoff-olmo3-gsm8k-vineppo-50-s42-30"],
     },
 }
-# Arms added once their run is COMPLETE; until then the summary lists them as pending.
-PENDING = {"olmo-math": {"VinePPO 50": ["handoff-olmo3-math-vineppo-50-s42-30"]}}
 REPLAYS = {
-    "Full critic, seed 43": "full-s43",
-    "Rank 16, seed 43": "rank16-s43",
-    "Rank 16, seed 42": "rank16-s42",
-    "Rank 64, seed 42": "rank64-s42",
-    "Rank 256, seed 42": "rank256-s42",
+    "Full critic, seed 43": "full-s43-i200",
+    "Rank 16, seed 43": "rank16-s43-i200",
+    "Rank 16, seed 42": "rank16-s42-i200",
+    "Rank 64, seed 42": "rank64-s42-i200",
+    "Rank 256, seed 42": "rank256-s42-i200",
+    "Full critic, seed 42, 650 x 512": "full-s42-i650",
+    "Rank 16, seed 42, 650 x 512": "rank16-s42-i650",
 }
 SFT_CHECK = {"RhoMath": "rho", "OLMo 3": "olmo3"}
 
@@ -97,7 +102,10 @@ def logged(runs_dir, lineage):
     """Metric rows by iteration over a resume chain; a later attempt wins."""
     rows = {}
     for name in lineage:
-        for path in sorted((runs_dir / name).glob("attempt-*/metrics.jsonl")):
+        root = runs_dir / name
+        for path in sorted(root.glob("attempt-*/metrics.jsonl")) + [
+            *root.glob("metrics.jsonl")
+        ]:
             for line in path.open():
                 row = json.loads(line)
                 rows[row["iteration"]] = row
@@ -194,10 +202,6 @@ def sft_check(runs_dir, model):
 
 def main(runs_dir, out):
     runs_dir = Path(runs_dir)
-    for task, arms in PENDING.items():
-        for arm, names in arms.items():
-            if all((runs_dir / name / "COMPLETE").is_file() for name in names):
-                RUNS[task][arm] = names
     data, scores = {}, {}
     for task, arms in RUNS.items():
         data[task] = {}
@@ -211,7 +215,7 @@ def main(runs_dir, out):
             [
                 json.loads(line)
                 for line in (
-                    runs_dir / f"value-replay-rho-ppo-{name}-i200-30/value-replay.jsonl"
+                    runs_dir / f"value-replay-rho-ppo-{name}-30/value-replay.jsonl"
                 ).open()
             ]
         )
