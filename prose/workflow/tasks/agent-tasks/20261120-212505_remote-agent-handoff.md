@@ -864,3 +864,17 @@ Written by the submission session (job names `vp35`).
 - **Not run:** the full fine-tuning GRPO control. Scratch has too little room for full-weight checkpoints without deleting anything, and the cluster's GPUs were not idle.
 - **Tests.** The full CPU suite passed 1,637 tests at `9c90d83` (job 7366671).
 - **Scratch** is at 272.5 of 300 GB by `pace-quota`; 29.2 GB of it is the running run's frozen base.
+
+### 20261128-044620 · `a549688`
+
+Written by the follow-up session (job names `vp36`). Its goal: close the two gaps the report draft left open (the critic at the paper's budget, and a full fine-tuning control for GRPO), then write a follow-up summary and draft.
+
+- **OLMo MATH VinePPO** is in its third allocation (7381784, successor 7396018): iteration 37 of 50 at 01:45, zero splitter rejections, 2,944 s per iteration on average. Not yet COMPLETE; its 29.2 GB frozen base is still unlinked.
+- **LoRA-critic PPO at 650 × 512, seed 42,** is job 7396898 (successor 7397762) at `595a382`, root `handoff-rho-ppo-lora-critic-rank16-650-s42-30`. Options are those of `handoff-rho-ppo-650-s42-07` plus `--critic-lora-rank 16`; it keeps all 26 validation checkpoints. Running since 03:07, about 105 s per iteration.
+- **Replay plan.** The bucket holds `iteration-650.pt` (151,915,460 bytes) and `critic-650.pt` (12,414,435,359 bytes) of the full-critic run, so both seed-42 critics are replayed at iteration 650. `vp-restore-ppo-checkpoint.py` (`0333925`) downloads the two files, hard-links the canonical base at the recorded path and checks both hashes. It has not run yet: the restore adds 12.6 GB and waits until the MATH run's base is linked.
+- **Full fine-tuning GRPO control.** One full checkpoint (actor, reference, AdamW state) is 17,601,167,139 bytes, measured by smoke 7396972, so the run cannot keep checkpoints on scratch. `vp-full-finetuning-grpo.slurm` (`7638a62`, revised `6199215`) trains on node-local disk, exports the selected actor (`scripts/diagnostics/export_checkpoint_model.py`), tests it for 16 rounds through vLLM, copies everything but weights to scratch and mirrors the run to the bucket. The node-local copy is removed after the mirror verifies.
+- **Smokes, two iterations each.** 7396972 (`7638a62`) and 7398360 (`6199215`) both ran end to end. The vLLM test of the exported full-weights model gave 40.29% and 40.17% (SFT: 40.15%). The second smoke keeps the test in `NAME/exported-test` with `export.json`, whose `model_sha256` equals the tested checkpoint's hash. The scratch copy without weights is 27 MB. Node-local `/tmp` had 11 TB free. Per iteration at 16 prompts × 8: 11–35 s sampling, 18–31 s actor update, 14–16 s per checkpoint, 256–289 s per four-round HF validation.
+- **Seed 42 of the control** is job 7398974 at `6199215`, root `handoff-rho-grpo-full-200-s42-40`, W&B online, bucket mirror on. A first submission, 7398256, was cancelled while pending to make the layout change above. Seeds 43 and 44 follow one at a time.
+- **Known differences from LoRA GRPO 200, besides the fine-tuning method:** the HF sampler in place of vLLM during training; checkpoint selection by HF validation (FP32) in place of vLLM validation; the test serves the FP32 weights in BF16.
+- **Collector** (`a549688`): reads the control's layout through `vp-training-analysis.py`, which checks the export record against the test and the selection; lists the new arms and the two 650 replays. It was checked on the second smoke (job 7398975) and cannot run in full until those runs exist.
+- **Scratch** is at 280.8 of 300 GB by `pace-quota`.
