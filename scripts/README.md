@@ -36,6 +36,9 @@ These are sequential scheduler observations, not an atomic snapshot, GPU compute
   `diagnostics/value_estimate_analysis.py` scores its output: mean absolute
   error by reasoning depth and explained variance, for the critic and for
   1, 3 and 9 Monte Carlo samples.
+- `diagnostics/export_checkpoint_model.py` writes a validation-selected, fully
+  fine-tuned actor as a model directory, so `evaluate_model_baseline.py` can
+  test it through vLLM.
 - `figures` draws report figures. `collect_results_summary.py` reads run
   directories into one JSON file (run it under Slurm);
   `plot_results_summary.py` draws the PNGs from that file and

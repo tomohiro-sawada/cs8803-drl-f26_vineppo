@@ -32,3 +32,5 @@ python3 experiments/training/pace_ice/handoff_20261120/vp-format-report-20261121
 `vp-vineppo-mc-rate.py RUN_ROOT` (added 2026-11-24) prints a completed VinePPO run's Monte Carlo tokens per primary token and Monte Carlo tokens per generation second.
 
 `vp-math-splitter-{failures,cause,whatif}.py` (added 2026-11-24, jobs 7289868, 7289925 and 7289968) are the read-only evidence for the pending MATH splitter change. They replay the 512 stored OLMo MATH responses: which ones the vendored splitter rejects, why (nested placeholders restored in insertion order), and what restoring in reverse order would do. Run them with `PYTHONPATH=src:.`. Nothing in `src` is changed by them.
+
+`vp-full-finetuning-grpo.slurm NAME SEED ITERATIONS CHECKPOINT_EVERY WANDB_MODE ARCHIVE` (added 2026-11-28) runs the full fine-tuning GRPO control on node-local disk, because full-weight checkpoints do not fit under the scratch quota: HF training, export of the selected actor, the 16-round vLLM test, a weight-free copy on scratch and a verified bucket mirror.
